@@ -1,10 +1,11 @@
+# filepath: /c:/DEV/Python/PLC Integration/src1-main/src1-main/RaspPiReader-master/run.py
 import argparse
 import sys
 
 from PyQt5 import QtWidgets
 from RaspPiReader import pool
-from RaspPiReader.ui.main_form_handler import MainFormHandler
 from RaspPiReader.ui.login_form_handler import LoginFormHandler
+from RaspPiReader.ui.main_form_handler import MainFormHandler
 
 def Main():
     app = QtWidgets.QApplication(sys.argv)
