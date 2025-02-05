@@ -367,32 +367,32 @@ class MainFormHandler(QMainWindow):
         self.actionStop.setEnabled(False)
         self.csv_file.close()
 
-    def generate_html_report(self, image_path=None):
-        report_data = {
-            "order_id": pool.config("order_id") or "-",
-            "cycle_id": pool.config("cycle_id") or "-",
-            "quantity": pool.config("quantity") or "-",
-            "cycle_location": pool.config("cycle_location") or "-",
-            "dwell_time": int(pool.config("dwell_time")) or "-",
-            "cool_down_temp": pool.config("cool_down_temp") or "-",
-            "core_temp_setpoint": pool.config("core_temp_setpoint") or "-",
-            "temp_ramp": pool.config("temp_ramp") or "-",
-            "set_pressure": pool.config("set_pressure") or "-",
-            "maintain_vacuum": pool.config("maintain_vacuum") or "-",
-            "initial_set_cure_temp": pool.config("initial_set_cure_temp") or "-",
-            "final_set_cure_temp": pool.config("final_set_cure_temp") or "-",
-            "core_high_temp_time": round(self.start_cycle_form.core_temp_above_setpoint_time, 2) or "-",
-            "release_temp": self.start_cycle_form.pressure_drop_core_temp or "-",
-            "cycle_date": self.start_cycle_form.cycle_start_time.strftime("%Y/%m/%d") or "-",
-            "cycle_start_time": self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S") or "-",
-            "cycle_end_time": self.start_cycle_form.cycle_end_time.strftime("%H:%M:%S") or "-",
-            "image_path": image_path,
-            "logo_path": os.path.join(os.getcwd(), 'ui\\logo.jpg'),
-        }
+def generate_html_report(self, image_path=None):
+    report_data = {
+        "order_id": pool.config("order_id") or "-",
+        "cycle_id": pool.config("cycle_id") or "-",
+        "quantity": pool.config("quantity") or "-",
+        "cycle_location": pool.config("cycle_location") or "-",
+        "dwell_time": int(pool.config("dwell_time") or 0) or "-",
+        "cool_down_temp": pool.config("cool_down_temp") or "-",
+        "core_temp_setpoint": pool.config("core_temp_setpoint") or "-",
+        "temp_ramp": pool.config("temp_ramp") or "-",
+        "set_pressure": pool.config("set_pressure") or "-",
+        "maintain_vacuum": pool.config("maintain_vacuum") or "-",
+        "initial_set_cure_temp": pool.config("initial_set_cure_temp") or "-",
+        "final_set_cure_temp": pool.config("final_set_cure_temp") or "-",
+        "core_high_temp_time": round(self.start_cycle_form.core_temp_above_setpoint_time, 2) or "-",
+        "release_temp": self.start_cycle_form.pressure_drop_core_temp or "-",
+        "cycle_date": self.start_cycle_form.cycle_start_time.strftime("%Y/%m/%d") or "-",
+        "cycle_start_time": self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S") or "-",
+        "cycle_end_time": self.start_cycle_form.cycle_end_time.strftime("%H:%M:%S") or "-",
+        "image_path": image_path,
+        "logo_path": os.path.join(os.getcwd(), 'ui\\logo.jpg'),
+    }
 
-        self.render_print_template(template_file='result_template.html',
-                                   data=report_data,
-                                   )
+    self.render_print_template(template_file='result_template.html',
+                               data=report_data,
+                               )
 
     def render_print_template(self, *args, template_file=None, **kwargs):
         templateLoader = jinja2.FileSystemLoader(searchpath=
