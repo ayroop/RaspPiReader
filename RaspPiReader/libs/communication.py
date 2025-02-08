@@ -9,8 +9,8 @@ class DataReader:
 
     def start(self):
         port = pool.config('port')
-        baudrate = pool.config('baudrate', int)
-        bytesize = pool.config('databits', int)
+        baudrate = pool.config('baudrate', int, 9600)      # default baudrate 9600
+        bytesize = pool.config('databits', int, 8)         # default databits: 8
         parity = [k for k in serial.PARITY_NAMES if serial.PARITY_NAMES[k] == pool.config('parity')][0]
         stopbits = pool.config('stopbits', float)
         if stopbits % 1 == 0:

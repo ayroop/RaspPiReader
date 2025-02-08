@@ -1,0 +1,3 @@
+username,password,settings,search,user_mgmt_page
+pooriya,12345,True,True,False
+admin,admin,True,True,True

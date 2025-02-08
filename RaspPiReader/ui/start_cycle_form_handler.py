@@ -53,6 +53,18 @@ class StartCycleFormHandler(QMainWindow):
         self.data_updated_signal.connect(pool.get('main_form').update_data)
         self.test_data_updated_signal.connect(pool.get('main_form').update_immediate_test_values_panel)
         self.exit_with_error_signal.connect(pool.get('main_form').show_error_and_stop)
+    def initiate_onedrive_update_thread(self):
+            self.onedrive_thread = Thread(target=self.onedrive_upload_loop)
+            self.onedrive_thread.daemon = True
+            self.onedrive_thread.start()
+    def onedrive_upload_loop(self):
+            while True:
+                sleep(pool.config('onedrive_update_interval', int))
+                pool.get('main_form')._sync_onedrive(upload_csv=True, upload_pdf=True, show_message=False)
+
+    def upload_to_onedrive(self):
+            main_form = pool.get('main_form')
+            main_form._sync_onedrive(upload_csv=True, upload_pdf=True, show_message=False)
 
     def show(self):
         try:
@@ -132,6 +144,7 @@ class StartCycleFormHandler(QMainWindow):
         main_form.cycle_timer.start(500)
         self.read_thread.start()
         self.gdrive_update_thread.start()
+        self.initiate_onedrive_update_thread()
 
     def stop_cycle(self):
         self.cycle_end_time = datetime.now()

@@ -1,6 +1,5 @@
 from PyQt5.QtCore import QSettings
 
-
 class Pool:
 
     def __init__(self):
@@ -18,16 +17,18 @@ class Pool:
         self._registry = dict()
         return True
 
-    def config(self, key, return_type=str):
+    def config(self, key, return_type=str, default_val=None):
+        # Get the raw value from settings; if it's empty or None, then return a default
+        val = self._setting.value(key, default_val)
+        if val in [None, '']:
+            return default_val
         try:
-            val =  self._setting.value(key, str(), return_type)
+            return return_type(val)
         except Exception as e:
-            val = None
-            print(key, ' - ', str(return_type))
-        return val
+            print(f"Error converting {key} = {val} to {return_type}: {e}")
+            return default_val
 
     def set_config(self, key, value):
         return self._setting.setValue(key, value)
-
 
 pool = Pool()

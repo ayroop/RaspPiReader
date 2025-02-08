@@ -7,9 +7,10 @@ from datetime import datetime
 import google
 import jinja2
 import pdfkit
+from PyQt5 import QtWidgets
 from PyQt5.QtCore import QTimer, pyqtSignal
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel
+from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction
 from colorama import Fore
 
 from RaspPiReader import pool
@@ -20,6 +21,8 @@ from .plot_handler import InitiatePlotWidget
 from .plot_preview_form_handler import PlotPreviewFormHandler
 from .setting_form_handler import SettingFormHandler, CHANNEL_COUNT
 from .start_cycle_form_handler import StartCycleFormHandler
+from .user_management_form_handler import UserManagementFormHandler
+from RaspPiReader.ui.one_drive_settings_form_handler import OneDriveSettingsFormHandler
 
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
@@ -31,31 +34,83 @@ def timedelta2str(td):
     return "{0}:{1}:{2}".format(zp(h), zp(m), zp(s))
 
 
-class MainFormHandler(QMainWindow):
+class MainFormHandler(QtWidgets.QMainWindow):
     update_status_bar_signal = pyqtSignal(str, int, str)
 
-    def __init__(self, username) -> object:
+    def __init__(self, user_record=None):
         super(MainFormHandler, self).__init__()
+        self.user_record = user_record
+        print(f"Initializing MainFormHandler with user_record: {self.user_record}")
         self.form_obj = MainForm()
         self.form_obj.setupUi(self)
         self.file_name = None
         self.folder_name = None
         self.csv_path = None
         self.pdf_path = None
-        self.username = username
+        self.username = self.user_record.get('username', '')
         pool.set('main_form', self)
         self.cycle_timer = QTimer()
         self.set_connections()
         self.start_cycle_form = pool.set('cycle_start_form', StartCycleFormHandler())
         self.showMaximized()
         self.display_username()
+        self.create_stack()
+        self.set_connections()
+        self.setup_access_controls()
+        self.connect_menu_actions()
+        # Add OneDrive Settings option to the menu
+        self.add_one_drive_menu()
+        print("MainFormHandler initialized.")
 
+    def add_one_drive_menu(self):
+        one_drive_action = QAction("OneDrive Settings", self)
+        one_drive_action.triggered.connect(self.show_onedrive_settings)
+        # Add the action to the default menubar
+        self.menuBar().addAction(one_drive_action)
+
+    def show_onedrive_settings(self):
+        dialog = OneDriveSettingsFormHandler(self)
+        dialog.exec_()
+    def setup_access_controls(self):
+        """
+        Disable or hide menu actions/pages based on user_record flags.
+        The keys in 'permissions' must match those in user_record.
+        """
+        permissions = {
+            "settings": "actionSetting",
+            "search": "actionSearch",
+            "user_mgmt_page": "actionUserManagement",
+        }
+
+        for perm_key, action_name in permissions.items():
+            if not self.user_record.get(perm_key, False):
+                if hasattr(self.form_obj, action_name):
+                    getattr(self.form_obj, action_name).setEnabled(False)
+                else:
+                    print(f"Warning: '{action_name}' not found in MainForm UI.")
+
+    def connect_menu_actions(self):
+        """
+        Connect menu actions and check permissions if necessary.
+        """
+        if hasattr(self.form_obj, "actionSetting"):
+            self.form_obj.actionSetting.triggered.connect(self.handle_settings)
+        else:
+            print("Warning: 'actionSetting' not found in the MainForm UI.")
+
+    def handle_settings(self):
+        print(f"Handling settings with user_record: {self.user_record}")
+        if self.user_record.get('settings', False):
+            self.settings_handler = SettingFormHandler()
+            self.settings_handler.show()
+        else:
+            QMessageBox.critical(self, "Access Denied", "You don't have permission to access Settings.")
+        
     def set_connections(self):
-        # Actions
         self.actionExit.triggered.connect(self.close)
         self.actionCycle_Info.triggered.connect(self._show_cycle_info)
         self.actionPlot.triggered.connect(self._show_plot)
-        self.actionSetting.triggered.connect(self._show_setting_form)
+        self.actionSetting.triggered.connect(self.handle_settings)
         self.actionStart.triggered.connect(self._start)
         self.actionStart.triggered.connect(lambda: self.actionPlot_preview.setEnabled(False))
         self.actionStop.triggered.connect(self._stop)
@@ -65,11 +120,23 @@ class MainFormHandler(QMainWindow):
         self.actionPrint_results.triggered.connect(self.open_pdf)
         self.cycle_timer.timeout.connect(self.cycle_timer_update)
         self.update_status_bar_signal.connect(self.update_status_bar)
-        # buttons
+
+        if not hasattr(self, 'userMgmtAction'):
+            self.userMgmtAction = QAction("User Management", self)
+            self.userMgmtAction.triggered.connect(self.open_user_management)
+            self.menuBar().addAction(self.userMgmtAction)
+
+    def open_user_management(self):
+        if self.user_record.get('user_mgmt_page', False):
+            dlg = UserManagementFormHandler(self)
+            dlg.exec_()
+        else:
+            QtWidgets.QMessageBox.warning(self, "Error", "Access denied. Only admin can manage users.")
 
     def display_username(self):
         self.username_label = QLabel(f"Logged in as: {self.username}")
         self.statusBar().addPermanentWidget(self.username_label)
+        self.setWindowTitle(f"Main Form - {self.username}")
 
     def create_stack(self):
         # initialize data stack: [[process_time(minutes)], [v1], [v2], ... , [V14], sampling_time,]
@@ -80,14 +147,14 @@ class MainFormHandler(QMainWindow):
             test_data_stack.append([])
             self.data_stack = pool.set("data_stack", data_stack)
             self.test_data_stack = pool.set("test_data_stack", test_data_stack)
-
+        pass
     def load_active_channels(self):
         self.active_channels = []
         for i in range(CHANNEL_COUNT):
             if pool.config('active' + str(i + 1), bool):
                 self.active_channels.append(i + 1)
         return pool.set('active_channels', self.active_channels)
-
+        pass
     def _start(self):
         self.gdrive_csv_file_id = None
         self.gdrive_folder_id = None
@@ -395,15 +462,13 @@ class MainFormHandler(QMainWindow):
                                    )
 
     def render_print_template(self, *args, template_file=None, **kwargs):
-        templateLoader = jinja2.FileSystemLoader(searchpath=
-                                                 os.path.join(os.getcwd(), "ui"))
+        templateLoader = jinja2.FileSystemLoader(searchpath=os.path.join(os.getcwd(), "ui"))
         templateEnv = jinja2.Environment(loader=templateLoader, extensions=['jinja2.ext.loopcontrols'])
         template = templateEnv.get_template(template_file)
         html = template.render(**kwargs)
         with tempfile.NamedTemporaryFile('w', delete=False, suffix='.html') as f:
             fname = f.name
             f.write(html)
-        # webbrowser.open('file://' + fname)
         file_extension = '.pdf'
         pdf_full_path = os.path.join(self.start_cycle_form.folder_path,
                                      self.start_cycle_form.file_name + file_extension)
@@ -411,9 +476,6 @@ class MainFormHandler(QMainWindow):
 
     def html2pdf(self, html_path, pdf_path):
         self.pdf_path = pdf_path
-        """
-        Convert html to pdf using pdfkit which is a wrapper of wkhtmltopdf
-        """
         options = {
             'page-size': 'A4',
             'dpi': 2000,
@@ -426,17 +488,56 @@ class MainFormHandler(QMainWindow):
             'enable-local-file-access': None
         }
         path_wkhtmltopdf = os.path.join(os.getcwd(), 'wkhtmltopdf.exe')
-        print(html_path)
-        print(pdf_path)
-        print('exe: ', path_wkhtmltopdf)
         config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
         with open(html_path) as f:
             pdfkit.from_file(f, pdf_path, options=options, configuration=config)
         webbrowser.open('file://' + pdf_path)
 
     def open_pdf(self):
-
         webbrowser.open('file://' + self.pdf_path)
+
+    def test_onedrive_connection(self):
+        msg = QMessageBox()
+        try:
+            onedrive_api = OneDriveAPI()
+            onedrive_api.authenticate(
+                pool.config('onedrive_client_id'),
+                pool.config('onedrive_client_secret'),
+                pool.config('onedrive_tenant_id')
+            )
+            if onedrive_api.check_connection():
+                msg.setIcon(QMessageBox.Information)
+                msg.setText("OneDrive connection OK.")
+                msg.setStandardButtons(QMessageBox.Ok)
+                msg.exec_()
+                self.update_status_bar_signal.emit('OneDrive connection OK.', 15000, 'green')
+            else:
+                raise Exception("Connection failed")
+        except Exception as e:
+            msg.setIcon(QMessageBox.Critical)
+            msg.setText("Connection failed.\n" + str(e))
+            msg.setStandardButtons(QMessageBox.Ok)
+            msg.exec_()
+            self.update_status_bar_signal.emit('OneDrive connection failed.', 0, 'red')
+
+    def _sync_onedrive(self, *args, upload_csv=True, upload_pdf=True, show_message=True, delete_existing=True):
+        try:
+            onedrive_api = OneDriveAPI()
+            onedrive_api.authenticate(
+                pool.config('onedrive_client_id'),
+                pool.config('onedrive_client_secret'),
+                pool.config('onedrive_tenant_id')
+            )
+            if upload_csv:
+                csv_file_path = self.get_csv_file_path()
+                onedrive_api.upload_file(csv_file_path)
+            if upload_pdf:
+                pdf_file_path = self.get_pdf_file_path()
+                onedrive_api.upload_file(pdf_file_path)
+            if show_message:
+                QMessageBox.information(self, "Success", "Files uploaded to OneDrive successfully")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", str(e))
 
     def closeEvent(self, event):
         if hasattr(self, 'start_cycle_form') \
@@ -449,11 +550,10 @@ class MainFormHandler(QMainWindow):
                                      quit_msg, (QMessageBox.Yes | QMessageBox.Cancel))
         if reply == QMessageBox.Yes:
             event.accept()
-
         elif reply == QMessageBox.Cancel:
             event.ignore()
 
     def update_status_bar(self, msg, ms_timeout, color):
         self.statusbar.showMessage(msg, ms_timeout)
         self.statusbar.setStyleSheet("color: {}".format(color.lower()))
-        self.statusBar().setFont(QFont('Times', 12))      
+        self.statusBar().setFont(QFont('Times', 12))
