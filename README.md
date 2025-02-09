@@ -8,6 +8,8 @@ Follow these steps to deploy the RaspPiReader application on a Windows machine.
 
 1. **Python**: Ensure that Python 3.6 or later is installed. You can download it from [python.org](https://www.python.org/downloads/).
 2. **Git**: Ensure that Git is installed. You can download it from [git-scm.com](https://git-scm.com/downloads/).
+3. **Azure Account**: Ensure that you have an Azure account to create an Azure SQL Database.
+4. **OneDrive Account**: Ensure that you have a OneDrive account for integration.
 
 ### Steps
 
@@ -36,6 +38,74 @@ Follow these steps to deploy the RaspPiReader application on a Windows machine.
     ```sh
     python run.py
     ```
+
+### Setting Up Azure SQL Database
+
+1. **Create an Azure SQL Database**:
+    - Log in to the [Azure Portal](https://portal.azure.com/).
+    - Click on "Create a resource" and select "SQL Database".
+    - Fill in the required details and create a new SQL Database.
+
+2. **Configure Firewall Rules**:
+    - Go to your SQL Database resource in the Azure Portal.
+    - Click on "Set server firewall" and add your client IP address to the allowed IP addresses.
+
+3. **Get Connection String**:
+    - Go to your SQL Database resource in the Azure Portal.
+    - Click on "Connection strings" and copy the ADO.NET connection string.
+
+4. **Create Tables**:
+    - Connect to your Azure SQL Database using SQL Server Management Studio (SSMS) or any other SQL client.
+    - Run the following SQL script to create the necessary tables:
+    ```sql
+    CREATE TABLE Users (
+        id INT PRIMARY KEY IDENTITY,
+        username NVARCHAR(50) NOT NULL,
+        password NVARCHAR(50) NOT NULL,
+        settings BIT NOT NULL,
+        search BIT NOT NULL,
+        user_mgmt_page BIT NOT NULL
+    );
+
+    -- Add other necessary tables here
+    ```
+
+### Configuring OneDrive
+
+1. **Register an Application in Azure AD**:
+    - Go to the [Azure Portal](https://portal.azure.com/).
+    - Navigate to "Azure Active Directory" > "App registrations" > "New registration".
+    - Fill in the required details and register the application.
+    - Note down the "Application (client) ID" and "Directory (tenant) ID".
+
+2. **Configure API Permissions**:
+    - Go to your registered application in the Azure Portal.
+    - Navigate to "API permissions" > "Add a permission" > "Microsoft Graph" > "Delegated permissions".
+    - Add the necessary permissions for OneDrive (e.g., `Files.ReadWrite.All`).
+
+3. **Generate Client Secret**:
+    - Go to your registered application in the Azure Portal.
+    - Navigate to "Certificates & secrets" > "New client secret".
+    - Note down the generated client secret.
+
+4. **Configure OneDrive Settings in the Application**:
+    - Run the application and navigate to the OneDrive settings page.
+    - Enter the "Client ID", "Client Secret", and "Tenant ID" obtained from the Azure Portal.
+    - Test the connection and save the settings.
+
+### Configuring Database Settings
+
+1. **Run the Application**:
+    ```sh
+    python run.py
+    ```
+
+2. **Navigate to Database Settings**:
+    - In the application, go to the "Settings" menu and select "Database Settings".
+
+3. **Enter Database Connection Details**:
+    - Enter the database connection details (e.g., server name, database name, username, password).
+    - Test the connection and save the settings.
 
 ### Additional Information
 
