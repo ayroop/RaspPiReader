@@ -14,14 +14,16 @@ class OneDriveSettingsFormHandler(QtWidgets.QDialog):
         self.load_settings()
 
     def load_settings(self):
-        self.ui.clientIdLineEdit.setText(pool.config('onedrive_client_id'))
-        self.ui.clientSecretLineEdit.setText(pool.config('onedrive_client_secret'))
-        self.ui.tenantIdLineEdit.setText(pool.config('onedrive_tenant_id'))
+        self.ui.clientIdLineEdit.setText(pool.config('onedrive_client_id', str, ''))
+        self.ui.clientSecretLineEdit.setText(pool.config('onedrive_client_secret', str, ''))
+        self.ui.tenantIdLineEdit.setText(pool.config('onedrive_tenant_id', str, ''))
+        self.ui.updateIntervalSpinBox.setValue(pool.config('onedrive_update_interval', int, 60))  # Default to 60 seconds
 
     def save_settings(self):
         pool.set_config('onedrive_client_id', self.ui.clientIdLineEdit.text().strip())
         pool.set_config('onedrive_client_secret', self.ui.clientSecretLineEdit.text().strip())
         pool.set_config('onedrive_tenant_id', self.ui.tenantIdLineEdit.text().strip())
+        pool.set_config('onedrive_update_interval', self.ui.updateIntervalSpinBox.value())
         self.accept()
 
     def test_connection(self):

@@ -123,10 +123,14 @@ class StartCycleFormHandler(QMainWindow):
         for obj_name, key_name in cycle_settings.items():
             pool.set_config(key_name, SettingFormHandler.get_val(self, obj_name))
 
-        self.file_name = pool.config("order_id") \
-                         + self.cycle_start_time.strftime("  %Y.%m.%d  %H.%M.%S")
+        # Default to "DEFAULT_ORDER" if order_id is not set.
+        order_id = pool.config("order_id", str, "DEFAULT_ORDER")
+        self.file_name = order_id + self.cycle_start_time.strftime("  %Y.%m.%d  %H.%M.%S")
         pool.get('main_form').folder_name = self.file_name
-        self.folder_path = os.path.join(pool.config('csv_file_path'), self.file_name)
+
+        # Default to the current working directory if csv_file_path is not set.
+        csv_file_path = pool.config('csv_file_path', str, os.getcwd())
+        self.folder_path = os.path.join(csv_file_path, self.file_name)
         os.makedirs(self.folder_path)
 
     def start_cycle(self):
