@@ -24,6 +24,7 @@ from .start_cycle_form_handler import StartCycleFormHandler
 from .user_management_form_handler import UserManagementFormHandler
 from RaspPiReader.ui.one_drive_settings_form_handler import OneDriveSettingsFormHandler
 from .plc_comm_settings_form_handler import PLCCommSettingsFormHandler
+from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormHandler
 
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
@@ -55,6 +56,8 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.start_cycle_form = pool.set('cycle_start_form', StartCycleFormHandler())
         self.showMaximized()
         self.display_username()
+        # Using for database
+        # self.display_username(user_record)
         self.create_stack()
         self.set_connections()
         self.setup_access_controls()
@@ -63,6 +66,8 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.add_one_drive_menu()
         # Add PLC Setting to the menu
         self.add_plc_comm_menu()
+        # Add Databese Setting to the menu
+        self.add_database_menu()
         print("MainFormHandler initialized.")
 
     def add_one_drive_menu(self):
@@ -85,6 +90,17 @@ class MainFormHandler(QtWidgets.QMainWindow):
     def show_plc_comm_settings(self):
         dialog = PLCCommSettingsFormHandler(self)
         dialog.exec_()
+
+    def add_database_menu(self):
+        database_menu = self.menuBar().addMenu("Database")
+        database_settings_action = QtWidgets.QAction("Database Settings", self)
+        database_settings_action.triggered.connect(self.show_database_settings)
+        database_menu.addAction(database_settings_action)
+
+    def show_database_settings(self):
+        dlg = DatabaseSettingsFormHandler(parent=self)
+        dlg.exec_()
+
     def setup_access_controls(self):
         """
         Disable or hide menu actions/pages based on user_record flags.
@@ -342,7 +358,8 @@ class MainFormHandler(QtWidgets.QMainWindow):
                 spin_widget.setEnabled(False)
             else:
                 spin_widget.setEnabled(True)
-                spin_widget.setDecimals(pool.config('decimal_point' + str(i + 1), int))
+                decimal_value = pool.config('decimal_point' + str(i + 1), int, 2)
+                spin_widget.setDecimals(decimal_value)
                 spin_widget.setMinimum(-999999)
                 spin_widget.setMaximum(+999999)
 

@@ -1,6 +1,7 @@
 import os
 import csv
 from PyQt5 import QtWidgets
+from RaspPiReader import pool
 from .login_form import Ui_LoginForm
 from .main_form_handler import MainFormHandler
 
@@ -25,9 +26,22 @@ class LoginFormHandler(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.critical(self, "Error", "Invalid credentials!")
 
     def authenticate(self, username, password):
+        if pool.config('demo', bool, False):
+            # Authenticate demo users
+            demo_users = [
+                {"username": "admin", "password": "admin", "settings": True, "search": True, "user_mgmt_page": True},
+                {"username": "demo_user1", "password": "password1", "settings": True, "search": True, "user_mgmt_page": True},
+                {"username": "demo_user2", "password": "password2", "settings": False, "search": True, "user_mgmt_page": False}
+            ]
+            for user in demo_users:
+                if user['username'] == username and user['password'] == password:
+                    return user
+            return None
+
         # Return default admin if admin credentials entered.
         if username.lower() == "admin" and password == "admin":
             return {"username": "admin", "password": "admin", "settings": True, "search": True, "user_mgmt_page": True}
+        
         # Check the CSV user file.
         if os.path.exists(USER_DATA_FILE):
             with open(USER_DATA_FILE, mode='r', newline='', encoding='utf-8') as csvfile:

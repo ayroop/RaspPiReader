@@ -99,9 +99,16 @@ class InitiatePlotWidget:
             check_box.stateChanged.connect(func(i))
 
     def create_legend_item(self, text, color):
+        if color is None:
+            color = "#000000"  # Default to black if no color is set
+        if text is None:
+            text = "Undefined"
         check_box = QCheckBox()
         check_box.setChecked(True)
-        legend_string = '<font color="' + color + '"> &#8212;&#8212;&nbsp;  &nbsp;  </font>' + '<font color="black">' + text + '</font>'
+        legend_string = (
+            '<font color="' + color + '"> &#8212;&#8212;&nbsp;&nbsp; </font>'
+            + '<font color="black">' + text + '</font>'
+        )
         label = QLabel()
         label.setText(legend_string)
         return check_box, label
