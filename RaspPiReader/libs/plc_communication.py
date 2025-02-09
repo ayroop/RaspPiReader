@@ -1,5 +1,6 @@
 import logging
 from pymodbus.client.sync import ModbusSerialClient as ModbusRTUClient
+from pymodbus.client.sync import ModbusTcpClient
 from RaspPiReader import pool
 
 logger = logging.getLogger(__name__)
@@ -13,7 +14,7 @@ class PLCCommunicatorTCP:
         try:
             host = pool.config('tcp_host', str, '127.0.0.1')
             port = pool.config('tcp_port', int, 502)
-            self.client = ModbusTCPClient(host=host, port=port, timeout=0.5)
+            self.client = ModbusTcpClient(host=host, port=port, timeout=0.5)
             connection = self.client.connect()
             if connection:
                 logger.info("Connected to Modbus TCP server at %s:%s", host, port)
@@ -34,7 +35,7 @@ class PLCCommunicatorTCP:
 
     def read_holding_registers(self, unit, address, count=1):
         if not self.client:
-            logger.error("Client not connected. Cannot read holding registers.")
+            logger.error("TCP client not connected. Cannot read holding registers.")
             return None
         try:
             response = self.client.read_holding_registers(address, count, unit=unit)
@@ -49,7 +50,7 @@ class PLCCommunicatorTCP:
 
     def read_input_registers(self, unit, address, count=1):
         if not self.client:
-            logger.error("Client not connected. Cannot read input registers.")
+            logger.error("TCP client not connected. Cannot read input registers.")
             return None
         try:
             response = self.client.read_input_registers(address, count, unit=unit)
@@ -64,7 +65,7 @@ class PLCCommunicatorTCP:
 
     def write_register(self, unit, address, value):
         if not self.client:
-            logger.error("Client not connected. Cannot write register.")
+            logger.error("TCP client not connected. Cannot write register.")
             return False
         try:
             response = self.client.write_register(address, value, unit=unit)
@@ -80,10 +81,11 @@ class PLCCommunicatorTCP:
 class PLCCommunicator:
     def __init__(self):
         self.client = None
-        self.comm_mode = pool.config("comm_mode", default_val="rs485")
+        # Use a consistent configuration key ("commMode") to determine the protocol.
+        self.comm_mode = pool.config("commMode", str, "RS485")
 
     def connect(self):
-        if self.comm_mode == "rs485":
+        if self.comm_mode.upper() == "RS485":
             self.client = ModbusRTUClient(
                 method='rtu',
                 port=pool.config('port'),
@@ -93,9 +95,28 @@ class PLCCommunicator:
                 stopbits=pool.config('stopbits', int, 1),
                 timeout=0.5
             )
-        elif self.comm_mode == "tcp":
+            connection = self.client.connect()
+            if connection:
+                logger.info("Connected via RS485 on port %s at baudrate %s", pool.config('port'), pool.config('baudrate', int, 9600))
+            else:
+                logger.error("Failed to connect via RS485 on port %s", pool.config('port'))
+            return connection
+        elif self.comm_mode.upper() == "TCP":
+            # When TCP is selected, use the dedicated TCP communicator.
             self.client = PLCCommunicatorTCP()
-        return self.client.connect()
+            return self.client.connect()
+        else:
+            logger.error("Invalid communication mode: %s", self.comm_mode)
+            return False
+
+    @staticmethod
+    def get_communicator():
+        # Retrieve the mode from configuration and return the proper communicator.
+        mode = pool.config('commMode', str, 'RS485')
+        if mode.upper() == 'TCP':
+            return PLCCommunicatorTCP()
+        else:
+            return PLCCommunicator()
 
     def disconnect(self):
         if self.client:
@@ -104,14 +125,15 @@ class PLCCommunicator:
     def read_holding_registers(self, unit, address, count=1):
         if not self.client:
             raise Exception("Client not connected")
-        return self.client.read_holding_registers(unit, address, count)
+        # Pass parameters in the same order expected by the underlying client.
+        return self.client.read_holding_registers(unit=unit, address=address, count=count)
 
     def read_input_registers(self, unit, address, count=1):
         if not self.client:
             raise Exception("Client not connected")
-        return self.client.read_input_registers(unit, address, count)
+        return self.client.read_input_registers(unit=unit, address=address, count=count)
 
     def write_register(self, unit, address, value):
         if not self.client:
             raise Exception("Client not connected")
-        return self.client.write_register(unit, address, value)
+        return self.client.write_register(unit=unit, address=address, value=value)

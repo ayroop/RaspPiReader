@@ -23,6 +23,7 @@ from .setting_form_handler import SettingFormHandler, CHANNEL_COUNT
 from .start_cycle_form_handler import StartCycleFormHandler
 from .user_management_form_handler import UserManagementFormHandler
 from RaspPiReader.ui.one_drive_settings_form_handler import OneDriveSettingsFormHandler
+from .plc_comm_settings_form_handler import PLCCommSettingsFormHandler
 
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
@@ -60,6 +61,8 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.connect_menu_actions()
         # Add OneDrive Settings option to the menu
         self.add_one_drive_menu()
+        # Add PLC Setting to the menu
+        self.add_plc_comm_menu()
         print("MainFormHandler initialized.")
 
     def add_one_drive_menu(self):
@@ -70,6 +73,17 @@ class MainFormHandler(QtWidgets.QMainWindow):
 
     def show_onedrive_settings(self):
         dialog = OneDriveSettingsFormHandler(self)
+        dialog.exec_()
+
+    def add_plc_comm_menu(self):
+        menubar = self.menuBar()
+        plc_menu = menubar.addMenu("PLC")
+        plc_settings_action = QtWidgets.QAction("PLC Communication Settings", self)
+        plc_menu.addAction(plc_settings_action)
+        plc_settings_action.triggered.connect(self.show_plc_comm_settings)
+
+    def show_plc_comm_settings(self):
+        dialog = PLCCommSettingsFormHandler(self)
         dialog.exec_()
     def setup_access_controls(self):
         """
