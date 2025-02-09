@@ -8,3 +8,4 @@ google-auth-oauthlib
 pyqtgraph
 pyserial
 pymodbus==2.5.3
+requests

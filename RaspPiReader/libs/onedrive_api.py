@@ -1,6 +1,7 @@
 import os
 import requests
 from requests.auth import HTTPBasicAuth
+
 class OneDriveAPI:
     def __init__(self):
         self.base_url = "https://graph.microsoft.com/v1.0"
@@ -12,62 +13,55 @@ class OneDriveAPI:
             "Content-Type": "application/x-www-form-urlencoded"
         }
         data = {
-            "grant_type": "client_credentials",
             "client_id": client_id,
+            "scope": "https://graph.microsoft.com/.default",
             "client_secret": client_secret,
-            "scope": "https://graph.microsoft.com/.default"
+            "grant_type": "client_credentials"
         }
         response = requests.post(url, headers=headers, data=data)
         if response.status_code == 200:
             self.token = response.json().get("access_token")
+            return True
         else:
-            raise Exception("Authentication failed")
+            return False
 
-    def upload_file(self, file_path, folder_id=None):
+    def check_connection(self):
         if not self.token:
-            raise Exception("Not authenticated")
-        file_name = os.path.basename(file_path)
-        url = f"{self.base_url}/me/drive/root:/{file_name}:/content"
-        if folder_id:
-            url = f"{self.base_url}/me/drive/items/{folder_id}:/{file_name}:/content"
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/octet-stream"
-        }
-        with open(file_path, "rb") as file:
-            response = requests.put(url, headers=headers, data=file)
-        if response.status_code == 201:
-            return response.json()
-        else:
-            raise Exception("File upload failed")
+            return False
+        url = f"{self.base_url}/me/drive"
+        headers = {"Authorization": f"Bearer {self.token}"}
+        response = requests.get(url, headers=headers)
+        return response.status_code == 200
 
     def create_folder(self, folder_name, parent_folder_id=None):
         if not self.token:
-            raise Exception("Not authenticated")
-        url = f"{self.base_url}/me/drive/root/children"
+            return None
         if parent_folder_id:
             url = f"{self.base_url}/me/drive/items/{parent_folder_id}/children"
-        headers = {
-            "Authorization": f"Bearer {self.token}",
-            "Content-Type": "application/json"
-        }
+        else:
+            url = f"{self.base_url}/me/drive/root/children"
+        headers = {"Authorization": f"Bearer {self.token}",
+                   "Content-Type": "application/json"}
         data = {
             "name": folder_name,
             "folder": {},
             "@microsoft.graph.conflictBehavior": "rename"
         }
         response = requests.post(url, headers=headers, json=data)
-        if response.status_code == 201:
-            return response.json()
+        if response.status_code in (200, 201):
+            return response.json().get("id")
         else:
-            raise Exception("Folder creation failed")
+            return None
 
-    def check_connection(self):
+    def upload_file(self, file_path, folder_id=None):
         if not self.token:
-            raise Exception("Not authenticated")
-        url = f"{self.base_url}/me/drive"
-        headers = {
-            "Authorization": f"Bearer {self.token}"
-        }
-        response = requests.get(url, headers=headers)
-        return response.status_code == 200
+            return False
+        file_name = os.path.basename(file_path)
+        if folder_id:
+            url = f"{self.base_url}/me/drive/items/{folder_id}:/{file_name}:/content"
+        else:
+            url = f"{self.base_url}/me/drive/root:/{file_name}:/content"
+        headers = {"Authorization": f"Bearer {self.token}"}
+        with open(file_path, "rb") as f:
+            response = requests.put(url, headers=headers, data=f)
+        return response.status_code in (200, 201)
