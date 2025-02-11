@@ -7,7 +7,7 @@ from datetime import datetime
 import google
 import jinja2
 import pdfkit
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, uic
 from PyQt5.QtCore import QTimer, pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction
@@ -26,6 +26,10 @@ from RaspPiReader.ui.one_drive_settings_form_handler import OneDriveSettingsForm
 from .plc_comm_settings_form_handler import PLCCommSettingsFormHandler
 from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormHandler
 
+#New import related with 6 bool addresses
+from RaspPiReader.libs.communication import dataReader
+from RaspPiReader.libs.configuration import config
+from RaspPiReader.ui.mainForm import MainForm
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
     m, s = divmod(rem, 60)
@@ -68,8 +72,36 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.add_plc_comm_menu()
         # Add Databese Setting to the menu
         self.add_database_menu()
+        # 6 Bool Addresses status
+        self.setup_bool_status_display()
+        # Create a timer to update status every few seconds
+        self.status_timer = QTimer(self)
+        self.status_timer.timeout.connect(self.update_bool_status)
+        self.status_timer.start(5000)  # update every 5 seconds
         print("MainFormHandler initialized.")
 
+    def setup_bool_status_display(self):
+        # Previously:
+        # status_ui_path = os.path.join(os.path.dirname(__file__), '..', 'qt', 'boolian_status.ui')
+        status_ui_path = os.path.join(os.path.dirname(__file__), '..', 'qt', 'boolean_status.ui')
+        self.boolStatusWidget = uic.loadUi(status_ui_path)
+        self.boolStatusLabel = self.boolStatusWidget.findChild(QtWidgets.QLabel, "statusLabel")
+        central_layout = self.centralWidget().layout()
+        if central_layout is None:
+            central_layout = QtWidgets.QVBoxLayout(self.centralWidget())
+        central_layout.addWidget(self.boolStatusWidget)
+
+    def update_bool_status(self):
+        # Ensure dataReader is started.
+        if not getattr(dataReader, 'connected', False):
+            dataReader.start()
+        # Read the 6 boolean coil addresses starting at the first configured address.
+        result = dataReader.read_bool_addresses(1, config.bool_addresses[0], count=6)
+        if result is None:
+            status_str = "PLC not responding"
+        else:
+            status_str = " | ".join([f"Addr {addr}: {state}" for addr, state in zip(config.bool_addresses, result)])
+        self.boolStatusLabel.setText(status_str)
     def add_one_drive_menu(self):
         one_drive_action = QAction("OneDrive Settings", self)
         one_drive_action.triggered.connect(self.show_onedrive_settings)

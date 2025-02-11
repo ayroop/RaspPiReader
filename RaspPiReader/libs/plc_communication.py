@@ -78,10 +78,25 @@ class PLCCommunicatorTCP:
             logger.exception("Exception in write_register: %s", e)
             return False
 
+    def read_bool_addresses(self, unit, address, count=6):
+        if not self.client:
+            logger.error("TCP client not connected. Cannot read boolean coils.")
+            return None
+        try:
+            response = self.client.read_coils(address, count, unit=unit)
+            if response.isError():
+                logger.error("Error reading boolean coils at address %s for unit %s", address, unit)
+                return None
+            logger.debug("Boolean coils read at address %s for unit %s: %s", address, unit, response.bits)
+            return response.bits
+        except Exception as e:
+            logger.exception("Exception in read_bool_addresses: %s", e)
+            return None
+
 class PLCCommunicator:
     def __init__(self):
         self.client = None
-        # Use a consistent configuration key ("commMode") to determine the protocol.
+        # Use configuration key "commMode" to determine protocol.
         self.comm_mode = pool.config("commMode", str, "RS485")
 
     def connect(self):
@@ -125,7 +140,6 @@ class PLCCommunicator:
     def read_holding_registers(self, unit, address, count=1):
         if not self.client:
             raise Exception("Client not connected")
-        # Pass parameters in the same order expected by the underlying client.
         return self.client.read_holding_registers(unit=unit, address=address, count=count)
 
     def read_input_registers(self, unit, address, count=1):
@@ -137,3 +151,8 @@ class PLCCommunicator:
         if not self.client:
             raise Exception("Client not connected")
         return self.client.write_register(unit=unit, address=address, value=value)
+
+    def read_bool_addresses(self, unit, address, count=6):
+        if not self.client:
+            raise Exception("Client not connected")
+        return self.client.read_bool_addresses(unit=unit, address=address, count=count)
