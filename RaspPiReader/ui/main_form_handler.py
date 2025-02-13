@@ -81,11 +81,9 @@ class MainFormHandler(QtWidgets.QMainWindow):
         print("MainFormHandler initialized.")
 
     def setup_bool_status_display(self):
-        # Previously:
-        # status_ui_path = os.path.join(os.path.dirname(__file__), '..', 'qt', 'boolian_status.ui')
         status_ui_path = os.path.join(os.path.dirname(__file__), '..', 'qt', 'boolean_status.ui')
         self.boolStatusWidget = uic.loadUi(status_ui_path)
-        self.boolStatusLabel = self.boolStatusWidget.findChild(QtWidgets.QLabel, "statusLabel")
+        self.boolStatusLabel = self.boolStatusWidget.findChild(QtWidgets.QLabel, "boolStatusLabel")
         central_layout = self.centralWidget().layout()
         if central_layout is None:
             central_layout = QtWidgets.QVBoxLayout(self.centralWidget())

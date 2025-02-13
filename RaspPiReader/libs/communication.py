@@ -78,7 +78,7 @@ class DataReader:
         """Read a block of boolean coil values starting at the given address.
         Returns a list of booleans or None on error."""
         try:
-            result = self.client.read_coils(unit=dev, address=addr, count=count)
+            result = self.client.read_coils(addr, count, unit=dev)
             if result.isError():
                 logger.error("Error reading boolean coils (dev=%s, addr=%s)", dev, addr)
                 return None
