@@ -7,14 +7,49 @@
     <x>0</x>
     <y>0</y>
     <width>300</width>
-    <height>50</height>
+    <height>150</height>
    </rect>
   </property>
-  <layout class="QHBoxLayout" name="horizontalLayout">
+  <layout class="QVBoxLayout" name="verticalLayout">
    <item>
-    <widget class="QLabel" name="boolStatusLabel">
+    <widget class="QLabel" name="boolStatusLabel1">
      <property name="text">
-      <string>Bool Addresses: Not updated</string>
+      <string>Bool Addr 1101: Not updated</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="boolStatusLabel2">
+     <property name="text">
+      <string>Bool Addr 1102: Not updated</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="boolStatusLabel3">
+     <property name="text">
+      <string>Bool Addr 1103: Not updated</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="boolStatusLabel4">
+     <property name="text">
+      <string>Bool Addr 1104: Not updated</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="boolStatusLabel5">
+     <property name="text">
+      <string>Bool Addr 1105: Not updated</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="boolStatusLabel6">
+     <property name="text">
+      <string>Bool Addr 1106: Not updated</string>
      </property>
     </widget>
    </item>

@@ -26,10 +26,12 @@ from RaspPiReader.ui.one_drive_settings_form_handler import OneDriveSettingsForm
 from .plc_comm_settings_form_handler import PLCCommSettingsFormHandler
 from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormHandler
 
-#New import related with 6 bool addresses
+# New import related with 6 bool addresses
 from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.configuration import config
 from RaspPiReader.ui.mainForm import MainForm
+from .boolean_status import Ui_BooleanStatusWidget
+
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
     m, s = divmod(rem, 60)
@@ -70,7 +72,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.add_one_drive_menu()
         # Add PLC Setting to the menu
         self.add_plc_comm_menu()
-        # Add Databese Setting to the menu
+        # Add Database Setting to the menu
         self.add_database_menu()
         # 6 Bool Addresses status
         self.setup_bool_status_display()
@@ -81,13 +83,21 @@ class MainFormHandler(QtWidgets.QMainWindow):
         print("MainFormHandler initialized.")
 
     def setup_bool_status_display(self):
-        status_ui_path = os.path.join(os.path.dirname(__file__), '..', 'qt', 'boolean_status.ui')
-        self.boolStatusWidget = uic.loadUi(status_ui_path)
-        self.boolStatusLabel = self.boolStatusWidget.findChild(QtWidgets.QLabel, "boolStatusLabel")
+        self.boolStatusWidgetContainer = QtWidgets.QWidget()
+        self.boolStatusWidget = Ui_BooleanStatusWidget()
+        self.boolStatusWidget.setupUi(self.boolStatusWidgetContainer)
+        self.boolStatusLabels = [
+            self.boolStatusWidget.boolStatusLabel1,
+            self.boolStatusWidget.boolStatusLabel2,
+            self.boolStatusWidget.boolStatusLabel3,
+            self.boolStatusWidget.boolStatusLabel4,
+            self.boolStatusWidget.boolStatusLabel5,
+            self.boolStatusWidget.boolStatusLabel6,
+        ]
         central_layout = self.centralWidget().layout()
         if central_layout is None:
             central_layout = QtWidgets.QVBoxLayout(self.centralWidget())
-        central_layout.addWidget(self.boolStatusWidget)
+        central_layout.addWidget(self.boolStatusWidgetContainer)
 
     def update_bool_status(self):
         # Ensure dataReader is started.
@@ -97,9 +107,12 @@ class MainFormHandler(QtWidgets.QMainWindow):
         result = dataReader.read_bool_addresses(1, config.bool_addresses[0], count=6)
         if result is None:
             status_str = "PLC not responding"
+            for label in self.boolStatusLabels:
+                label.setText(status_str)
         else:
-            status_str = " | ".join([f"Addr {addr}: {state}" for addr, state in zip(config.bool_addresses, result)])
-        self.boolStatusLabel.setText(status_str)
+            for i, state in enumerate(result):
+                self.boolStatusLabels[i].setText(f"Bool Addr {config.bool_addresses[i]}: {state}")
+
     def add_one_drive_menu(self):
         one_drive_action = QAction("OneDrive Settings", self)
         one_drive_action.triggered.connect(self.show_onedrive_settings)

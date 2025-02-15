@@ -13,8 +13,18 @@ class DataReader:
         port = pool.config('port')
         baudrate = pool.config('baudrate', int, 9600)      # default baudrate 9600
         bytesize = pool.config('databits', int, 8)         # default databits: 8
-        parity = [k for k in serial.PARITY_NAMES if serial.PARITY_NAMES[k] == pool.config('parity')][0]
-        stopbits = pool.config('stopbits', float)
+
+        # Use default parity "N" if not set
+        parity_config = pool.config('parity', str, "N")
+        parity = None
+        for key, value in serial.PARITY_NAMES.items():
+            if value == parity_config:
+                parity = key
+                break
+        if parity is None:
+            parity = "N"
+
+        stopbits = pool.config('stopbits', float, 1)  # default stopbits: 1
         if stopbits % 1 == 0:
             stopbits = int(stopbits)
 
@@ -24,8 +34,7 @@ class DataReader:
                                    bytesize=bytesize,
                                    parity=parity,
                                    stopbits=stopbits,
-                                   timeout=0.1
-                                   )
+                                   timeout=0.1)
 
         if self.client.connect():
             logger.info("Connected to MODBUS device on port %s", port)

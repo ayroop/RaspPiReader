@@ -11,6 +11,10 @@ class Database:
     def create_tables(self):
         Base.metadata.create_all(self.engine)
 
-# Example usage:
+# Example usage for SQLite:
+# db = Database("sqlite:///local_database.db")
+# db.create_tables()
+
+# Example usage for Azure SQL Database:
 # db = Database("mssql+pyodbc://<username>:<password>@<server_name>/<database_name>?driver=ODBC+Driver+17+for+SQL+Server")
 # db.create_tables()

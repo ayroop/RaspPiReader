@@ -12,7 +12,10 @@ class Configuration(object):
         QColor(32, 159, 223), QColor(153, 202, 83), QColor(246, 166, 37), QColor(109, 95, 213), 
         QColor(255, 0, 0), QColor(0, 255, 0), QColor(0, 0, 255), QColor(255, 255, 0), 
         ]
-    
+        
+    # Six Boolean addresses (adjust these addresses as required)
+    bool_addresses = [1101, 1102, 1103, 1104, 1105, 1106]
+
     info = {
         'AddrLabel' : ["Temp-1", "Temp-2", "Temp-3", "Temp-4", "Temp-5", "Temp-6", "Temp-7", "Temp-8"],
         'PV' : [0x1000] * TermoCount,
