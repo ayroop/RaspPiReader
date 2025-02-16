@@ -179,10 +179,24 @@ Alternatively, you can manually add an admin user to the SQLite database using a
 3. **Enter Database Connection Details**:
     - Enter the database connection details (e.g., server name, database name, username, password).
     - Test the connection and save the settings.
+### Configuring OneDrive Settings
+
+1. **Run the Application**:
+    ```sh
+    python run.py
+    ```
+
+2. **Navigate to OneDrive Settings**:
+    - In the application, go to the "Settings" menu and select "OneDrive Settings".
+
+3. **Enter OneDrive Connection Details**:
+    - Enter the client ID, client secret, and tenant ID.
+    - Enter the update interval (in seconds).
+    - Test the connection and save the settings.
 
 ### Syncing to Azure Database
 
-The application will automatically sync the database settings, PLC communication settings, and user data to the Azure database every 60 seconds.
+The application will automatically sync the OneDrive settings, database settings, PLC communication settings, and user data to the Azure database every 60 seconds.
 ### Additional Information
 
 - **Virtual Environment**: The virtual environment helps to manage dependencies and avoid conflicts with other projects.

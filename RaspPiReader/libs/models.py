@@ -27,3 +27,11 @@ class DatabaseSettings(Base):
     db_password = Column(String, nullable=False)
     db_server = Column(String, nullable=False)
     db_name = Column(String, nullable=False)
+
+class OneDriveSettings(Base):
+    __tablename__ = 'onedrive_settings'
+    id = Column(Integer, primary_key=True)
+    client_id = Column(String, nullable=False)
+    client_secret = Column(String, nullable=False)
+    tenant_id = Column(String, nullable=False)
+    update_interval = Column(Integer, nullable=False)
