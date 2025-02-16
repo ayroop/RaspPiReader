@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy import Column, Integer, String, Boolean, Float
 
 Base = declarative_base()
 
@@ -35,3 +35,27 @@ class OneDriveSettings(Base):
     client_secret = Column(String, nullable=False)
     tenant_id = Column(String, nullable=False)
     update_interval = Column(Integer, nullable=False)
+
+class GeneralConfigSettings(Base):
+    __tablename__ = 'general_config_settings'
+    id = Column(Integer, primary_key=True)
+    baudrate = Column(Integer, nullable=False)
+    parity = Column(String, nullable=False)
+    databits = Column(Integer, nullable=False)
+    stopbits = Column(Float, nullable=False)
+    reading_address = Column(String, nullable=False)
+    register_read_type = Column(String, nullable=False)
+    port = Column(String, nullable=False)
+    left_v_label = Column(String, nullable=False)
+    right_v_label = Column(String, nullable=False)
+    h_label = Column(String, nullable=False)
+    time_interval = Column(Float, nullable=False)
+    panel_time_interval = Column(Float, nullable=False)
+    accuarate_data_time = Column(Float, nullable=False)
+    signin_status = Column(Boolean, nullable=False)
+    signin_email = Column(String, nullable=False)
+    csv_file_path = Column(String, nullable=False)
+    csv_delimiter = Column(String, nullable=False)
+    gdrive_update_interval = Column(Integer, nullable=False)
+    core_temp_channel = Column(Integer, nullable=False)
+    pressure_channel = Column(Integer, nullable=False)

@@ -194,9 +194,23 @@ Alternatively, you can manually add an admin user to the SQLite database using a
     - Enter the update interval (in seconds).
     - Test the connection and save the settings.
 
+### Configuring General Configuration Settings
+
+1. **Run the Application**:
+    ```sh
+    python run.py
+    ```
+
+2. **Navigate to General Configuration Settings**:
+    - In the application, go to the "Settings" menu and select "General Configuration Settings".
+
+3. **Enter General Configuration Details**:
+    - Enter the baudrate, parity, databits, stopbits, reading address, register read type, port, left V label, right V label, H label, time interval, panel time interval, accurate data time, signin status, signin email, CSV file path, CSV delimiter, GDrive update interval, core temp channel, and pressure channel.
+    - Save the settings.
+
 ### Syncing to Azure Database
 
-The application will automatically sync the OneDrive settings, database settings, PLC communication settings, and user data to the Azure database every 60 seconds.
+The application will automatically sync the general configuration settings, OneDrive settings, database settings, PLC communication settings, and user data to the Azure database every 60 seconds.
 ### Additional Information
 
 - **Virtual Environment**: The virtual environment helps to manage dependencies and avoid conflicts with other projects.

@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from RaspPiReader.libs.models import Base, User, PLCCommSettings, DatabaseSettings, OneDriveSettings
+from RaspPiReader.libs.models import Base, User, PLCCommSettings, DatabaseSettings, OneDriveSettings, GeneralConfigSettings
 
 class Database:
     def __init__(self, database_url):
@@ -45,5 +45,10 @@ class Database:
         onedrive_settings = self.session.query(OneDriveSettings).first()
         if onedrive_settings:
             azure_session.merge(onedrive_settings)
+
+        # Sync general configuration settings
+        general_config_settings = self.session.query(GeneralConfigSettings).first()
+        if general_config_settings:
+            azure_session.merge(general_config_settings)
 
         azure_session.commit()
