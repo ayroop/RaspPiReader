@@ -19,3 +19,11 @@ class PLCCommSettings(Base):
     tcp_host = Column(String, nullable=False)
     tcp_port = Column(Integer, nullable=False)
     com_port = Column(String, nullable=False)
+
+class DatabaseSettings(Base):
+    __tablename__ = 'database_settings'
+    id = Column(Integer, primary_key=True)
+    db_username = Column(String, nullable=False)
+    db_password = Column(String, nullable=False)
+    db_server = Column(String, nullable=False)
+    db_name = Column(String, nullable=False)

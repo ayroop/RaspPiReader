@@ -166,9 +166,23 @@ Alternatively, you can manually add an admin user to the SQLite database using a
     - Enter the COM port for RS485 communication.
     - Save the settings.
 
+### Configuring Database Settings
+
+1. **Run the Application**:
+    ```sh
+    python run.py
+    ```
+
+2. **Navigate to Database Settings**:
+    - In the application, go to the "Settings" menu and select "Database Settings".
+
+3. **Enter Database Connection Details**:
+    - Enter the database connection details (e.g., server name, database name, username, password).
+    - Test the connection and save the settings.
+
 ### Syncing to Azure Database
 
-The application will automatically sync the PLC communication settings and user data to the Azure database every 60 seconds.
+The application will automatically sync the database settings, PLC communication settings, and user data to the Azure database every 60 seconds.
 ### Additional Information
 
 - **Virtual Environment**: The virtual environment helps to manage dependencies and avoid conflicts with other projects.
