@@ -107,6 +107,50 @@ Follow these steps to deploy the RaspPiReader application on a Windows machine.
     - Enter the database connection details (e.g., server name, database name, username, password).
     - Test the connection and save the settings.
 
+### Creating an Admin User
+
+To create an admin user in the SQLite database, follow these steps:
+
+1. **Run the Application**:
+    ```sh
+    python run.py
+    ```
+
+2. **Navigate to User Management**:
+    - In the application, go to the "Settings" menu and select "User Management".
+
+3. **Add a New User**:
+    - Click on "Add User" and fill in the required details.
+    - Ensure that the "Admin" checkbox is selected to grant admin privileges to the user.
+
+Alternatively, you can manually add an admin user to the SQLite database using a script:
+
+1. **Create a Script to Add an Admin User**:
+    ```python
+    # add_admin_user.py
+    from RaspPiReader.libs.database import Database
+    from RaspPiReader.libs.models import User
+
+    database_url = 'sqlite:///path_to_your_database.db'
+    db = Database(database_url)
+
+    admin_user = User(
+        username='admin',
+        password='admin_password',  # Ensure to hash the password
+        settings=True,
+        search=True,
+        user_mgmt_page=True
+    )
+
+    db.add_user(admin_user)
+    print("Admin user created successfully.")
+    ```
+
+2. **Run the Script**:
+    ```sh
+    python add_admin_user.py
+    ```
+
 ### Additional Information
 
 - **Virtual Environment**: The virtual environment helps to manage dependencies and avoid conflicts with other projects.
