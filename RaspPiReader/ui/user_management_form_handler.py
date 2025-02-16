@@ -1,6 +1,7 @@
 from PyQt5 import QtWidgets
 from RaspPiReader import pool
 from RaspPiReader.libs.models import User
+from RaspPiReader.libs.database import Database
 from .user_management_form import Ui_UserManagementDialog
 from .user_edit_form_handler import UserEditFormHandler
 
@@ -10,6 +11,7 @@ class UserManagementFormHandler(QtWidgets.QDialog):
         self.ui = Ui_UserManagementDialog()
         self.ui.setupUi(self)
         self.setWindowTitle("User Management")
+        self.db = Database("sqlite:///local_database.db")
         self.users = self.load_users()
         self.refresh_table()
         self.ui.addUserPushButton.clicked.connect(self.add_user)
@@ -17,15 +19,7 @@ class UserManagementFormHandler(QtWidgets.QDialog):
         self.ui.removeUserPushButton.clicked.connect(self.remove_user)
 
     def load_users(self):
-        if pool.config('demo', bool, False):
-            # Load demo users
-            return [
-                User(username='admin', password='admin', settings=True, search=True, user_mgmt_page=True),
-                User(username='demo_user1', password='password1', settings=True, search=True, user_mgmt_page=True),
-                User(username='demo_user2', password='password2', settings=False, search=True, user_mgmt_page=False)
-            ]
-        else:
-            return session.query(User).all()
+        return self.db.get_users()
 
     def refresh_table(self):
         table = self.ui.userTableWidget
@@ -41,19 +35,19 @@ class UserManagementFormHandler(QtWidgets.QDialog):
             table.setItem(row_index, 4, QtWidgets.QTableWidgetItem(str(user.user_mgmt_page)))
         table.resizeColumnsToContents()
 
-    def save_users(self):
-        if not pool.config('demo', bool, False):
-            session.commit()
-
     def add_user(self):
         dlg = UserEditFormHandler(parent=self)
         if dlg.exec_() == QtWidgets.QDialog.Accepted:
             user_data = dlg.get_data()
-            new_user = User(**user_data)
+            new_user = User(
+                username=user_data['username'],
+                password=user_data['password'],
+                settings=user_data['settings'],
+                search=user_data['search'],
+                user_mgmt_page=user_data['user_mgmt_page']
+            )
+            self.db.add_user(new_user)
             self.users.append(new_user)
-            if not pool.config('demo', bool, False):
-                session.add(new_user)
-                self.save_users()
             self.refresh_table()
 
     def edit_user(self):
@@ -64,14 +58,13 @@ class UserManagementFormHandler(QtWidgets.QDialog):
         user = self.users[current_row]
         dlg = UserEditFormHandler(user_data=user, parent=self)
         if dlg.exec_() == QtWidgets.QDialog.Accepted:
-            user_data = dlg.get_data()
-            user.username = user_data['username']
-            user.password = user_data['password']
-            user.settings = user_data['settings']
-            user.search = user_data['search']
-            user.user_mgmt_page = user_data['user_mgmt_page']
-            if not pool.config('demo', bool, False):
-                self.save_users()
+            updated_user = dlg.get_data()
+            user.username = updated_user['username']
+            user.password = updated_user['password']
+            user.settings = updated_user['settings']
+            user.search = updated_user['search']
+            user.user_mgmt_page = updated_user['user_mgmt_page']
+            self.db.add_user(user)  # Update user in the database
             self.refresh_table()
 
     def remove_user(self):
@@ -79,13 +72,7 @@ class UserManagementFormHandler(QtWidgets.QDialog):
         current_row = table.currentRow()
         if current_row < 0 or current_row >= len(self.users):
             return
-        user = self.users[current_row]
-        confirm = QtWidgets.QMessageBox.question(
-            self, "Remove User", "Are you sure you want to remove the selected user?",
-            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-        if confirm == QtWidgets.QMessageBox.Yes:
-            self.users.remove(user)
-            if not pool.config('demo', bool, False):
-                session.delete(user)
-                self.save_users()
-            self.refresh_table()
+        user = self.users.pop(current_row)
+        self.db.session.delete(user)
+        self.db.session.commit()
+        self.refresh_table()

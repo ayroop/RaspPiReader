@@ -11,5 +11,3 @@ class User(Base):
     settings = Column(Boolean, default=False)
     search = Column(Boolean, default=False)
     user_mgmt_page = Column(Boolean, default=False)
-
-# Add other models as needed

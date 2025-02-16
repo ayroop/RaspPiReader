@@ -1,12 +1,4 @@
-import csv
-import os.path
-import tempfile
-import webbrowser
 from datetime import datetime
-
-import google
-import jinja2
-import pdfkit
 from PyQt5 import QtWidgets, uic
 from PyQt5.QtCore import QTimer, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -55,7 +47,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.folder_name = None
         self.csv_path = None
         self.pdf_path = None
-        self.username = self.user_record.get('username', '')
+        self.username = self.user_record.username if self.user_record else ''
         pool.set('main_form', self)
         self.cycle_timer = QTimer()
         self.set_connections()
@@ -156,7 +148,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
         }
 
         for perm_key, action_name in permissions.items():
-            if not self.user_record.get(perm_key, False):
+            if not getattr(self.user_record, perm_key, False):
                 if hasattr(self.form_obj, action_name):
                     getattr(self.form_obj, action_name).setEnabled(False)
                 else:
@@ -173,7 +165,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
 
     def handle_settings(self):
         print(f"Handling settings with user_record: {self.user_record}")
-        if self.user_record.get('settings', False):
+        if getattr(self.user_record, 'settings', False):
             self.settings_handler = SettingFormHandler()
             self.settings_handler.show()
         else:
@@ -200,7 +192,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             self.menuBar().addAction(self.userMgmtAction)
 
     def open_user_management(self):
-        if self.user_record.get('user_mgmt_page', False):
+        if getattr(self.user_record, 'user_mgmt_page', False):
             dlg = UserManagementFormHandler(self)
             dlg.exec_()
         else:
@@ -210,7 +202,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.username_label = QLabel(f"Logged in as: {self.username}")
         self.statusBar().addPermanentWidget(self.username_label)
         self.setWindowTitle(f"Main Form - {self.username}")
-
     def create_stack(self):
         # initialize data stack: [[process_time(minutes)], [v1], [v2], ... , [V14], sampling_time,]
         data_stack = []

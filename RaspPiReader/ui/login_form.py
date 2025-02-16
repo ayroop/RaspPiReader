@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'RaspPiReader/qt/login.ui'
+# Form implementation generated from reading ui file 'login.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -15,27 +15,24 @@ class Ui_LoginForm(object):
     def setupUi(self, LoginForm):
         LoginForm.setObjectName("LoginForm")
         LoginForm.resize(400, 200)
-        self.centralwidget = QtWidgets.QWidget(LoginForm)
-        self.centralwidget.setObjectName("centralwidget")
-        self.verticalLayout = QtWidgets.QVBoxLayout(self.centralwidget)
+        self.verticalLayout = QtWidgets.QVBoxLayout(LoginForm)
         self.verticalLayout.setObjectName("verticalLayout")
-        self.label = QtWidgets.QLabel(self.centralwidget)
+        self.label = QtWidgets.QLabel(LoginForm)
         self.label.setObjectName("label")
         self.verticalLayout.addWidget(self.label)
-        self.usernameLineEdit = QtWidgets.QLineEdit(self.centralwidget)
+        self.usernameLineEdit = QtWidgets.QLineEdit(LoginForm)
         self.usernameLineEdit.setObjectName("usernameLineEdit")
         self.verticalLayout.addWidget(self.usernameLineEdit)
-        self.label_2 = QtWidgets.QLabel(self.centralwidget)
+        self.label_2 = QtWidgets.QLabel(LoginForm)
         self.label_2.setObjectName("label_2")
         self.verticalLayout.addWidget(self.label_2)
-        self.passwordLineEdit = QtWidgets.QLineEdit(self.centralwidget)
+        self.passwordLineEdit = QtWidgets.QLineEdit(LoginForm)
         self.passwordLineEdit.setEchoMode(QtWidgets.QLineEdit.Password)
         self.passwordLineEdit.setObjectName("passwordLineEdit")
         self.verticalLayout.addWidget(self.passwordLineEdit)
-        self.loginPushButton = QtWidgets.QPushButton(self.centralwidget)
+        self.loginPushButton = QtWidgets.QPushButton(LoginForm)
         self.loginPushButton.setObjectName("loginPushButton")
         self.verticalLayout.addWidget(self.loginPushButton)
-        LoginForm.setCentralWidget(self.centralwidget)
 
         self.retranslateUi(LoginForm)
         QtCore.QMetaObject.connectSlotsByName(LoginForm)

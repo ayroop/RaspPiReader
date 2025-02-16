@@ -34,7 +34,7 @@ Thumbs.db
 # Local configuration files
 config.json
 
-#ZIP files and Backup Folder
+# ZIP files and Backup Folder
 RaspPiReader-backup/
 zip
 

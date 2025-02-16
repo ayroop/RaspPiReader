@@ -2,11 +2,16 @@ import logging
 from pymodbus.client.sync import ModbusSerialClient as ModbusRTUClient
 from pymodbus.client.sync import ModbusTcpClient
 from RaspPiReader import pool
+from RaspPiReader.database import Database  # Assumed import for the Database class
 
+# Configure logger
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)  # Adjust level as needed
+logger.setLevel(logging.DEBUG)  # Adjust log level if necessary
 
 class PLCCommunicatorTCP:
+    """
+    Communicator implementation for TCP connections using Modbus.
+    """
     def __init__(self):
         self.client = None
 
@@ -94,48 +99,62 @@ class PLCCommunicatorTCP:
             return None
 
 class PLCCommunicator:
+    """
+    Integrated PLCCommunicator supporting both RS485 and TCP modes.
+    Incorporates local database functionality.
+    """
     def __init__(self):
         self.client = None
-        # Use configuration key "commMode" to determine protocol.
+        # Initialize local database for persistence operations
+        self.local_db = Database("sqlite:///local_database.db")
+        self.local_db.create_tables()
         self.comm_mode = pool.config("commMode", str, "RS485")
 
     def connect(self):
+        """
+        Establish connection based on the communication mode.
+        For RS485, connects using Modbus RTU.
+        For TCP, delegates connection to PLCCommunicatorTCP.
+        """
         if self.comm_mode.upper() == "RS485":
-            self.client = ModbusRTUClient(
-                method='rtu',
-                port=pool.config('port'),
-                baudrate=pool.config('baudrate', int, 9600),
-                bytesize=pool.config('databits', int, 8),
-                parity=pool.config('parity', str, 'N'),
-                stopbits=pool.config('stopbits', int, 1),
-                timeout=0.5
-            )
-            connection = self.client.connect()
-            if connection:
-                logger.info("Connected via RS485 on port %s at baudrate %s", pool.config('port'), pool.config('baudrate', int, 9600))
-            else:
-                logger.error("Failed to connect via RS485 on port %s", pool.config('port'))
-            return connection
+            try:
+                self.client = ModbusRTUClient(
+                    method='rtu',
+                    port=pool.config('port'),
+                    baudrate=pool.config('baudrate', int, 9600),
+                    bytesize=pool.config('databits', int, 8),
+                    parity=pool.config('parity', str, 'N'),
+                    stopbits=pool.config('stopbits', int, 1),
+                    timeout=0.5
+                )
+                connection = self.client.connect()
+                if connection:
+                    logger.info("Connected via RS485 on port %s at baudrate %s", pool.config('port'), pool.config('baudrate', int, 9600))
+                else:
+                    logger.error("Failed to connect via RS485 on port %s", pool.config('port'))
+                return connection
+            except Exception as e:
+                logger.exception("Exception while connecting via RS485: %s", e)
+                return False
         elif self.comm_mode.upper() == "TCP":
             # When TCP is selected, use the dedicated TCP communicator.
             self.client = PLCCommunicatorTCP()
             return self.client.connect()
         else:
-            logger.error("Invalid communication mode: %s", self.comm_mode)
-            return False
-
-    @staticmethod
-    def get_communicator():
-        # Retrieve the mode from configuration and return the proper communicator.
-        mode = pool.config('commMode', str, 'RS485')
-        if mode.upper() == 'TCP':
-            return PLCCommunicatorTCP()
-        else:
-            return PLCCommunicator()
+            logger.error("Unsupported communication mode: %s", self.comm_mode)
+            raise ValueError("Unsupported communication mode")
 
     def disconnect(self):
+        """
+        Disconnects the client if connected.
+        """
         if self.client:
-            self.client.disconnect()
+            # If the client has the disconnect method (TCP), use it; otherwise call close()
+            if hasattr(self.client, 'disconnect'):
+                self.client.disconnect()
+            else:
+                self.client.close()
+            logger.info("Disconnected client.")
 
     def read_holding_registers(self, unit, address, count=1):
         if not self.client:
@@ -156,3 +175,13 @@ class PLCCommunicator:
         if not self.client:
             raise Exception("Client not connected")
         return self.client.read_bool_addresses(unit=unit, address=address, count=count)
+
+    def save_user(self, user):
+        """
+        Save user information to the local database.
+        """
+        try:
+            self.local_db.add_user(user)
+            logger.info("User saved successfully: %s", user)
+        except Exception as e:
+            logger.exception("Failed to save user %s: %s", user, e)

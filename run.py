@@ -1,18 +1,17 @@
 import argparse
 import sys
-
 from PyQt5 import QtWidgets
 from RaspPiReader import pool
 from RaspPiReader.ui.login_form_handler import LoginFormHandler
 from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormHandler
 from RaspPiReader.libs.database import Database
+from RaspPiReader.libs.sync import SyncThread
 
 def Main():
     app = QtWidgets.QApplication(sys.argv)
     demo_mode = pool.config('demo', bool, False)
 
     if demo_mode:
-        # Set demo mode flag in pool
         pool.set('demo', True)
     else:
         db_username = pool.config('db_username', str, '')
@@ -37,6 +36,14 @@ def Main():
                 db.create_tables()
             else:
                 sys.exit(1)
+
+    # Ensure local SQLite database is initialized
+    local_db = Database("sqlite:///local_database.db")
+    local_db.create_tables()
+
+    # Start the sync thread
+    sync_thread = SyncThread(interval=60)  # Sync every 60 seconds
+    sync_thread.start()
 
     login_form = LoginFormHandler()
     login_form.show()

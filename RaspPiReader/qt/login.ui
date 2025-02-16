@@ -1,7 +1,6 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>LoginForm</class>
- <widget class="QMainWindow" name="LoginForm">
+ <widget class="QDialog" name="LoginForm">
   <property name="geometry">
    <rect>
     <x>0</x>
@@ -13,8 +12,7 @@
   <property name="windowTitle">
    <string>Login</string>
   </property>
-  <widget class="QWidget" name="centralwidget">
-   <layout class="QVBoxLayout" name="verticalLayout">
+  <layout class="QVBoxLayout" name="verticalLayout">
     <item>
      <widget class="QLabel" name="label">
       <property name="text">
@@ -47,7 +45,6 @@
      </widget>
     </item>
    </layout>
-  </widget>
  </widget>
  <resources/>
  <connections/>

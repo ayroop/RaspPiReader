@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'RaspPiReader/qt/plc_comm.ui'
+# Form implementation generated from reading ui file 'plc_comm.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_PLCCommSettingsDialog(object):
     def setupUi(self, PLCCommSettingsDialog):
         PLCCommSettingsDialog.setObjectName("PLCCommSettingsDialog")
-        PLCCommSettingsDialog.resize(400, 200)
+        PLCCommSettingsDialog.resize(400, 250)
         self.verticalLayout = QtWidgets.QVBoxLayout(PLCCommSettingsDialog)
         self.verticalLayout.setObjectName("verticalLayout")
         self.formLayout = QtWidgets.QFormLayout()
@@ -27,6 +27,24 @@ class Ui_PLCCommSettingsDialog(object):
         self.commModeComboBox.addItem("")
         self.commModeComboBox.addItem("")
         self.formLayout.setWidget(0, QtWidgets.QFormLayout.FieldRole, self.commModeComboBox)
+        self.ipLabel = QtWidgets.QLabel(PLCCommSettingsDialog)
+        self.ipLabel.setObjectName("ipLabel")
+        self.formLayout.setWidget(1, QtWidgets.QFormLayout.LabelRole, self.ipLabel)
+        self.ipLineEdit = QtWidgets.QLineEdit(PLCCommSettingsDialog)
+        self.ipLineEdit.setObjectName("ipLineEdit")
+        self.formLayout.setWidget(1, QtWidgets.QFormLayout.FieldRole, self.ipLineEdit)
+        self.portLabel = QtWidgets.QLabel(PLCCommSettingsDialog)
+        self.portLabel.setObjectName("portLabel")
+        self.formLayout.setWidget(2, QtWidgets.QFormLayout.LabelRole, self.portLabel)
+        self.portLineEdit = QtWidgets.QLineEdit(PLCCommSettingsDialog)
+        self.portLineEdit.setObjectName("portLineEdit")
+        self.formLayout.setWidget(2, QtWidgets.QFormLayout.FieldRole, self.portLineEdit)
+        self.comPortLabel = QtWidgets.QLabel(PLCCommSettingsDialog)
+        self.comPortLabel.setObjectName("comPortLabel")
+        self.formLayout.setWidget(3, QtWidgets.QFormLayout.LabelRole, self.comPortLabel)
+        self.comPortLineEdit = QtWidgets.QLineEdit(PLCCommSettingsDialog)
+        self.comPortLineEdit.setObjectName("comPortLineEdit")
+        self.formLayout.setWidget(3, QtWidgets.QFormLayout.FieldRole, self.comPortLineEdit)
         self.verticalLayout.addLayout(self.formLayout)
         self.buttonLayout = QtWidgets.QHBoxLayout()
         self.buttonLayout.setObjectName("buttonLayout")
@@ -47,5 +65,8 @@ class Ui_PLCCommSettingsDialog(object):
         self.commModeLabel.setText(_translate("PLCCommSettingsDialog", "Communication Mode:"))
         self.commModeComboBox.setItemText(0, _translate("PLCCommSettingsDialog", "RS485"))
         self.commModeComboBox.setItemText(1, _translate("PLCCommSettingsDialog", "TCP"))
+        self.ipLabel.setText(_translate("PLCCommSettingsDialog", "IP Address:"))
+        self.portLabel.setText(_translate("PLCCommSettingsDialog", "Port:"))
+        self.comPortLabel.setText(_translate("PLCCommSettingsDialog", "COM Port:"))
         self.savePushButton.setText(_translate("PLCCommSettingsDialog", "Save"))
         self.cancelPushButton.setText(_translate("PLCCommSettingsDialog", "Cancel"))

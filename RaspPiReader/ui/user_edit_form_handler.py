@@ -9,10 +9,10 @@ class UserEditFormHandler(QtWidgets.QDialog):
         self.ui.okPushButton.clicked.connect(self.accept)
         self.ui.cancelPushButton.clicked.connect(self.reject)
         if user_data:
-            self.ui.usernameLineEdit.setText(user_data.get('username', ''))
-            self.ui.passwordLineEdit.setText(user_data.get('password', ''))
-            self.ui.settingsCheckBox.setChecked(user_data.get('settings', 'False').lower() == 'true')
-            self.ui.searchCheckBox.setChecked(user_data.get('search', 'False').lower() == 'true')
+            self.ui.usernameLineEdit.setText(user_data.username)
+            self.ui.passwordLineEdit.setText(user_data.password)
+            self.ui.settingsCheckBox.setChecked(user_data.settings)
+            self.ui.searchCheckBox.setChecked(user_data.search)
 
     def get_data(self):
         data = {
