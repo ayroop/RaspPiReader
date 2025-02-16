@@ -11,3 +11,11 @@ class User(Base):
     settings = Column(Boolean, default=False)
     search = Column(Boolean, default=False)
     user_mgmt_page = Column(Boolean, default=False)
+
+class PLCCommSettings(Base):
+    __tablename__ = 'plc_comm_settings'
+    id = Column(Integer, primary_key=True)
+    comm_mode = Column(String, nullable=False)
+    tcp_host = Column(String, nullable=False)
+    tcp_port = Column(Integer, nullable=False)
+    com_port = Column(String, nullable=False)

@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from RaspPiReader.libs.models import Base, User
+from RaspPiReader.libs.models import Base, User, PLCCommSettings
 
 class Database:
     def __init__(self, database_url):
@@ -25,7 +25,15 @@ class Database:
         azure_engine = create_engine(azure_db_url)
         AzureSession = sessionmaker(bind=azure_engine)
         azure_session = AzureSession()
+
+        # Sync users
         users = self.get_users()
         for user in users:
             azure_session.merge(user)
+
+        # Sync PLC communication settings
+        settings = self.session.query(PLCCommSettings).first()
+        if settings:
+            azure_session.merge(settings)
+
         azure_session.commit()

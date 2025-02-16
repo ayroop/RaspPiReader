@@ -150,7 +150,25 @@ Alternatively, you can manually add an admin user to the SQLite database using a
     ```sh
     python add_admin_user.py
     ```
+### Configuring PLC Communication Settings
 
+1. **Run the Application**:
+    ```sh
+    python run.py
+    ```
+
+2. **Navigate to PLC Communication Settings**:
+    - In the application, go to the "Settings" menu and select "PLC Communication Settings".
+
+3. **Enter PLC Communication Details**:
+    - Enter the communication mode (e.g., RS485 or TCP).
+    - Enter the IP address and port for TCP communication.
+    - Enter the COM port for RS485 communication.
+    - Save the settings.
+
+### Syncing to Azure Database
+
+The application will automatically sync the PLC communication settings and user data to the Azure database every 60 seconds.
 ### Additional Information
 
 - **Virtual Environment**: The virtual environment helps to manage dependencies and avoid conflicts with other projects.
