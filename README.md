@@ -107,7 +107,7 @@ Follow these steps to deploy the RaspPiReader application on a Windows machine.
     - Enter the database connection details (e.g., server name, database name, username, password).
     - Test the connection and save the settings.
 
-### Creating an Admin User
+### Creating Users
 
 To create an admin user in the SQLite database, follow these steps:
 
