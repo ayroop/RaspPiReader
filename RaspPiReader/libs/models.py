@@ -59,3 +59,4 @@ class GeneralConfigSettings(Base):
     gdrive_update_interval = Column(Integer, nullable=False)
     core_temp_channel = Column(Integer, nullable=False)
     pressure_channel = Column(Integer, nullable=False)
+    scale_range = Column(Integer, nullable=False, default=1000)

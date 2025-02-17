@@ -12,7 +12,10 @@ class SyncThread(threading.Thread):
 
     def run(self):
         while True:
-            self.local_db.sync_to_azure(self.azure_db_url)
+            try:
+                self.local_db.sync_to_azure(self.azure_db_url)
+            except Exception as e:
+                print(f"Sync to Azure failed: {e}")
             time.sleep(self.interval)
 
 # Start the sync thread

@@ -200,11 +200,7 @@ Alternatively, you can manually add an admin user to the SQLite database using a
     ```sh
     python run.py
     ```
-
-2. **Navigate to General Configuration Settings**:
-    - In the application, go to the "Settings" menu and select "General Configuration Settings".
-
-3. **Enter General Configuration Details**:
+2. **Enter General Configuration Details**:
     - Enter the baudrate, parity, databits, stopbits, reading address, register read type, port, left V label, right V label, H label, time interval, panel time interval, accurate data time, signin status, signin email, CSV file path, CSV delimiter, GDrive update interval, core temp channel, and pressure channel.
     - Save the settings.
 

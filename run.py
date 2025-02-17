@@ -1,9 +1,6 @@
-import argparse
-import sys
 from PyQt5 import QtWidgets
 from RaspPiReader import pool
 from RaspPiReader.ui.login_form_handler import LoginFormHandler
-from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormHandler
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.sync import SyncThread
 
@@ -14,42 +11,21 @@ def Main():
     if demo_mode:
         pool.set('demo', True)
     else:
-        db_username = pool.config('db_username', str, '')
-        db_password = pool.config('db_password', str, '')
-        db_server = pool.config('db_server', str, '')
-        db_name = pool.config('db_name', str, '')
-        database_url = f"mssql+pyodbc://{db_username}:{db_password}@{db_server}/{db_name}?driver=ODBC+Driver+17+for+SQL+Server"
-        
-        try:
-            db = Database(database_url)
-            db.create_tables()
-        except Exception as e:
-            QtWidgets.QMessageBox.critical(None, "Database Connection Error", str(e))
-            dlg = DatabaseSettingsFormHandler()
-            if dlg.exec_() == QtWidgets.QDialog.Accepted:
-                db_username = pool.config('db_username', str, '')
-                db_password = pool.config('db_password', str, '')
-                db_server = pool.config('db_server', str, '')
-                db_name = pool.config('db_name', str, '')
-                database_url = f"mssql+pyodbc://{db_username}:{db_password}@{db_server}/{db_name}?driver=ODBC+Driver+17+for+SQL+Server"
-                db = Database(database_url)
-                db.create_tables()
-            else:
-                sys.exit(1)
+        # Ensure local SQLite database is initialized
+        local_db = Database("sqlite:///local_database.db")
+        local_db.create_tables()
 
-    # Ensure local SQLite database is initialized
-    local_db = Database("sqlite:///local_database.db")
-    local_db.create_tables()
-
-    # Start the sync thread
-    sync_thread = SyncThread(interval=60)  # Sync every 60 seconds
-    sync_thread.start()
+        # Start the sync thread
+        sync_thread = SyncThread(interval=60)  # Sync every 60 seconds
+        sync_thread.start()
 
     login_form = LoginFormHandler()
     login_form.show()
     app.exec_()
 
 if __name__ == "__main__":
+    import sys
+    import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--debug', type=bool, default=False)
     parser.add_argument('--demo', type=bool, default=False)
