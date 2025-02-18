@@ -60,3 +60,21 @@ class GeneralConfigSettings(Base):
     core_temp_channel = Column(Integer, nullable=False)
     pressure_channel = Column(Integer, nullable=False)
     scale_range = Column(Integer, nullable=False, default=1000)
+
+class ChannelConfigSettings(Base):
+    __tablename__ = 'channel_config_settings'
+    id = Column(Integer, primary_key=True)
+    address = Column(Integer, nullable=False)
+    label = Column(String, nullable=False)
+    pv = Column(Integer, nullable=False)
+    sv = Column(Integer, nullable=False)
+    sp = Column(Integer, nullable=False)
+    limit_low = Column(Integer, nullable=False)
+    limit_high = Column(Integer, nullable=False)
+    decimal_point = Column(Integer, nullable=False)
+    scale = Column(Boolean, nullable=False)
+    axis_direction = Column(String, nullable=False)
+    color = Column(String, nullable=False)
+    active = Column(Boolean, nullable=False)
+    min_scale_range = Column(Integer, nullable=False)
+    max_scale_range = Column(Integer, nullable=False)

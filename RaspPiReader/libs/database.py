@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from RaspPiReader.libs.models import Base, User, PLCCommSettings, DatabaseSettings, OneDriveSettings, GeneralConfigSettings
+from RaspPiReader.libs.models import Base, User, PLCCommSettings, DatabaseSettings, OneDriveSettings, GeneralConfigSettings, ChannelConfigSettings
 
 class Database:
     def __init__(self, database_url):
@@ -50,5 +50,10 @@ class Database:
         general_config_settings = self.session.query(GeneralConfigSettings).first()
         if general_config_settings:
             azure_session.merge(general_config_settings)
+
+        # Sync channel configuration settings
+        channel_config_settings = self.session.query(ChannelConfigSettings).all()
+        for channel_config in channel_config_settings:
+            azure_session.merge(channel_config)
 
         azure_session.commit()

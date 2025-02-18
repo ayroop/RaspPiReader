@@ -1,9 +1,10 @@
 from PyQt5.QtWidgets import QLabel, QColorDialog
 
-
 class ColorLabel(QLabel):
     def __init__(self, parent=None, **kwargs):
         super(ColorLabel, self).__init__(parent, **kwargs)
+        self.setAutoFillBackground(True)
+        self.setStyleSheet("background-color: #FFFFFF;")  # Default color
         self.mousePressEvent = self.open_color_picker
 
     def setValue(self, val):

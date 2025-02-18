@@ -167,7 +167,14 @@ Alternatively, you can manually add an admin user to the SQLite database using a
     - Save the settings.
 
 ### Configuring Database Settings
+5. **Create Tables**:
+    ```sh
+    python create_tables.py
 
+5. **Drop Tables**:
+    ```sh
+    python drop_tables.py
+   ``` 
 1. **Run the Application**:
     ```sh
     python run.py
