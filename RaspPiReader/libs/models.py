@@ -1,5 +1,6 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Boolean, Float
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime
+from datetime import datetime
 
 Base = declarative_base()
 
@@ -78,3 +79,21 @@ class ChannelConfigSettings(Base):
     active = Column(Boolean, nullable=False)
     min_scale_range = Column(Integer, nullable=False)
     max_scale_range = Column(Integer, nullable=False)
+
+class CycleData(Base):
+    __tablename__ = 'cycle_data'
+    id = Column(Integer, primary_key=True)
+    order_id = Column(String, nullable=False)
+    cycle_id = Column(String, nullable=False)
+    quantity = Column(String, nullable=False)
+    size = Column(String, nullable=True)
+    cycle_location = Column(String, nullable=True)
+    dwell_time = Column(String, nullable=True)
+    core_temp_setpoint = Column(Float, nullable=True)
+    cool_down_temp = Column(Float, nullable=True)
+    temp_ramp = Column(Float, nullable=True)
+    set_pressure = Column(Float, nullable=True)
+    maintain_vacuum = Column(Float, nullable=True)
+    initial_set_cure_temp = Column(Float, nullable=True)
+    final_set_cure_temp = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

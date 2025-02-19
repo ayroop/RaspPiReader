@@ -214,6 +214,10 @@ Alternatively, you can manually add an admin user to the SQLite database using a
 ### Syncing to Azure Database
 
 The application will automatically sync the general configuration settings, OneDrive settings, database settings, PLC communication settings, and user data to the Azure database every 60 seconds.
+**Important:**
+- Ensure your Azure database URL is correctly constructed from your configuration in `pool.config`. This URL is used to build the connection string for the Azure SQL database.
+- Make sure that the **ODBC Driver 17 for SQL Server** is installed on your Windows machine. This driver is required for the connection string to work correctly with the Azure SQL database.
+
 ### Additional Information
 
 - **Virtual Environment**: The virtual environment helps to manage dependencies and avoid conflicts with other projects.

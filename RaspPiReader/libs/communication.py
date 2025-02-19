@@ -46,6 +46,9 @@ class DataReader:
             self.read_method = self._read_holding_registers
         elif read_type == READ_INPUT_REGISTERS:
             self.read_method = self._read_input_registers
+        else:
+            logging.error(f"Invalid register read type: {read_type}")
+            return
 
     def stop(self):
         try:
