@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from RaspPiReader.libs.models import Base, User, PLCCommSettings, DatabaseSettings, OneDriveSettings, GeneralConfigSettings, ChannelConfigSettings, CycleData
+from RaspPiReader.libs.models import Base, User, PLCCommSettings, DatabaseSettings, OneDriveSettings, GeneralConfigSettings, ChannelConfigSettings, CycleData, DemoData
 
 class Database:
     def __init__(self, database_url):
@@ -68,4 +68,11 @@ class Database:
         for cycle in cycle_data:
             azure_session.merge(cycle)
 
+        azure_session.commit()
+
+        # Sync demo data
+        demo_data = self.session.query(DemoData).all()
+        for record in demo_data:
+            azure_session.merge(record)
+        
         azure_session.commit()

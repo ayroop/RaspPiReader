@@ -97,3 +97,21 @@ class CycleData(Base):
     initial_set_cure_temp = Column(Float, nullable=True)
     final_set_cure_temp = Column(Float, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+class DemoData(Base):
+    __tablename__ = 'demo_data'
+    id = Column(Integer, primary_key=True)
+    column1 = Column(String, nullable=False)
+    column2 = Column(String, nullable=False)
+    column3 = Column(String, nullable=False)
+    column4 = Column(String, nullable=False)
+    column5 = Column(String, nullable=False)
+    column6 = Column(String, nullable=False)
+    column7 = Column(String, nullable=False)
+    column8 = Column(String, nullable=False)
+    column9 = Column(String, nullable=False)
+    column10 = Column(String, nullable=False)
+    column11 = Column(String, nullable=False)
+    column12 = Column(String, nullable=False)
+    column13 = Column(String, nullable=False)
+    column14 = Column(String, nullable=False)
