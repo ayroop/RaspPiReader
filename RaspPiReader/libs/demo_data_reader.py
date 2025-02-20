@@ -11,7 +11,7 @@ demo_data = db.session.query(DemoData).all()
 if demo_data:
     data = [[record.column1, record.column2, record.column3, record.column4, record.column5, record.column6, record.column7, record.column8, record.column9, record.column10, record.column11, record.column12, record.column13, record.column14] for record in demo_data]
 else:
-    demo_file_path = os.path.join(os.getcwd(), "demo.csv")
+    demo_file_path = os.path.join(os.getcwd(), "RaspPiReader", "demo.csv")
     if os.path.exists(demo_file_path):
         with open(demo_file_path) as file_name:
             file_read = csv.reader(file_name)

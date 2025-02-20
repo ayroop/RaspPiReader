@@ -3,6 +3,7 @@ from RaspPiReader import pool
 from RaspPiReader.ui.login_form_handler import LoginFormHandler
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.sync import SyncThread
+from RaspPiReader.libs.demo_data_reader import data as demo_data
 
 def Main():
     app = QtWidgets.QApplication(sys.argv)
@@ -10,6 +11,9 @@ def Main():
 
     if demo_mode:
         pool.set('demo', True)
+        # Ensure demo data is loaded into the database
+        print("Loading demo data into the database...")
+        demo_data  # This will trigger the loading of demo data
     else:
         # Ensure local SQLite database is initialized
         local_db = Database("sqlite:///local_database.db")
