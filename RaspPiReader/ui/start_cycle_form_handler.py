@@ -11,7 +11,7 @@ from RaspPiReader import pool
 from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.demo_data_reader import data as demo_data
 from RaspPiReader.ui.setting_form_handler import CHANNEL_COUNT, SettingFormHandler
-from RaspPiReader.ui.startCycleForm import StartCycleForm
+from RaspPiReader.ui.startCycleForm import Ui_CycleStart  
 
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import CycleData
@@ -39,7 +39,7 @@ class StartCycleFormHandler(QMainWindow):
 
     def __init__(self) -> object:
         super(StartCycleFormHandler, self).__init__()
-        self.form_obj = StartCycleForm()
+        self.form_obj = Ui_CycleStart()
         self.form_obj.setupUi(self)
         self.set_connections()
         pool.set('start_cycle_form', self)
@@ -47,15 +47,14 @@ class StartCycleFormHandler(QMainWindow):
         self.setWindowModality(Qt.ApplicationModal)
         self.load_cycle_data()
         self.data_reader_lock = Lock()
-
     def set_connections(self):
-        self.startPushButton.clicked.connect(self.start_cycle)
-        self.startPushButton.clicked.connect(pool.get('main_form').update_cycle_info_pannel)
-        self.cancelPushButton.clicked.connect(self.close)
+        self.form_obj.startPushButton.clicked.connect(self.start_cycle)
+        if pool.get('main_form'):
+            self.form_obj.startPushButton.clicked.connect(pool.get('main_form').update_cycle_info_pannel)
+        self.form_obj.cancelPushButton.clicked.connect(self.close)
         self.data_updated_signal.connect(pool.get('main_form').update_data)
         self.test_data_updated_signal.connect(pool.get('main_form').update_immediate_test_values_panel)
         self.exit_with_error_signal.connect(pool.get('main_form').show_error_and_stop)
-
     def initiate_onedrive_update_thread(self):
         # Fix typo: remove stray 't' at the end of start()
         self.onedrive_thread = Thread(target=self.onedrive_upload_loop)
