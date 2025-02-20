@@ -55,7 +55,9 @@ class StartCycleFormHandler(QMainWindow):
         self.data_updated_signal.connect(pool.get('main_form').update_data)
         self.test_data_updated_signal.connect(pool.get('main_form').update_immediate_test_values_panel)
         self.exit_with_error_signal.connect(pool.get('main_form').show_error_and_stop)
+
     def initiate_onedrive_update_thread(self):
+        # Fix typo: remove stray 't' at the end of start()
         self.onedrive_thread = Thread(target=self.onedrive_upload_loop)
         self.onedrive_thread.daemon = True
         self.onedrive_thread.start()
@@ -76,7 +78,7 @@ class StartCycleFormHandler(QMainWindow):
             pass
         try:
             dataReader.start()
-        except:
+        except Exception:
             self.exit_with_error_signal.emit('Failed to connect to device.')
             print('Failed to connect to device.')
             return
@@ -99,6 +101,7 @@ class StartCycleFormHandler(QMainWindow):
         self.cycle_start_time = datetime.now()
         dt = pool.config('panel_time_interval', float, 1.0)  # Default to 1 second if not set
         self.running = True
+        # Create a new thread instance every time to avoid start-thread-twice runtime error.
         self.test_read_thread = Thread(
             target=StartCycleFormHandler.read_data,
             args=(self, pool.get('test_data_stack'), self.test_data_updated_signal, dt,),
@@ -108,6 +111,7 @@ class StartCycleFormHandler(QMainWindow):
         self.test_read_thread.start()
 
     def initiate_gdrive_update_thread(self):
+        # Always create a new thread instance instead of restarting an already started one.
         self.gdrive_update_thread = Thread(target=self.gdrive_upload_loop)
         self.gdrive_update_thread.daemon = True
         self.gdrive_update_thread.start()
@@ -115,7 +119,8 @@ class StartCycleFormHandler(QMainWindow):
     def gdrive_upload_loop(self):
         last_time = datetime.now()
         while self.running:
-            if (datetime.now() - last_time).total_seconds() >= pool.config('gdrive_update_interval', int, 60):  # Default to 60 seconds if not set
+            interval = pool.config('gdrive_update_interval', int, 60)  # Default to 60 seconds if not set
+            if (datetime.now() - last_time).total_seconds() >= interval:
                 pool.get('main_form')._sync_gdrive(upload_pdf=False, show_message=False, delete_existing=False)
                 last_time = datetime.now()
             sleep(3)
@@ -141,7 +146,7 @@ class StartCycleFormHandler(QMainWindow):
         # Create output folder using the csv_file_path configuration; default to current working directory.
         csv_file_path = pool.config('csv_file_path', str, os.getcwd())
         self.folder_path = os.path.join(csv_file_path, self.file_name)
-        os.makedirs(self.folder_path)
+        os.makedirs(self.folder_path, exist_ok=True)
 
         # Create a CycleData instance using form data.
         cycle_data = CycleData(
@@ -178,10 +183,10 @@ class StartCycleFormHandler(QMainWindow):
         self.running = True
         self.hide()
         self.initiate_reader_thread()
+        # initiate_gdrive_update_thread already creates and starts a new thread.
         self.initiate_gdrive_update_thread()
         main_form.cycle_timer.start(500)
         self.read_thread.start()
-        self.gdrive_update_thread.start()
         self.initiate_onedrive_update_thread()
 
     def stop_cycle(self):
@@ -190,10 +195,11 @@ class StartCycleFormHandler(QMainWindow):
         self.running = False
 
     def read_data(self, data_stack, updated_signal, dt, process_data=True):
+        # Provide default values for channels if not set in config to avoid NoneType issues.
+        core_temp_channel = pool.config('core_temp_channel', int, 1)
+        pressure_channel = pool.config('pressure_channel', int, 1)
+        core_temp_setpoint = pool.config('core_temp_setpoint', int, 0)
         active_channels = pool.get('active_channels')
-        core_temp_channel = pool.config('core_temp_channel', int)
-        pressure_channel = pool.config('pressure_channel', int)
-        core_temp_setpoint = pool.config('core_temp_setpoint', int)
         self.pressure_drop_core_temp = None
         core_temp_above_setpoint_start_time = None
         self.core_temp_above_setpoint_time = 0
@@ -218,7 +224,8 @@ class StartCycleFormHandler(QMainWindow):
                 if process_data:
                     data_stack[0].append(round((datetime.now() - self.cycle_start_time).total_seconds() / 60, 2))
                     data_stack[15].append(datetime.now())
-                    if not core_temp_above_setpoint_start_time and data_stack[core_temp_channel][-1] >= core_temp_setpoint:
+                    if (not core_temp_above_setpoint_start_time and 
+                        data_stack[core_temp_channel][-1] >= core_temp_setpoint):
                         core_temp_above_setpoint_start_time = datetime.now()
                     elif core_temp_above_setpoint_start_time and data_stack[core_temp_channel][-1] < core_temp_setpoint:
                         self.core_temp_above_setpoint_time += round(
@@ -245,20 +252,20 @@ class StartCycleFormHandler(QMainWindow):
                     if (i + 1) in active_channels:
                         try:
                             temp = dataReader.readData(
-                                int(pool.config('address' + str(i + 1)), 16),
-                                int(pool.config('pv' + str(i + 1)), 16)
+                                int(pool.config('address' + str(i + 1), int, 0)),
+                                int(pool.config('pv' + str(i + 1), int, 0), 16)
                             )
                             if temp & 0x8000 > 0:
                                 temp = -((0xFFFF - temp) + 1)
-                            dec_point = pool.config('decimal_point' + str(i + 1), int)
+                            dec_point = pool.config('decimal_point' + str(i + 1), int, 0)
                             if dec_point > 0:
                                 temp = temp / pow(10, dec_point)
-                            if pool.config('scale' + str(i + 1), bool):
-                                input_low = pool.config('limit_low' + str(i + 1), float)
-                                input_high = pool.config('limit_high' + str(i + 1), float)
+                            if pool.config('scale' + str(i + 1), bool, False):
+                                input_low = pool.config('limit_low' + str(i + 1), float, 0.0)
+                                input_high = pool.config('limit_high' + str(i + 1), float, 0.0)
                                 if input_high >= input_low + 10 and temp >= input_low:
-                                    output_high = pool.config('max_scale_range' + str(i + 1), float)
-                                    output_low = pool.config('min_scale_range' + str(i + 1), float)
+                                    output_high = pool.config('max_scale_range' + str(i + 1), float, 1000.0)
+                                    output_low = pool.config('min_scale_range' + str(i + 1), float, 0.0)
                                     temp = (output_high - output_low) / (input_high - input_low) * (temp - input_low) + output_low
                                     temp = round(temp, dec_point)
                         except Exception as e:
@@ -269,7 +276,7 @@ class StartCycleFormHandler(QMainWindow):
                                 dataReader.start()
                                 print('Restart successful')
                             except Exception as e:
-                                print(f"Restart failed {i + 1}.\n" + str(e))
+                                print(f"Restart failed channel {i + 1}.\n" + str(e))
                             temp = -1000.00
                     else:
                         temp = 0.00
@@ -281,7 +288,8 @@ class StartCycleFormHandler(QMainWindow):
                 if process_data:
                     data_stack[0].append(round((datetime.now() - self.cycle_start_time).total_seconds() / 60, 2))
                     data_stack[15].append(datetime.now())
-                    if not core_temp_above_setpoint_start_time and data_stack[core_temp_channel][-1] >= core_temp_setpoint:
+                    if (not core_temp_above_setpoint_start_time and
+                        data_stack[core_temp_channel][-1] >= core_temp_setpoint):
                         core_temp_above_setpoint_start_time = datetime.now()
                     elif core_temp_above_setpoint_start_time and data_stack[core_temp_channel][-1] < core_temp_setpoint:
                         self.core_temp_above_setpoint_time += round((datetime.now() - core_temp_above_setpoint_start_time).total_seconds() / 60, 2)
@@ -293,10 +301,10 @@ class StartCycleFormHandler(QMainWindow):
                     else:
                         pressure_drop_flag = False
                 updated_signal.emit()
+                # Ensuring we respect the time interval dt
                 while (datetime.now() - iteration_start_time) < timedelta(seconds=dt):
                     sleep(0.001)
-
         try:
             dataReader.stop()
-        except:
+        except Exception:
             print('unable to stop data reader')
