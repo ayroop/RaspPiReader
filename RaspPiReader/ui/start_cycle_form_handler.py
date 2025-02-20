@@ -55,7 +55,6 @@ class StartCycleFormHandler(QMainWindow):
         self.data_updated_signal.connect(pool.get('main_form').update_data)
         self.test_data_updated_signal.connect(pool.get('main_form').update_immediate_test_values_panel)
         self.exit_with_error_signal.connect(pool.get('main_form').show_error_and_stop)
-
     def initiate_onedrive_update_thread(self):
         self.onedrive_thread = Thread(target=self.onedrive_upload_loop)
         self.onedrive_thread.daemon = True
@@ -63,7 +62,7 @@ class StartCycleFormHandler(QMainWindow):
 
     def onedrive_upload_loop(self):
         while True:
-            sleep(pool.config('onedrive_update_interval', int))
+            sleep(pool.config('onedrive_update_interval', int, 60))  # Default to 60 seconds if not set
             pool.get('main_form')._sync_onedrive(upload_csv=True, upload_pdf=True, show_message=False)
 
     def upload_to_onedrive(self):
@@ -98,7 +97,7 @@ class StartCycleFormHandler(QMainWindow):
 
     def run_test_read_thread(self):
         self.cycle_start_time = datetime.now()
-        dt = pool.config('panel_time_interval', float)
+        dt = pool.config('panel_time_interval', float, 1.0)  # Default to 1 second if not set
         self.running = True
         self.test_read_thread = Thread(
             target=StartCycleFormHandler.read_data,
@@ -111,17 +110,18 @@ class StartCycleFormHandler(QMainWindow):
     def initiate_gdrive_update_thread(self):
         self.gdrive_update_thread = Thread(target=self.gdrive_upload_loop)
         self.gdrive_update_thread.daemon = True
+        self.gdrive_update_thread.start()
 
     def gdrive_upload_loop(self):
         last_time = datetime.now()
         while self.running:
-            if (datetime.now() - last_time).total_seconds() >= pool.config('gdrive_update_interval', int):
+            if (datetime.now() - last_time).total_seconds() >= pool.config('gdrive_update_interval', int, 60):  # Default to 60 seconds if not set
                 pool.get('main_form')._sync_gdrive(upload_pdf=False, show_message=False, delete_existing=False)
                 last_time = datetime.now()
             sleep(3)
 
     def initiate_reader_thread(self):
-        dt = pool.config('time_interval', float)
+        dt = pool.config('time_interval', float, 1.0)  # Default to 1 second if not set
         self.read_thread = Thread(
             target=StartCycleFormHandler.read_data,
             args=(self, pool.get('data_stack'), self.data_updated_signal, dt)
