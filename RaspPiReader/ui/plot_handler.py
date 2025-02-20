@@ -35,9 +35,7 @@ class InitiatePlotWidget:
         if self.legend_layout is not None:
             self.create_dynamic_legend()
         else:
-            self.legend = self.left_plot.addLegend(colCount=2, brush='f5f5f5', labelTextColor='#242323')
-            # self.left_plot.addLegend(colCount=2, brush='f5f5f5', labelTextColor='#242323')
-            # self.right_plot.addLegend(colCount=2, brush='f5f5f5', labelTextColor='#242323')
+            self.legend = self.left_plot.addLegend(colCount=2, brush='#f5f5f5', labelTextColor='#242323')
 
         self.last_data_index = 0
         self.data = pool.get('data_stack')

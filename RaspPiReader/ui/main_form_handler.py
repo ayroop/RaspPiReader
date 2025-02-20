@@ -25,6 +25,8 @@ from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.configuration import config
 from RaspPiReader.ui.mainForm import MainForm
 from .boolean_status import Ui_BooleanStatusWidget
+from RaspPiReader.libs.models import BooleanStatus, PlotData
+from RaspPiReader.libs.database import Database
 
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
@@ -69,11 +71,14 @@ class MainFormHandler(QtWidgets.QMainWindow):
         # Add Database Setting to the menu
         self.add_database_menu()
         # 6 Bool Addresses status
+        self.db = Database("sqlite:///local_database.db")
         self.setup_bool_status_display()
+        self.setup_plot_data_display()
         # Create a timer to update status every few seconds
         self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self.update_bool_status)
         self.status_timer.start(5000)  # update every 5 seconds
+
         print("MainFormHandler initialized.")
 
     def setup_bool_status_display(self):
@@ -106,6 +111,15 @@ class MainFormHandler(QtWidgets.QMainWindow):
         else:
             for i, state in enumerate(result):
                 self.boolStatusLabels[i].setText(f"Bool Addr {config.bool_addresses[i]}: {state}")
+
+    def setup_plot_data_display(self):
+        self.plotWidgetContainer = QtWidgets.QWidget()
+        self.plotWidgetContainer.setLayout(QtWidgets.QVBoxLayout())  # Ensure the container has a layout
+        self.plotWidget = InitiatePlotWidget(active_channels=[], parent_layout=self.plotWidgetContainer.layout(), headers=["Time", "Value", ""])
+        central_layout = self.centralWidget().layout()
+        if central_layout is None:
+            central_layout = QtWidgets.QVBoxLayout(self.centralWidget())
+        central_layout.addWidget(self.plotWidgetContainer)
 
     def add_one_drive_menu(self):
         one_drive_action = QAction("OneDrive Settings", self)

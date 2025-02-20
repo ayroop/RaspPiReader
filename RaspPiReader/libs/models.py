@@ -115,3 +115,16 @@ class DemoData(Base):
     column12 = Column(String, nullable=False)
     column13 = Column(String, nullable=False)
     column14 = Column(String, nullable=False)
+
+class BooleanStatus(Base):
+    __tablename__ = 'boolean_status'
+    id = Column(Integer, primary_key=True)
+    address = Column(Integer, nullable=False)
+    status = Column(Boolean, nullable=False)
+
+class PlotData(Base):
+    __tablename__ = 'plot_data'
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    channel = Column(String, nullable=False)
+    value = Column(Float, nullable=False)

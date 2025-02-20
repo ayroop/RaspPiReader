@@ -167,23 +167,23 @@ Alternatively, you can manually add an admin user to the SQLite database using a
     - Save the settings.
 
 ### Configuring Database Settings
-5. **Create Tables**:
+1. **Create Tables**:
     ```sh
     python create_tables.py
 
-5. **Drop Tables**:
+2. **Drop Tables**:
     ```sh
     python drop_tables.py
    ``` 
-1. **Run the Application**:
+3. **Run the Application**:
     ```sh
     python run.py
     ```
 
-2. **Navigate to Database Settings**:
+4. **Navigate to Database Settings**:
     - In the application, go to the "Settings" menu and select "Database Settings".
 
-3. **Enter Database Connection Details**:
+5. **Enter Database Connection Details**:
     - Enter the database connection details (e.g., server name, database name, username, password).
     - Test the connection and save the settings.
 ### Configuring OneDrive Settings
