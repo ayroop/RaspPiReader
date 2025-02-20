@@ -1,209 +1,197 @@
-<style>
-    table {
-        width: 100%;
-        border-collapse: collapse;
-        margin: 5px auto;
-    }
-
-    tr:nth-of-type(odd) {
-        background: #eee;
-    }
-
-    th {
-        background: #3498db;
-        color: white;
-        font-weight: bold;
-    }
-
-    td {
-        padding: 2px;
-        border: 1px solid #ccc;
-        text-align: center;
-        vertical-align: middle;
-        font-size: 12px;
-    }
-
-    td.center {
-        text-align: center;
-        vertical-align: middle;
-    }
-
-    th {
-        padding: 2px;
-        border: 1px solid #ccc;
-        text-align: center;
-        vertical-align: middle;
-        font-size: 12px;
-    }
-
-    td.left {
-        padding: 2px;
-        border: 1px solid #ccc;
-        text-align: left;
-        font-size: 12px;
-        width: 15%;
-    }
-    td.top {
-        vertical-align: top;   
-    }
-
-    }
-
-
-
-
-</style>
-
-
-<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
-<html>
-
+<!DOCTYPE html>
+<html lang="en">
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Title</title>
+    <style>
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 5px auto;
+        }
+
+        tr:nth-of-type(odd) {
+            background: #eee;
+        }
+
+        th {
+            background: #3498db;
+            color: white;
+            font-weight: bold;
+            padding: 2px;
+            border: 1px solid #ccc;
+            text-align: center;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+
+        td {
+            padding: 2px;
+            border: 1px solid #ccc;
+            text-align: center;
+            vertical-align: middle;
+            font-size: 12px;
+        }
+
+        td.center {
+            text-align: center;
+            vertical-align: middle;
+        }
+
+        td.left {
+            padding: 2px;
+            border: 1px solid #ccc;
+            text-align: left;
+            font-size: 12px;
+            width: 15%;
+        }
+        
+        td.top {
+            vertical-align: top;   
+        }
+    </style>
 </head>
-
 <body>
-<table>
-    <tr>
-        <td colspan="6">
-            <table>
-                <tr>
-                    <td colspan="1" width="15%">
-                        <img src="{{data.logo_path}}" alt="Company logo">
-                    </td>
-                    <td colspan="4" width="70%">
-                        <H1>CYCLE REPORT</H1>
-                    </td>
-                    <td colspan="1" width="15%"> .
-                    </td>
-                </tr>
-            </table>
-        </td>
-    </tr>
-    <tr>
-        <td colspan="6" width="100%" class="center">
-            <h3>Cycle Information</h3>
-        </td>
-    </tr>
-    <tr>
-        <td width="45%">
-            <table>
-                <tr>
-                    <th colspan="2">CYCLE SET PARAMETERS</th>
-                </tr>
-                <tr>
-                    <td width="50%">MAINTAIN VACUUM</td>
-                    <td>{{data.maintain_vacuum}}%</td>
-                </tr>
-                <tr>
-                    <td>SET CURE TEMP</td>
-                    <td>{{data.initial_set_cure_temp}} °C</td>
-                </tr>
-                <tr>
-                    <td>SET TEMP RAMP</td>
-                    <td>{{data.temp_ramp}} °C/Min</td>
-                </tr>
-                <tr>
-                    <td>SET PRESSURE</td>
-                    <td>{{data.set_pressure}} KPa</td>
-                </tr>
-                <tr>
-                    <td>DWELL TIME POST TRIGGER</td>
-                    <td>{{data.dwell_time}} Min ({{data.dwell_time/60}} Hrs)</td>
-                </tr>
-                <tr>
-                    <td>AIR COOLDOWN TEMP</td>
-                    <td>{{data.cool_down_temp}} °C</td>
-                </tr>
-                <tr>
-                    <td>-</td>
-                    <td>-</td>
-                </tr>
-            </table>
-        </td>
-        <td width="10%"></td>
-        <td width="45%">
-            <table>
-                <tr>
-                    <th colspan="2">CYCLE DETAILS</th>
-                </tr>
-                <tr>
-                    <td width="50%">CYCLE NUMBER</td>
-                    <td>{{data.cycle_id}}</td>
-                </tr>
-                <tr>
-                    <td>WORK ORDER</td>
-                    <td>{{data.order_id}}</td>
-                </tr>
-                <tr>
-                    <td>QUANTITY</td>
-                    <td>{{data.quantity}}</td>
-                </tr>
-                <tr>
-                    <td>CYCLE DATE</td>
-                    <td>{{data.cycle_date}}</td>
-                </tr>
-                <tr>
-                    <td>CYCLE START TIME</td>
-                    <td>{{data.cycle_start_time}}</td>
-                </tr>
-                <tr>
-                    <td>CYCLE END TIME</td>
-                    <td>{{data.cycle_end_time}}</td>
-                </tr>
-                <tr>
-                    <td>CYCLE LOCATION</td>
-                    <td>{{data.cycle_location}}</td>
-                    </td>
-                </tr>
-            </table>
-        </td>
-    </tr>
-    <tr>
-        <td colspan="6" class="left">
-            * After {{data.set_pressure}} KPa has been reached, the set cure temperature is manually changed to
-            {{data.final_set_cure_temp}} °C.
-        </td>
-    </tr>
-    <tr>
-        <td colspan="6" class="center">
-            <h3>CYCLE OUTCOMES</h3>
-        </td>
-    </tr>
-    <tr>
-        <td colspan="6" class="center">
-            <table>
-                <tr>
-                    <td width="50%">TIME (Min) CORE TEMP &ge; {{data.core_temp_setpoint}}</td>
-                    <td width="50%">{{data.core_high_temp_time}} Min</td>
-                </tr>
-                <tr>
-                    <td width="50%">CORE TEMP WHEN PRESSURE RELEASED</td>
-                    <td width="50%">{{data.release_temp}} °C</td>
-                </tr>
-            </table>
-        </td>
-    </tr>
-    <tr>
-        <td colspan="6">
-            <img src="{{data.image_path}}" alt="Plot" width="100%">
-        </td>
-    </tr>
-    <tr>
-        <td height="100" class="left top">
-            <h4>Signature 1</h4>
-        </td>
-        <td></td>
-        <td height="100" class="left top">
-            <h4>Signature 2</h4>
-        </td>
-    </tr>
-    <tr>
-        <td colspan="6" class="left">
-            <h4>Address: ----</h4>
-        </td>
-    </tr>
-</table>
+    <table>
+        <tr>
+            <td colspan="6">
+                <table>
+                    <tr>
+                        <td colspan="1" width="15%">
+                            <img src="{{data.logo_path}}" alt="Company logo">
+                        </td>
+                        <td colspan="4" width="70%">
+                            <h1>CYCLE REPORT</h1>
+                        </td>
+                        <td colspan="1" width="15%">.
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="6" width="100%" class="center">
+                <h3>Cycle Information</h3>
+            </td>
+        </tr>
+        <tr>
+            <td width="45%">
+                <table>
+                    <tr>
+                        <th colspan="2">CYCLE SET PARAMETERS</th>
+                    </tr>
+                    <tr>
+                        <td width="50%">MAINTAIN VACUUM</td>
+                        <td>{{data.maintain_vacuum}}%</td>
+                    </tr>
+                    <tr>
+                        <td>SET CURE TEMP</td>
+                        <td>{{data.initial_set_cure_temp}} °C</td>
+                    </tr>
+                    <tr>
+                        <td>SET TEMP RAMP</td>
+                        <td>{{data.temp_ramp}} °C/Min</td>
+                    </tr>
+                    <tr>
+                        <td>SET PRESSURE</td>
+                        <td>{{data.set_pressure}} KPa</td>
+                    </tr>
+                    <tr>
+                        <td>DWELL TIME POST TRIGGER</td>
+                        <td>{{data.dwell_time}} Min ({{data.dwell_time/60}} Hrs)</td>
+                    </tr>
+                    <tr>
+                        <td>AIR COOLDOWN TEMP</td>
+                        <td>{{data.cool_down_temp}} °C</td>
+                    </tr>
+                    <tr>
+                        <td>-</td>
+                        <td>-</td>
+                    </tr>
+                </table>
+            </td>
+            <td width="10%"></td>
+            <td width="45%">
+                <table>
+                    <tr>
+                        <th colspan="2">CYCLE DETAILS</th>
+                    </tr>
+                    <tr>
+                        <td width="50%">CYCLE NUMBER</td>
+                        <td>{{data.cycle_id}}</td>
+                    </tr>
+                    <tr>
+                        <td>WORK ORDER</td>
+                        <td>{{data.order_id}}</td>
+                    </tr>
+                    <tr>
+                        <td>QUANTITY</td>
+                        <td>{{data.quantity}}</td>
+                    </tr>
+                    <tr>
+                        <td>CYCLE DATE</td>
+                        <td>{{data.cycle_date}}</td>
+                    </tr>
+                    <tr>
+                        <td>CYCLE START TIME</td>
+                        <td>{{data.cycle_start_time}}</td>
+                    </tr>
+                    <tr>
+                        <td>CYCLE END TIME</td>
+                        <td>{{data.cycle_end_time}}</td>
+                    </tr>
+                    <tr>
+                        <td>CYCLE LOCATION</td>
+                        <td>{{data.cycle_location}}</td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="6" class="left">
+                * After {{data.set_pressure}} KPa has been reached, the set cure temperature is manually changed to
+                {{data.final_set_cure_temp}} °C.
+            </td>
+        </tr>
+        <tr>
+            <td colspan="6" class="center">
+                <h3>CYCLE OUTCOMES</h3>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="6" class="center">
+                <table>
+                    <tr>
+                        <td width="50%">TIME (Min) CORE TEMP &ge; {{data.core_temp_setpoint}}</td>
+                        <td width="50%">{{data.core_high_temp_time}} Min</td>
+                    </tr>
+                    <tr>
+                        <td width="50%">CORE TEMP WHEN PRESSURE RELEASED</td>
+                        <td width="50%">{{data.release_temp}} °C</td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="6">
+                <img src="{{data.image_path}}" alt="Plot" width="100%">
+            </td>
+        </tr>
+        <tr>
+            <td height="100" class="left top">
+                <h4>Signature 1</h4>
+            </td>
+            <td></td>
+            <td height="100" class="left top">
+                <h4>Signature 2</h4>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="6" class="left">
+                <h4>Address: ----</h4>
+            </td>
+        </tr>
+    </table>
 </body>
-
 </html>
