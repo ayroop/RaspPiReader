@@ -38,5 +38,6 @@ config.json
 RaspPiReader-backup/
 .qodo
 __pycache__
+scripts
 # Ignore the backup directory
 23465332  2025.02.09  19.19.51/

@@ -17,6 +17,8 @@ class LoginFormHandler(QtWidgets.QDialog):
         password = self.ui.passwordLineEdit.text().strip()
         user = self.authenticate(username, password)
         if user:
+            # Store logged in username in the pool
+            pool.set('current_user', user.username)
             self.accept()
             main_form = MainFormHandler(user)
             main_form.show()

@@ -128,3 +128,10 @@ class PlotData(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     channel = Column(String, nullable=False)
     value = Column(Float, nullable=False)
+
+class Product(Base):
+    __tablename__ = 'products'
+    id = Column(Integer, primary_key=True)
+    name = Column(String, nullable=False)
+    serial_number = Column(String(250), unique=True, nullable=False)
+    added_by = Column(String, nullable=False)  # Stores the username of the user who added the product
