@@ -1,4 +1,3 @@
-import sys
 from PyQt5 import QtWidgets
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import DefaultProgram
@@ -19,23 +18,13 @@ class DefaultProgramForm(QtWidgets.QDialog):
         # Create tabs for Programs 1 to 4
         for i in range(1, 5):
             tab = QtWidgets.QWidget()
-            form = QtWidgets.QFormLayout(tab)
-            fields = {}
-            fields["dwell_time"] = QtWidgets.QLineEdit()
-            fields["set_core_temp"] = QtWidgets.QLineEdit()
-            fields["cool_down_ramp"] = QtWidgets.QLineEdit()
-            fields["set_temp_ramp"] = QtWidgets.QLineEdit()
-            fields["set_pressure"] = QtWidgets.QLineEdit()
-            fields["initial_set_cure_temp"] = QtWidgets.QLineEdit()
-            fields["final_set_cure_temp"] = QtWidgets.QLineEdit()
-            form.addRow("Dwell Time:", fields["dwell_time"])
-            form.addRow("Set Core Temperature:", fields["set_core_temp"])
-            form.addRow("Cool Down Ramp:", fields["cool_down_ramp"])
-            form.addRow("Set Temperature Ramp:", fields["set_temp_ramp"])
-            form.addRow("Set Pressure:", fields["set_pressure"])
-            form.addRow("Initial Set Cure Temperature:", fields["initial_set_cure_temp"])
-            form.addRow("Final Set Cure Temperature:", fields["final_set_cure_temp"])
-            self.program_fields[i] = fields
+            form_layout = QtWidgets.QFormLayout(tab)
+            self.program_fields[i] = {}
+            for field_name in ["order_number", "cycle_id", "quantity", "size", "cycle_location", "dwell_time", "cool_down_temp", "core_temp_setpoint", "temp_ramp", "set_pressure", "maintain_vacuum", "initial_set_cure_temp", "final_set_cure_temp"]:
+                label = QtWidgets.QLabel(field_name.replace("_", " ").title())
+                line_edit = QtWidgets.QLineEdit()
+                form_layout.addRow(label, line_edit)
+                self.program_fields[i][field_name] = line_edit
             self.tabWidget.addTab(tab, f"Program {i}")
         
         # Add Save and Cancel buttons
@@ -52,79 +41,56 @@ class DefaultProgramForm(QtWidgets.QDialog):
         self.load_programs()
 
     def load_programs(self):
-        # Default example values
-        default_values = {
-            1: {"dwell_time": "value a", "set_core_temp": "value b", "cool_down_ramp": "value c",
-                "set_temp_ramp": "value d", "set_pressure": "value p1", "initial_set_cure_temp": "value i1", "final_set_cure_temp": "value f1"},
-            2: {"dwell_time": "value x", "set_core_temp": "value y", "cool_down_ramp": "value z",
-                "set_temp_ramp": "value a1", "set_pressure": "value p2", "initial_set_cure_temp": "value i2", "final_set_cure_temp": "value f2"},
-            3: {"dwell_time": "value x2", "set_core_temp": "value y2", "cool_down_ramp": "value z2",
-                "set_temp_ramp": "value a2", "set_pressure": "value p3", "initial_set_cure_temp": "value i3", "final_set_cure_temp": "value f3"},
-            4: {"dwell_time": "value x4", "set_core_temp": "value y4", "cool_down_ramp": "value z4",
-                "set_temp_ramp": "value a4", "set_pressure": "value p4", "initial_set_cure_temp": "value i4", "final_set_cure_temp": "value f4"},
-        }
-        # For each program, try to load saved values
-        for prog_num in range(1, 5):
-            prog = self.db.session.query(DefaultProgram).filter_by(username=self.current_user, program_number=prog_num).first()
-            if prog:
-                data = {
-                    "dwell_time": prog.dwell_time,
-                    "set_core_temp": prog.set_core_temp,
-                    "cool_down_ramp": prog.cool_down_ramp,
-                    "set_temp_ramp": prog.set_temp_ramp,
-                    "set_pressure": prog.set_pressure,
-                    "initial_set_cure_temp": prog.initial_set_cure_temp,
-                    "final_set_cure_temp": prog.final_set_cure_temp,
-                }
-            else:
-                data = default_values[prog_num]
-            fields = self.program_fields[prog_num]
-            fields["dwell_time"].setText(data["dwell_time"])
-            fields["set_core_temp"].setText(data["set_core_temp"])
-            fields["cool_down_ramp"].setText(data["cool_down_ramp"])
-            fields["set_temp_ramp"].setText(data["set_temp_ramp"])
-            fields["set_pressure"].setText(data["set_pressure"])
-            fields["initial_set_cure_temp"].setText(data["initial_set_cure_temp"])
-            fields["final_set_cure_temp"].setText(data["final_set_cure_temp"])
+        for i in range(1, 5):
+            default_program = self.db.session.query(DefaultProgram).filter_by(username=self.current_user, program_number=i).first()
+            if default_program:
+                for field_name, line_edit in self.program_fields[i].items():
+                    value = getattr(default_program, field_name, "")
+                    line_edit.setText(str(value))
 
     def save_programs(self):
-        # Save or update a default program for each tab
-        for prog_num in range(1, 5):
-            fields = self.program_fields[prog_num]
-            dwell_time = fields["dwell_time"].text().strip()
-            set_core_temp = fields["set_core_temp"].text().strip()
-            cool_down_ramp = fields["cool_down_ramp"].text().strip()
-            set_temp_ramp = fields["set_temp_ramp"].text().strip()
-            set_pressure = fields["set_pressure"].text().strip()
-            initial_set_cure_temp = fields["initial_set_cure_temp"].text().strip()
-            final_set_cure_temp = fields["final_set_cure_temp"].text().strip()
-            prog = self.db.session.query(DefaultProgram).filter_by(username=self.current_user, program_number=prog_num).first()
-            if not prog:
-                prog = DefaultProgram(
+        for i in range(1, 5):
+            fields = self.program_fields[i]
+            default_program = self.db.session.query(DefaultProgram).filter_by(username=self.current_user, program_number=i).first()
+            if not default_program:
+                default_program = DefaultProgram(
                     username=self.current_user,
-                    program_number=prog_num,
-                    dwell_time=dwell_time,
-                    set_core_temp=set_core_temp,
-                    cool_down_ramp=cool_down_ramp,
-                    set_temp_ramp=set_temp_ramp,
-                    set_pressure=set_pressure,
-                    initial_set_cure_temp=initial_set_cure_temp,
-                    final_set_cure_temp=final_set_cure_temp
+                    program_number=i,
+                    order_number=fields["order_number"].text().strip(),
+                    cycle_id=fields["cycle_id"].text().strip(),
+                    quantity=fields["quantity"].text().strip(),
+                    size=fields["size"].text().strip(),
+                    cycle_location=fields["cycle_location"].text().strip(),
+                    dwell_time=fields["dwell_time"].text().strip(),
+                    cool_down_temp=fields["cool_down_temp"].text().strip(),
+                    core_temp_setpoint=fields["core_temp_setpoint"].text().strip(),
+                    temp_ramp=fields["temp_ramp"].text().strip(),
+                    set_pressure=fields["set_pressure"].text().strip(),
+                    maintain_vacuum=fields["maintain_vacuum"].text().strip(),
+                    initial_set_cure_temp=fields["initial_set_cure_temp"].text().strip(),
+                    final_set_cure_temp=fields["final_set_cure_temp"].text().strip()
                 )
-                self.db.session.add(prog)
+                self.db.session.add(default_program)
             else:
-                prog.dwell_time = dwell_time
-                prog.set_core_temp = set_core_temp
-                prog.cool_down_ramp = cool_down_ramp
-                prog.set_temp_ramp = set_temp_ramp
-                prog.set_pressure = set_pressure
-                prog.initial_set_cure_temp = initial_set_cure_temp
-                prog.final_set_cure_temp = final_set_cure_temp
+                default_program.order_number = fields["order_number"].text().strip()
+                default_program.cycle_id = fields["cycle_id"].text().strip()
+                default_program.quantity = fields["quantity"].text().strip()
+                default_program.size = fields["size"].text().strip()
+                default_program.cycle_location = fields["cycle_location"].text().strip()
+                default_program.dwell_time = fields["dwell_time"].text().strip()
+                default_program.cool_down_temp = fields["cool_down_temp"].text().strip()
+                default_program.core_temp_setpoint = fields["core_temp_setpoint"].text().strip()
+                default_program.temp_ramp = fields["temp_ramp"].text().strip()
+                default_program.set_pressure = fields["set_pressure"].text().strip()
+                default_program.maintain_vacuum = fields["maintain_vacuum"].text().strip()
+                default_program.initial_set_cure_temp = fields["initial_set_cure_temp"].text().strip()
+                default_program.final_set_cure_temp = fields["final_set_cure_temp"].text().strip()
         self.db.session.commit()
         QtWidgets.QMessageBox.information(self, "Saved", "Default programs saved successfully.")
         self.accept()
 
 if __name__ == "__main__":
+    import sys
     app = QtWidgets.QApplication(sys.argv)
     dlg = DefaultProgramForm()
     dlg.show()

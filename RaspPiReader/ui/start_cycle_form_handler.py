@@ -5,7 +5,7 @@ from threading import Thread, Lock
 from time import sleep
 
 from PyQt5.QtCore import pyqtSignal, Qt, QTimer
-from PyQt5.QtWidgets import QMainWindow, QMessageBox
+from PyQt5.QtWidgets import QMainWindow, QMessageBox, QLineEdit, QSpinBox, QDoubleSpinBox
 
 from RaspPiReader import pool
 from RaspPiReader.libs.communication import dataReader
@@ -14,10 +14,10 @@ from RaspPiReader.ui.setting_form_handler import CHANNEL_COUNT, SettingFormHandl
 from RaspPiReader.ui.startCycleForm import Ui_CycleStart  
 
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import CycleData
+from RaspPiReader.libs.models import CycleData, DefaultProgram
 
 cycle_settings = {
-    "orderNumberLineEdit": "order_id",
+    "orderNumberLineEdit": "order_number",  # Updated name
     "cycleIDLineEdit": "cycle_id",
     "quantityLineEdit": "quantity",
     "sizeLineEdit": "size",
@@ -41,12 +41,14 @@ class StartCycleFormHandler(QMainWindow):
         super(StartCycleFormHandler, self).__init__()
         self.form_obj = Ui_CycleStart()
         self.form_obj.setupUi(self)
+        self.db = Database("sqlite:///local_database.db")
         self.set_connections()
         pool.set('start_cycle_form', self)
         self.last_update_time = datetime.now()
         self.setWindowModality(Qt.ApplicationModal)
         self.load_cycle_data()
         self.data_reader_lock = Lock()
+
     def set_connections(self):
         self.form_obj.startPushButton.clicked.connect(self.start_cycle)
         if pool.get('main_form'):
@@ -55,6 +57,22 @@ class StartCycleFormHandler(QMainWindow):
         self.data_updated_signal.connect(pool.get('main_form').update_data)
         self.test_data_updated_signal.connect(pool.get('main_form').update_immediate_test_values_panel)
         self.exit_with_error_signal.connect(pool.get('main_form').show_error_and_stop)
+        self.form_obj.programComboBox.currentIndexChanged.connect(self.apply_default_values)
+
+    def apply_default_values(self):
+        program_index = self.form_obj.programComboBox.currentIndex() + 1
+        default_program = self.db.session.query(DefaultProgram).filter_by(username=pool.get("current_user"), program_number=program_index).first()
+        if default_program:
+            for widget_name, field_name in cycle_settings.items():
+                widget = getattr(self.form_obj, widget_name)
+                value = getattr(default_program, field_name)
+                if isinstance(widget, QLineEdit):
+                    widget.setText(str(value))
+                elif isinstance(widget, QSpinBox) or isinstance(widget, QDoubleSpinBox):
+                    widget.setValue(float(value))
+                # Add more widget types if necessary
+        else:
+            QMessageBox.warning(self, "Warning", f"No default values found for Program {program_index}")    
     def initiate_onedrive_update_thread(self):
         # Fix typo: remove stray 't' at the end of start()
         self.onedrive_thread = Thread(target=self.onedrive_upload_loop)

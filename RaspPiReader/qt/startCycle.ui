@@ -1,5 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- filepath: /c:/DEV/Python/PLC Integration/src1-main/src1-main/RaspPiReader-master/RaspPiReader/qt/startCycle.ui -->
 <ui version="4.0">
  <class>CycleStart</class>
  <widget class="QMainWindow" name="CycleStart">
@@ -22,14 +21,46 @@
       <!-- Left: Cycle details form -->
       <item>
        <layout class="QFormLayout" name="formLayout">
+        <!-- Add the dropdown menu for selecting programs -->
         <item row="0" column="0">
+         <widget class="QLabel" name="programLabel">
+          <property name="text">
+           <string>Select Program</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="programComboBox">
+          <item>
+           <property name="text">
+            <string>Program 1</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Program 2</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Program 3</string>
+           </property>
+          </item>
+          <item>
+           <property name="text">
+            <string>Program 4</string>
+           </property>
+          </item>
+         </widget>
+        </item>
+        <item row="1" column="0">
          <widget class="QLabel" name="orderNumberLabel">
           <property name="text">
            <string>Order Number:</string>
           </property>
          </widget>
         </item>
-        <item row="0" column="1">
+        <item row="1" column="1">
          <widget class="QLineEdit" name="orderNumberLineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -39,14 +70,14 @@
           </property>
          </widget>
         </item>
-        <item row="1" column="0">
+        <item row="2" column="0">
          <widget class="QLabel" name="cycleIDLabel">
           <property name="text">
            <string>Cycle ID:</string>
           </property>
          </widget>
         </item>
-        <item row="1" column="1">
+        <item row="2" column="1">
          <widget class="QLineEdit" name="cycleIDLineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -56,24 +87,24 @@
           </property>
          </widget>
         </item>
-        <item row="2" column="0">
+        <item row="3" column="0">
          <widget class="QLabel" name="quantityLabel">
           <property name="text">
            <string>Quantity:</string>
           </property>
          </widget>
         </item>
-        <item row="2" column="1">
+        <item row="3" column="1">
          <widget class="QLineEdit" name="quantityLineEdit"/>
         </item>
-        <item row="3" column="0">
+        <item row="4" column="0">
          <widget class="QLabel" name="sizeLabel">
           <property name="text">
            <string>Size:</string>
           </property>
          </widget>
         </item>
-        <item row="3" column="1">
+        <item row="4" column="1">
          <widget class="QLineEdit" name="sizeLineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -83,14 +114,14 @@
           </property>
          </widget>
         </item>
-        <item row="4" column="0">
+        <item row="5" column="0">
          <widget class="QLabel" name="cycleLocationLabel">
           <property name="text">
            <string>Cycle Location:</string>
           </property>
          </widget>
         </item>
-        <item row="4" column="1">
+        <item row="5" column="1">
          <widget class="QLineEdit" name="cycleLocationLineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
@@ -100,14 +131,14 @@
           </property>
          </widget>
         </item>
-        <item row="5" column="0">
+        <item row="6" column="0">
          <widget class="QLabel" name="dwellTimeLabel">
           <property name="text">
            <string>Dwell Time (Min):</string>
           </property>
          </widget>
         </item>
-        <item row="5" column="1">
+        <item row="6" column="1">
          <widget class="QLineEdit" name="dwellTimeLineEdit">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Expanding">

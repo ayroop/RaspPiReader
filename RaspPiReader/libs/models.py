@@ -136,16 +136,21 @@ class Product(Base):
     serial_number = Column(String(250), unique=True, nullable=False)
     added_by = Column(String, nullable=False)  # Stores the username of the user who added the product
 
-# New model for default programs – this table is in BCNF since each program is uniquely identified by (username, program_number)
 class DefaultProgram(Base):
     __tablename__ = 'default_programs'
     id = Column(Integer, primary_key=True)
     username = Column(String, nullable=False, index=True)
     program_number = Column(Integer, nullable=False)  # Values: 1,2,3,4
+    order_number = Column(String, nullable=False)
+    cycle_id = Column(String, nullable=False)
+    quantity = Column(String, nullable=False)
+    size = Column(String, nullable=False)
+    cycle_location = Column(String, nullable=False)
     dwell_time = Column(String, nullable=False)
-    set_core_temp = Column(String, nullable=False)
-    cool_down_ramp = Column(String, nullable=False)
-    set_temp_ramp = Column(String, nullable=False)
+    cool_down_temp = Column(String, nullable=False)
+    core_temp_setpoint = Column(String, nullable=False)
+    temp_ramp = Column(String, nullable=False)
     set_pressure = Column(String, nullable=False)
+    maintain_vacuum = Column(String, nullable=False)
     initial_set_cure_temp = Column(String, nullable=False)
     final_set_cure_temp = Column(String, nullable=False)
