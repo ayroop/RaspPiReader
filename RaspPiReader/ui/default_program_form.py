@@ -8,7 +8,7 @@ class DefaultProgramForm(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(DefaultProgramForm, self).__init__(parent)
         self.setWindowTitle("Default Programs Management")
-        self.resize(600, 500)
+        self.resize(650, 500)
         self.db = Database("sqlite:///local_database.db")
         self.current_user = pool.get('current_user') or "Unknown"
         self.layout = QtWidgets.QVBoxLayout(self)
