@@ -20,33 +20,32 @@ from RaspPiReader.ui.one_drive_settings_form_handler import OneDriveSettingsForm
 from .plc_comm_settings_form_handler import PLCCommSettingsFormHandler
 from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormHandler
 
-# New import related with 6 bool addresses
+# New import related with 6 bool addresses and new cycle widget
 from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.configuration import config
 from RaspPiReader.ui.mainForm import MainForm
 from .boolean_status import Ui_BooleanStatusWidget
 from RaspPiReader.libs.models import BooleanStatus, PlotData
 from RaspPiReader.libs.database import Database
+from RaspPiReader.ui.new_cycle_handler import NewCycleHandler
 
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
     m, s = divmod(rem, 60)
-
     def zp(val):
         return str(val) if val >= 10 else f"0{val}"
-
     return "{0}:{1}:{2}".format(zp(h), zp(m), zp(s))
-
 
 class MainFormHandler(QtWidgets.QMainWindow):
     update_status_bar_signal = pyqtSignal(str, int, str)
-
+    
     def __init__(self, user_record=None):
         super(MainFormHandler, self).__init__()
         self.user_record = user_record
         print(f"Initializing MainFormHandler with user_record: {self.user_record}")
         self.form_obj = MainForm()
         self.form_obj.setupUi(self)
+        
         self.file_name = None
         self.folder_name = None
         self.csv_path = None
@@ -58,9 +57,9 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.start_cycle_form = pool.set('cycle_start_form', StartCycleFormHandler())
         self.showMaximized()
         self.display_username()
-        # Using for database
-        # self.display_username(user_record)
+        # (Optional) create data stacks
         self.create_stack()
+        
         self.set_connections()
         self.setup_access_controls()
         self.connect_menu_actions()
@@ -70,15 +69,20 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.add_plc_comm_menu()
         # Add Database Setting to the menu
         self.add_database_menu()
+        
         # 6 Bool Addresses status
         self.db = Database("sqlite:///local_database.db")
         self.setup_bool_status_display()
         self.setup_plot_data_display()
+        
+        # Integrate new cycle widget next to the Boolean status widget
+        self.integrate_new_cycle_widget()
+        
         # Create a timer to update status every few seconds
         self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self.update_bool_status)
         self.status_timer.start(5000)  # update every 5 seconds
-
+        
         print("MainFormHandler initialized.")
 
     def setup_bool_status_display(self):
@@ -96,7 +100,33 @@ class MainFormHandler(QtWidgets.QMainWindow):
         central_layout = self.centralWidget().layout()
         if central_layout is None:
             central_layout = QtWidgets.QVBoxLayout(self.centralWidget())
+        # Add the boolean status widget container to the layout (it will be reinserted with the new widget)
         central_layout.addWidget(self.boolStatusWidgetContainer)
+        
+    def integrate_new_cycle_widget(self):
+        # Create an instance of the new cycle widget
+        self.new_cycle_handler = NewCycleHandler(self)
+        
+        # Get the central layout of the QMainWindow (set up by MainForm.setupUi)
+        central_layout = self.centralWidget().layout()
+        if central_layout is None:
+            central_layout = QtWidgets.QVBoxLayout(self.centralWidget())
+        
+        # Remove the already added bool status widget container from the central layout
+        central_layout.removeWidget(self.boolStatusWidgetContainer)
+        
+        # Create a new container with a horizontal layout
+        container = QtWidgets.QWidget(self.centralWidget())
+        h_layout = QtWidgets.QHBoxLayout(container)
+        h_layout.setContentsMargins(0, 0, 0, 0)
+        # Add the Boolean status container on the left
+        h_layout.addWidget(self.boolStatusWidgetContainer)
+        # Add the new cycle widget on the right
+        h_layout.addWidget(self.new_cycle_handler)
+        
+        # Add the container to the central layout
+        central_layout.addWidget(container)
+        container.show()
 
     def update_bool_status(self):
         # Ensure dataReader is started.
@@ -124,7 +154,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
     def add_one_drive_menu(self):
         one_drive_action = QAction("OneDrive Settings", self)
         one_drive_action.triggered.connect(self.show_onedrive_settings)
-        # Add the action to the default menubar
         self.menuBar().addAction(one_drive_action)
 
     def show_onedrive_settings(self):
@@ -162,7 +191,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
             "search": "actionSearch",
             "user_mgmt_page": "actionUserManagement",
         }
-
         for perm_key, action_name in permissions.items():
             if not getattr(self.user_record, perm_key, False):
                 if hasattr(self.form_obj, action_name):
@@ -186,7 +214,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             self.settings_handler.show()
         else:
             QMessageBox.critical(self, "Access Denied", "You don't have permission to access Settings.")
-        
+
     def set_connections(self):
         self.actionExit.triggered.connect(self.close)
         self.actionCycle_Info.triggered.connect(self._show_cycle_info)
@@ -201,7 +229,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.actionPrint_results.triggered.connect(self.open_pdf)
         self.cycle_timer.timeout.connect(self.cycle_timer_update)
         self.update_status_bar_signal.connect(self.update_status_bar)
-
         if not hasattr(self, 'userMgmtAction'):
             self.userMgmtAction = QAction("User Management", self)
             self.userMgmtAction.triggered.connect(self.open_user_management)
