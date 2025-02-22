@@ -1,4 +1,5 @@
 from PyQt5 import QtWidgets
+from RaspPiReader import pool
 from RaspPiReader.ui.new_cycle import Ui_NewCycle
 
 class NewCycleHandler(QtWidgets.QWidget):
@@ -11,8 +12,18 @@ class NewCycleHandler(QtWidgets.QWidget):
 
     def start_cycle(self):
         print("Start Cycle button clicked")
-        # Add your start cycle logic here
+        # Get the main form instance from the pool 
+        main_form = pool.get('main_form')
+        if main_form:
+            main_form._start()  # call shared start cycle method
+        else:
+            print("Main form not found. Cannot start cycle.")
 
     def stop_cycle(self):
         print("Stop Cycle button clicked")
-        # Add your stop cycle logic here
+        # Get the main form instance from the pool 
+        main_form = pool.get('main_form')
+        if main_form and hasattr(main_form, '_stop'):
+            main_form._stop()  # call shared stop cycle method
+        else:
+            print("Main form not found, or stop method not available. Cannot stop cycle.")
