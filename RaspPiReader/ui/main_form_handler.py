@@ -33,6 +33,8 @@ from RaspPiReader.ui.new_cycle_handler import NewCycleHandler
 from RaspPiReader.ui.product_management_form import ProductManagementForm
 # Add default program settings
 from RaspPiReader.ui.default_program_form import DefaultProgramForm
+# New Cycle logic
+from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
     m, s = divmod(rem, 60)
@@ -91,6 +93,11 @@ class MainFormHandler(QtWidgets.QMainWindow):
         # Add default program settings
         self.add_default_program_menu()
         print("MainFormHandler initialized.")
+    
+    def new_cycle_start(self):
+        self.workOrderForm = WorkOrderFormHandler()
+        self.workOrderForm.show()
+
     def add_default_program_menu(self):
         menubar = self.menuBar()
         defaultProgMenu = menubar.addMenu("Default Programs")
