@@ -14,16 +14,16 @@ class NewCycleHandler(QtWidgets.QWidget):
         print("Start Cycle button clicked")
         # Get the main form instance from the pool 
         main_form = pool.get('main_form')
-        if main_form:
-            main_form._start()  # call shared start cycle method
+        if main_form and hasattr(main_form, 'new_cycle_start'):
+            main_form.new_cycle_start()  # call the new workflow method
         else:
-            print("Main form not found. Cannot start cycle.")
+            print("Main form not found or new_cycle_start() not available. Cannot start new cycle.")
 
     def stop_cycle(self):
         print("Stop Cycle button clicked")
         # Get the main form instance from the pool 
         main_form = pool.get('main_form')
         if main_form and hasattr(main_form, '_stop'):
-            main_form._stop()  # call shared stop cycle method
+            main_form._stop()  # call the shared stop cycle method
         else:
             print("Main form not found, or stop method not available. Cannot stop cycle.")
