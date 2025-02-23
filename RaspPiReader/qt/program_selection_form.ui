@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>ProgramSelectionForm</class>
+ <widget class="QWidget" name="ProgramSelectionForm">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>500</width>
+    <height>300</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Select Program</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+    <!-- Program Selection -->
+    <item>
+     <layout class="QFormLayout" name="formLayout">
+      <item row="0" column="0">
+       <widget class="QLabel" name="programLabel">
+        <property name="text">
+         <string>Select Program:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QComboBox" name="programComboBox">
+        <item>
+         <property name="text">
+          <string>Program 1</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Program 2</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Program 3</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Program 4</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <!-- Program Info Display -->
+      <item row="1" column="0" colspan="2">
+       <widget class="QLabel" name="programInfoLabel">
+        <property name="text">
+         <string>Program information will be displayed here.</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignLeft|Qt::AlignTop</set>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-size: 12pt; color: #333333; border: 1px solid #CCCCCC; padding: 5px; background-color: #F9F9F9;</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+    <!-- Buttons -->
+    <item>
+     <layout class="QHBoxLayout" name="buttonLayout">
+      <item>
+       <widget class="QPushButton" name="startCycleButton">
+        <property name="text">
+         <string>Start Cycle</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">background-color: #28a745; color: white; padding: 10px; border: none; border-radius: 4px;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="cancelButton">
+        <property name="text">
+         <string>Cancel</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">background-color: #dc3545; color: white; padding: 10px; border: none; border-radius: 4px;</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
