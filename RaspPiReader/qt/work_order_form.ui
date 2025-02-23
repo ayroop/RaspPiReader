@@ -7,7 +7,7 @@
         <x>0</x>
         <y>0</y>
         <width>400</width>
-        <height>200</height>
+        <height>250</height>
       </rect>
     </property>
     <property name="windowTitle">
@@ -39,6 +39,17 @@
                 <number>250</number>
               </property>
             </widget>
+          </item>
+          <!-- New row for Serial Numbers -->
+          <item row="2" column="0">
+            <widget class="QLabel" name="serialNumbersLabel">
+              <property name="text">
+                <string>Serial Numbers:</string>
+              </property>
+            </widget>
+          </item>
+          <item row="2" column="1">
+            <widget class="QLineEdit" name="serialNumbersLineEdit"/>
           </item>
         </layout>
       </item>

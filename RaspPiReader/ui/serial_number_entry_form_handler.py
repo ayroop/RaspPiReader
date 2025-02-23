@@ -1,20 +1,21 @@
 from PyQt5 import QtWidgets
-from RaspPiReader.ui.serial_number_entry_form import Ui_SerialNumberEntryForm  # generated from serial_number_entry_form.ui
+from RaspPiReader.ui.serial_number_entry_form import Ui_SerialNumberEntryForm
 from RaspPiReader.ui.program_selection_form_handler import ProgramSelectionFormHandler
-from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import Product
 from RaspPiReader.ui.duplicate_password_dialog import DuplicatePasswordDialog
+from RaspPiReader.libs.database import Database
 
 class SerialNumberEntryFormHandler(QtWidgets.QWidget):
     def __init__(self, work_order, quantity, parent=None):
         super(SerialNumberEntryFormHandler, self).__init__(parent)
-        self.ui = Ui_SerialNumberEntryForm()  # note: no module prefix here
+        self.ui = Ui_SerialNumberEntryForm()
         self.ui.setupUi(self)
         self.work_order = work_order
         self.quantity = quantity
-        # Set the table to have "quantity" rows
+        # Set the table row count to the product quantity
         self.ui.serialTableWidget.setRowCount(quantity)
+        # Connect Excel import, search, next, and cancel buttons.
         self.ui.importExcelButton.clicked.connect(self.import_from_excel)
+        self.ui.searchButton.clicked.connect(self.search_serial)
         self.ui.nextButton.clicked.connect(self.next)
         self.ui.cancelButton.clicked.connect(self.close)
         self.db = Database("sqlite:///local_database.db")
@@ -24,52 +25,63 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
             self, "Import Serial Numbers", "", "Excel Files (*.xlsx *.xls)"
         )
         if file_name:
-            import pandas as pd  # ensure pandas is imported
-            df = pd.read_excel(file_name)
+            import pandas as pd
+            df = pd.read_excel(file_name, header=None)
             if len(df) != self.quantity:
                 QtWidgets.QMessageBox.warning(
                     self, "Warning",
-                    f"Expected {self.quantity} serial numbers, but found {len(df)}."
+                    f"Expected {self.quantity} serial numbers, but found {len(df)} in the file."
                 )
                 return
             for i in range(self.quantity):
                 serial_val = str(df.iloc[i, 0]).strip()
                 self.ui.serialTableWidget.setItem(i, 0, QtWidgets.QTableWidgetItem(serial_val))
     
+    def search_serial(self):
+        sn = self.ui.searchLineEdit.text().strip()
+        if not sn:
+            QtWidgets.QMessageBox.warning(self, "Warning", "Please enter a serial number to search.")
+            return
+        # Assume the Database class provides a search_serial_number(sn) method.
+        result = self.db.search_serial_number(sn)
+        if result:
+            QtWidgets.QMessageBox.information(self, "Search Result", f"Serial {sn} found in the database.")
+        else:
+            QtWidgets.QMessageBox.information(self, "Search Result", f"Serial {sn} not found.")
+    
     def next(self):
         serial_numbers = []
-        # Read each row from the table and verify entries.
-        for i in range(self.quantity):
-            item = self.ui.serialTableWidget.item(i, 0)
+        # Collect and validate serial numbers from each row in serialTableWidget
+        for row in range(self.ui.serialTableWidget.rowCount()):
+            item = self.ui.serialTableWidget.item(row, 0)
             if item:
-                val = item.text().strip()
-                if not val:
+                sn = item.text().strip()
+                if not sn:
                     QtWidgets.QMessageBox.warning(self, "Warning", "All serial fields must be filled.")
                     return
-                if val in serial_numbers:
-                    QtWidgets.QMessageBox.warning(self, "Warning", f"Duplicate serial number entered: {val}")
+                if sn in serial_numbers:
+                    QtWidgets.QMessageBox.warning(self, "Warning", f"Duplicate serial number entered: {sn}")
                     return
-                serial_numbers.append(val)
+                serial_numbers.append(sn)
             else:
                 QtWidgets.QMessageBox.warning(self, "Warning", "All serial fields must be filled.")
                 return
         
-        # Check against the database for duplicate serial numbers in Product table.
+        # Check for duplicate serials already in the database.
         db_duplicates = []
         for sn in serial_numbers:
-            existing = self.db.session.query(Product).filter_by(serial_number=sn).first()
-            if existing:
+            if self.db.check_duplicate_serial(sn):
                 db_duplicates.append(sn)
-        
         if db_duplicates:
             dlg = DuplicatePasswordDialog(db_duplicates)
             if dlg.exec_() == QtWidgets.QDialog.Accepted:
-                # Append an "R" to duplicate serial numbers if authorized.
-                serial_numbers = [sn + "R" if sn in db_duplicates else sn for sn in serial_numbers]
+                # For duplicates found in the DB, append an "R"
+                serial_numbers = [f"{sn}R" if sn in db_duplicates else sn for sn in serial_numbers]
             else:
-                return  # Do not proceed if not authorized.
+                # If password check not authorized, do not proceed.
+                return
         
-        # Proceed to program selection form.
+        # Proceed to Program Selection form passing work order and the serial numbers list.
         self.program_form = ProgramSelectionFormHandler(self.work_order, serial_numbers)
         self.program_form.show()
         self.close()

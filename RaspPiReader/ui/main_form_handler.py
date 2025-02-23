@@ -29,8 +29,6 @@ from RaspPiReader.libs.models import BooleanStatus, PlotData
 from RaspPiReader.libs.database import Database
 from RaspPiReader.ui.new_cycle_handler import NewCycleHandler
 
-# Add Serial number for products
-from RaspPiReader.ui.product_management_form import ProductManagementForm
 # Add default program settings
 from RaspPiReader.ui.default_program_form import DefaultProgramForm
 # New Cycle logic
@@ -89,8 +87,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.status_timer.timeout.connect(self.update_bool_status)
         self.status_timer.start(5000)  # update every 5 seconds
         # Setup main form for products serial numbers
-        self.product_serial_number()
-        # Add default program settings
         self.add_default_program_menu()
         print("MainFormHandler initialized.")
     
@@ -109,15 +105,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
         dlg = DefaultProgramForm(self)
         dlg.exec_()
     
-    def product_serial_number(self):
-        menubar = self.menuBar()
-        serialMenu = menubar.addMenu("Serial Number Management")
-        manageAction = QtWidgets.QAction("Manage Serial Numbers", self)
-        manageAction.triggered.connect(self.open_product_management)
-        serialMenu.addAction(manageAction)
-    def open_product_management(self):
-        dlg = ProductManagementForm(self)
-        dlg.exec_()
     def setup_bool_status_display(self):
         self.boolStatusWidgetContainer = QtWidgets.QWidget()
         self.boolStatusWidget = Ui_BooleanStatusWidget()

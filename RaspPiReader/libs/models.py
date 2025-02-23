@@ -83,21 +83,22 @@ class ChannelConfigSettings(Base):
 class CycleData(Base):
     __tablename__ = 'cycle_data'
     id = Column(Integer, primary_key=True)
-    order_id = Column(String, nullable=False)
-    cycle_id = Column(String, nullable=False)
-    quantity = Column(String, nullable=False)
-    size = Column(String, nullable=True)
-    cycle_location = Column(String, nullable=True)
-    dwell_time = Column(String, nullable=True)
-    core_temp_setpoint = Column(Float, nullable=True)
-    cool_down_temp = Column(Float, nullable=True)
-    temp_ramp = Column(Float, nullable=True)
-    set_pressure = Column(Float, nullable=True)
-    maintain_vacuum = Column(Float, nullable=True)
-    initial_set_cure_temp = Column(Float, nullable=True)
-    final_set_cure_temp = Column(Float, nullable=True)
+    order_id = Column(String)
+    cycle_id = Column(String)
+    quantity = Column(String)
+    size = Column(String)
+    cycle_location = Column(String)
+    dwell_time = Column(String)
+    cool_down_temp = Column(Float)
+    core_temp_setpoint = Column(Float)
+    temp_ramp = Column(Float)
+    set_pressure = Column(Float)
+    maintain_vacuum = Column(Float)
+    initial_set_cure_temp = Column(Float)
+    final_set_cure_temp = Column(Float)
+    # New field to store serial numbers as a comma‐separated string.
+    serial_numbers = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
-
 class DemoData(Base):
     __tablename__ = 'demo_data'
     id = Column(Integer, primary_key=True)
@@ -128,14 +129,6 @@ class PlotData(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     channel = Column(String, nullable=False)
     value = Column(Float, nullable=False)
-
-class Product(Base):
-    __tablename__ = 'products'
-    id = Column(Integer, primary_key=True)
-    name = Column(String, nullable=False)
-    serial_number = Column(String(250), unique=True, nullable=False)
-    added_by = Column(String, nullable=False)  # Stores the username of the user who added the product
-
 class DefaultProgram(Base):
     __tablename__ = 'default_programs'
     id = Column(Integer, primary_key=True)

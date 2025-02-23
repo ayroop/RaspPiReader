@@ -14,6 +14,26 @@
    <string>Enter Serial Numbers</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
+    <!-- Search Layout -->
+    <item>
+      <layout class="QHBoxLayout" name="searchLayout">
+        <item>
+          <widget class="QLineEdit" name="searchLineEdit">
+            <property name="placeholderText">
+              <string>Search Serial Number...</string>
+            </property>
+          </widget>
+        </item>
+        <item>
+          <widget class="QPushButton" name="searchButton">
+            <property name="text">
+              <string>Search</string>
+            </property>
+          </widget>
+        </item>
+      </layout>
+    </item>
+    <!-- Table Widget -->
    <item>
      <widget class="QTableWidget" name="serialTableWidget">
        <property name="columnCount">
@@ -29,6 +49,7 @@
        </property>
      </widget>
    </item>
+   <!-- Button Layout -->
    <item>
     <layout class="QHBoxLayout" name="buttonLayout">
      <item>

@@ -1,12 +1,13 @@
 from PyQt5 import QtWidgets
-from RaspPiReader.ui.work_order_form import Ui_WorkOrderForm  # auto-generated from work_order_form.ui via pyuic5
+from RaspPiReader.ui.work_order_form import Ui_WorkOrderForm
 from RaspPiReader.ui.serial_number_entry_form_handler import SerialNumberEntryFormHandler
 
 class WorkOrderFormHandler(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super(WorkOrderFormHandler, self).__init__(parent)
-        self.ui = Ui_WorkOrderForm()  # ← Use direct reference (no module prefix)
+        self.ui = Ui_WorkOrderForm()
         self.ui.setupUi(self)
+        # Ensure that the quantitySpinBox maximum is set to 250 (set in your .ui design)
         self.ui.nextButton.clicked.connect(self.next)
         self.ui.cancelButton.clicked.connect(self.close)
     
@@ -16,7 +17,11 @@ class WorkOrderFormHandler(QtWidgets.QWidget):
         if not work_order:
             QtWidgets.QMessageBox.warning(self, "Warning", "Please enter a work order number.")
             return
-        # Create and show the serial numbers entry form (pass work_order and quantity)
+        if quantity <= 0:
+            QtWidgets.QMessageBox.warning(self, "Warning", "Please enter a product quantity greater than zero.")
+            return
+        
+        # Launch Serial Number Entry form, passing the work order and quantity.
         self.serial_form = SerialNumberEntryFormHandler(work_order, quantity)
         self.serial_form.show()
         self.close()
