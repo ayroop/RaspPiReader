@@ -147,3 +147,9 @@ class DefaultProgram(Base):
     maintain_vacuum = Column(String, nullable=False)
     initial_set_cure_temp = Column(String, nullable=False)
     final_set_cure_temp = Column(String, nullable=False)
+
+class Alarm(Base):
+    __tablename__ = 'alarms'
+    id = Column(Integer, primary_key=True)
+    address = Column(String, nullable=False, unique=True)  # e.g. "100"
+    alarm_text = Column(String, nullable=False)

@@ -2,7 +2,7 @@ import logging
 from pymodbus.client.sync import ModbusSerialClient as ModbusRTUClient
 from pymodbus.client.sync import ModbusTcpClient
 from RaspPiReader import pool
-from RaspPiReader.database import Database  # Assumed import for the Database class
+from RaspPiReader.libs.database import Database
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -37,6 +37,24 @@ class PLCCommunicatorTCP:
                 logger.info("Disconnected from Modbus TCP server.")
         except Exception as e:
             logger.exception("Exception while disconnecting: %s", e)
+
+    def write_bool_address(self, address, value, unit=1):
+        """
+        Writes a Boolean value to a given address. Returns True on success.
+        """
+        if not self.client:
+            logger.error("Not connected to PLC. Cannot write.")
+            return False
+        try:
+            result = self.client.write_coil(address, bool(value), unit=unit)
+            if result.isError():
+                logger.error("Error writing to address %s", address)
+                return False
+            logger.info("Wrote %s to coil %s", value, address)
+            return True
+        except Exception as e:
+            logger.exception("Exception in write_bool_address: %s", e)
+            return False
 
     def read_holding_registers(self, unit, address, count=1):
         if not self.client:
@@ -185,3 +203,12 @@ class PLCCommunicator:
             logger.info("User saved successfully: %s", user)
         except Exception as e:
             logger.exception("Failed to save user %s: %s", user, e)
+
+# Module-level helper function accessible via import
+def write_bool_address(address, value, unit=1):
+    plc = PLCCommunicatorTCP()
+    if plc.connect():
+        success = plc.write_bool_address(address, value, unit)
+        plc.disconnect()
+        return success
+    return False

@@ -3,7 +3,7 @@ from RaspPiReader.ui.serial_number_entry_form import Ui_SerialNumberEntryForm
 from RaspPiReader.ui.program_selection_form_handler import ProgramSelectionFormHandler
 from RaspPiReader.ui.duplicate_password_dialog import DuplicatePasswordDialog
 from RaspPiReader.libs.database import Database
-
+from RaspPiReader.libs.models import CycleData
 class SerialNumberEntryFormHandler(QtWidgets.QWidget):
     def __init__(self, work_order, quantity, parent=None):
         super(SerialNumberEntryFormHandler, self).__init__(parent)
@@ -85,3 +85,29 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
         self.program_form = ProgramSelectionFormHandler(self.work_order, serial_numbers)
         self.program_form.show()
         self.close()
+class SerialNumberSearchFormHandler(QtWidgets.QWidget):
+    def __init__(self, parent=None):
+        super(SerialNumberSearchFormHandler, self).__init__(parent)
+        self.setWindowTitle("Search Serial Number")
+        self.layout = QtWidgets.QVBoxLayout(self)
+        self.searchLineEdit = QtWidgets.QLineEdit(self)
+        self.searchLineEdit.setPlaceholderText("Enter serial number to search")
+        self.layout.addWidget(self.searchLineEdit)
+        self.searchButton = QtWidgets.QPushButton("Search", self)
+        self.layout.addWidget(self.searchButton)
+        self.resultLabel = QtWidgets.QLabel("", self)
+        self.layout.addWidget(self.resultLabel)
+        self.searchButton.clicked.connect(self.search_serial)
+        self.db = Database("sqlite:///local_database.db")
+
+    def search_serial(self):
+        sn = self.searchLineEdit.text().strip()
+        if not sn:
+            QtWidgets.QMessageBox.warning(self, "Warning", "Please enter a serial number.")
+            return
+        # Query cycles whose serial_numbers field contains the serial.
+        cycle = self.db.session.query(CycleData).filter(CycleData.serial_numbers.like(f"%{sn}%")).first()
+        if cycle:
+            self.resultLabel.setText(f"Found cycle Order: {cycle.order_id}. Reports are in the reports folder.")
+        else:
+            self.resultLabel.setText("No cycle found with that serial number.")

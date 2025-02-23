@@ -3,7 +3,7 @@ from sqlalchemy.orm import sessionmaker
 from RaspPiReader.libs.models import (
     Base, User, PLCCommSettings, DatabaseSettings, OneDriveSettings,
     GeneralConfigSettings, ChannelConfigSettings, CycleData, DemoData,
-    BooleanStatus, PlotData, DefaultProgram
+    BooleanStatus, PlotData, DefaultProgram, Alarm
 )
 import datetime
 

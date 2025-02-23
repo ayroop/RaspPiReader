@@ -33,6 +33,8 @@ from RaspPiReader.ui.new_cycle_handler import NewCycleHandler
 from RaspPiReader.ui.default_program_form import DefaultProgramForm
 # New Cycle logic
 from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler
+# Add Alarm settings
+from RaspPiReader.ui.alarm_settings_form_handler import AlarmSettingsFormHandler
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
     m, s = divmod(rem, 60)
@@ -88,8 +90,22 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.status_timer.start(5000)  # update every 5 seconds
         # Setup main form for products serial numbers
         self.add_default_program_menu()
+        # Alarm Settings Menu
+        self.add_alarm_settings_menu()
         print("MainFormHandler initialized.")
     
+    def add_alarm_settings_menu(self):
+        # Create a new menu called "Alarms" if not already present.
+        menubar = self.menuBar()
+        alarms_menu = menubar.addMenu("Alarms")
+        alarm_settings_action = QAction("Manage Alarms", self)
+        alarm_settings_action.triggered.connect(self.open_alarm_settings)
+        alarms_menu.addAction(alarm_settings_action)
+    
+    def open_alarm_settings(self):
+        # Instantiate and show the Alarm Settings dialog.
+        dialog = AlarmSettingsFormHandler(self)
+        dialog.exec_()
     def new_cycle_start(self):
         self.workOrderForm = WorkOrderFormHandler()
         self.workOrderForm.show()

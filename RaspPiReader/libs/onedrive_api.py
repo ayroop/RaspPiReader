@@ -1,6 +1,5 @@
 import os
 import requests
-from requests.auth import HTTPBasicAuth
 
 class OneDriveAPI:
     def __init__(self):
@@ -23,6 +22,7 @@ class OneDriveAPI:
             self.token = response.json().get("access_token")
             return True
         else:
+            print("OneDrive authentication failed:", response.text)
             return False
 
     def check_connection(self):
