@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:/DEV/Python/PLC Integration/src1-main/src1-main/RaspPiReader-master/RaspPiReader/qt/new_cycle.ui'
+# Form implementation generated from reading ui file 'C:\DEV\Python\PLC Integration\src1-main\src1-main\RaspPiReader-master\RaspPiReader\qt\new_cycle.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -34,3 +34,13 @@ class Ui_NewCycle(object):
         self.startCycleButton.setStyleSheet(_translate("NewCycle", "background-color: green; color: white;"))
         self.stopCycleButton.setText(_translate("NewCycle", "Stop Cycle"))
         self.stopCycleButton.setStyleSheet(_translate("NewCycle", "background-color: red; color: white;"))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    NewCycle = QtWidgets.QWidget()
+    ui = Ui_NewCycle()
+    ui.setupUi(NewCycle)
+    NewCycle.show()
+    sys.exit(app.exec_())
