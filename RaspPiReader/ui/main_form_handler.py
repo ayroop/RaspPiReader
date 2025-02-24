@@ -2,7 +2,7 @@ import os
 import csv
 from datetime import datetime
 from PyQt5 import QtWidgets, uic
-from PyQt5.QtCore import QTimer, pyqtSignal
+from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction
 from colorama import Fore
@@ -35,6 +35,9 @@ from RaspPiReader.ui.default_program_form import DefaultProgramForm
 from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler
 # Add Alarm settings
 from RaspPiReader.ui.alarm_settings_form_handler import AlarmSettingsFormHandler
+# BackgroundSettingsForm
+from RaspPiReader.ui.background_settings_form import BackgroundSettingsForm
+
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
     m, s = divmod(rem, 60)
@@ -92,8 +95,48 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.add_default_program_menu()
         # Alarm Settings Menu
         self.add_alarm_settings_menu()
+        # Add Background setting
+        self.add_background_settings_menu()
+        self.load_background()
         print("MainFormHandler initialized.")
     
+    def add_background_settings_menu(self):
+    # Get the already existing File menu (assume you have one)
+        menubar = self.menuBar()
+        file_menu = None
+        for action in menubar.actions():
+            if action.text() == "File":
+                file_menu = action.menu()
+                break
+        if file_menu is None:
+            # Create File menu if it doesn't exist
+            file_menu = menubar.addMenu("File")
+        # Add "Background Settings" action next to others
+        bg_action = QAction("Background Settings", self)
+        bg_action.triggered.connect(self.open_background_settings)
+        file_menu.addAction(bg_action)
+
+    def open_background_settings(self):
+        dialog = BackgroundSettingsForm(self)
+        if dialog.exec_():
+            self.load_background()
+
+    def load_background(self):
+        # Read saved settings and set the style for the main window.
+        settings = QSettings("RaspPiHandler", "RaspPiReader")
+        color = settings.value("background/color", "")
+        image = settings.value("background/image", "")
+        style = ""
+        if color:
+            style = f"background-color: {color};"
+        elif image and os.path.exists(image):
+            # Use the image as background without forcing scaling (CSS will handle repetition/position)
+            style = f"background-image: url({image}); background-repeat: no-repeat; background-position: center;"
+        else:
+            # No background style by default
+            style = ""
+        self.setStyleSheet(style)
+
     def add_alarm_settings_menu(self):
         # Create a new menu called "Alarms" if not already present.
         menubar = self.menuBar()
