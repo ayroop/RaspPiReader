@@ -5,7 +5,6 @@ from RaspPiReader.libs.models import (
     GeneralConfigSettings, ChannelConfigSettings, CycleData, DemoData,
     BooleanStatus, PlotData, DefaultProgram, Alarm
 )
-import datetime
 
 class Database:
     def __init__(self, database_url):
@@ -70,6 +69,7 @@ class Database:
                 azure_user.settings = user.settings
                 azure_user.search = user.search
                 azure_user.user_mgmt_page = user.user_mgmt_page
+        azure_session.commit()
 
         # Sync PLC communication settings
         plc_settings = self.session.query(PLCCommSettings).first()
@@ -88,8 +88,10 @@ class Database:
                 azure_plc_settings.tcp_host = plc_settings.tcp_host
                 azure_plc_settings.tcp_port = plc_settings.tcp_port
                 azure_plc_settings.com_port = plc_settings.com_port
+        azure_session.commit()
 
-        # Sync database settings
+        # Sync other tables similarly
+        # Sync DatabaseSettings
         db_settings = self.session.query(DatabaseSettings).first()
         if db_settings:
             azure_db_settings = azure_session.query(DatabaseSettings).first()
@@ -106,8 +108,9 @@ class Database:
                 azure_db_settings.db_password = db_settings.db_password
                 azure_db_settings.db_server = db_settings.db_server
                 azure_db_settings.db_name = db_settings.db_name
+        azure_session.commit()
 
-        # Sync OneDrive settings
+        # Sync OneDriveSettings
         onedrive_settings = self.session.query(OneDriveSettings).first()
         if onedrive_settings:
             azure_onedrive_settings = azure_session.query(OneDriveSettings).first()
@@ -124,38 +127,55 @@ class Database:
                 azure_onedrive_settings.client_secret = onedrive_settings.client_secret
                 azure_onedrive_settings.tenant_id = onedrive_settings.tenant_id
                 azure_onedrive_settings.update_interval = onedrive_settings.update_interval
+        azure_session.commit()
 
-        # Sync general config settings
+        # Sync GeneralConfigSettings
         general_config_settings = self.session.query(GeneralConfigSettings).first()
         if general_config_settings:
             azure_general_config_settings = azure_session.query(GeneralConfigSettings).first()
             if not azure_general_config_settings:
                 azure_general_config_settings = GeneralConfigSettings(
-                    field1=general_config_settings.field1,
-                    field2=general_config_settings.field2
+                    key=general_config_settings.key,
+                    value=general_config_settings.value
                 )
                 azure_session.add(azure_general_config_settings)
             else:
-                azure_general_config_settings.field1 = general_config_settings.field1
-                azure_general_config_settings.field2 = general_config_settings.field2
+                azure_general_config_settings.key = general_config_settings.key
+                azure_general_config_settings.value = general_config_settings.value
+        azure_session.commit()
 
-        # Sync channel config settings
+        # Sync ChannelConfigSettings
         channel_config_settings = self.session.query(ChannelConfigSettings).all()
         for channel_config in channel_config_settings:
             azure_channel_config = azure_session.query(ChannelConfigSettings).filter_by(id=channel_config.id).first()
             if not azure_channel_config:
                 azure_channel_config = ChannelConfigSettings(
                     id=channel_config.id,
-                    channel_number=channel_config.channel_number,
-                    config_value=channel_config.config_value
+                    name=channel_config.name,
+                    address=channel_config.address,
+                    pv=channel_config.pv,
+                    sv=channel_config.sv,
+                    set_point=channel_config.set_point,
+                    low_limit=channel_config.low_limit,
+                    high_limit=channel_config.high_limit,
+                    dec_point=channel_config.dec_point,
+                    scale=channel_config.scale
                 )
                 azure_session.add(azure_channel_config)
             else:
-                azure_channel_config.channel_number = channel_config.channel_number
-                azure_channel_config.config_value = channel_config.config_value
+                azure_channel_config.name = channel_config.name
+                azure_channel_config.address = channel_config.address
+                azure_channel_config.pv = channel_config.pv
+                azure_channel_config.sv = channel_config.sv
+                azure_channel_config.set_point = channel_config.set_point
+                azure_channel_config.low_limit = channel_config.low_limit
+                azure_channel_config.high_limit = channel_config.high_limit
+                azure_channel_config.dec_point = channel_config.dec_point
+                azure_channel_config.scale = channel_config.scale
+        azure_session.commit()
 
-        # Sync cycle data
-        cycle_data = self.get_cycle_data()
+        # Sync CycleData
+        cycle_data = self.session.query(CycleData).all()
         for cycle in cycle_data:
             azure_cycle = azure_session.query(CycleData).filter_by(id=cycle.id).first()
             if not azure_cycle:
@@ -174,7 +194,6 @@ class Database:
                     maintain_vacuum=cycle.maintain_vacuum,
                     initial_set_cure_temp=cycle.initial_set_cure_temp,
                     final_set_cure_temp=cycle.final_set_cure_temp,
-                    serial_numbers=cycle.serial_numbers,
                     created_at=cycle.created_at
                 )
                 azure_session.add(azure_cycle)
@@ -192,10 +211,10 @@ class Database:
                 azure_cycle.maintain_vacuum = cycle.maintain_vacuum
                 azure_cycle.initial_set_cure_temp = cycle.initial_set_cure_temp
                 azure_cycle.final_set_cure_temp = cycle.final_set_cure_temp
-                azure_cycle.serial_numbers = cycle.serial_numbers
                 azure_cycle.created_at = cycle.created_at
+        azure_session.commit()
 
-        # Sync demo data
+        # Sync DemoData
         demo_data = self.session.query(DemoData).all()
         for demo in demo_data:
             azure_demo = azure_session.query(DemoData).filter_by(id=demo.id).first()
@@ -233,34 +252,41 @@ class Database:
                 azure_demo.column12 = demo.column12
                 azure_demo.column13 = demo.column13
                 azure_demo.column14 = demo.column14
+        azure_session.commit()
 
-        # Sync boolean status
-        boolean_status_list = self.session.query(BooleanStatus).all()
-        for status in boolean_status_list:
+        # Sync BooleanStatus
+        boolean_status = self.session.query(BooleanStatus).all()
+        for status in boolean_status:
             azure_status = azure_session.query(BooleanStatus).filter_by(id=status.id).first()
             if not azure_status:
                 azure_status = BooleanStatus(
                     id=status.id,
-                    status=status.status
+                    address=status.address,
+                    value=status.value
                 )
                 azure_session.add(azure_status)
             else:
-                azure_status.status = status.status
+                azure_status.address = status.address
+                azure_status.value = status.value
+        azure_session.commit()
 
-        # Sync plot data
-        plot_data_list = self.session.query(PlotData).all()
-        for plot in plot_data_list:
+        # Sync PlotData
+        plot_data = self.session.query(PlotData).all()
+        for plot in plot_data:
             azure_plot = azure_session.query(PlotData).filter_by(id=plot.id).first()
             if not azure_plot:
                 azure_plot = PlotData(
                     id=plot.id,
-                    plot_value=plot.plot_value
+                    timestamp=plot.timestamp,
+                    value=plot.value
                 )
                 azure_session.add(azure_plot)
             else:
-                azure_plot.plot_value = plot.plot_value
+                azure_plot.timestamp = plot.timestamp
+                azure_plot.value = plot.value
+        azure_session.commit()
 
-        # Sync default programs
+        # Sync DefaultProgram
         default_programs = self.session.query(DefaultProgram).all()
         for program in default_programs:
             azure_program = azure_session.query(DefaultProgram).filter_by(id=program.id).first()
@@ -269,7 +295,9 @@ class Database:
                     id=program.id,
                     username=program.username,
                     program_number=program.program_number,
+                    order_number=program.order_number,
                     cycle_id=program.cycle_id,
+                    quantity=program.quantity,
                     size=program.size,
                     cycle_location=program.cycle_location,
                     dwell_time=program.dwell_time,
@@ -285,7 +313,9 @@ class Database:
             else:
                 azure_program.username = program.username
                 azure_program.program_number = program.program_number
+                azure_program.order_number = program.order_number
                 azure_program.cycle_id = program.cycle_id
+                azure_program.quantity = program.quantity
                 azure_program.size = program.size
                 azure_program.cycle_location = program.cycle_location
                 azure_program.dwell_time = program.dwell_time
@@ -296,5 +326,20 @@ class Database:
                 azure_program.maintain_vacuum = program.maintain_vacuum
                 azure_program.initial_set_cure_temp = program.initial_set_cure_temp
                 azure_program.final_set_cure_temp = program.final_set_cure_temp
+        azure_session.commit()
 
+        # Sync Alarm
+        alarms = self.session.query(Alarm).all()
+        for alarm in alarms:
+            azure_alarm = azure_session.query(Alarm).filter_by(id=alarm.id).first()
+            if not azure_alarm:
+                azure_alarm = Alarm(
+                    id=alarm.id,
+                    address=alarm.address,
+                    alarm_text=alarm.alarm_text
+                )
+                azure_session.add(azure_alarm)
+            else:
+                azure_alarm.address = alarm.address
+                azure_alarm.alarm_text = alarm.alarm_text
         azure_session.commit()

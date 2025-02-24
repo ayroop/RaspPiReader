@@ -7,6 +7,7 @@ from RaspPiReader.libs.plc_communication import write_bool_address
 from RaspPiReader.libs.onedrive_api import OneDriveAPI
 from RaspPiReader import pool
 from RaspPiReader.libs.database import Database
+from RaspPiReader.libs.models import Alarm
 
 def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_values={}, 
                    reports_folder="reports", template_file="RaspPiReader/ui/result_template.html"):
@@ -37,7 +38,7 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     # Load alarm texts from the database (if defined) or use fallback mapping.
     db = Database("sqlite:///local_database.db")
     alarm_mapping = {}
-    db_alarms = db.session.query(db.session.query(db.session.bind.class_.Alarm).subquery()).all()
+    db_alarms = db.session.query(Alarm).all()
     # If no alarms are in the DB, use fallback hard-coded mapping:
     if not db_alarms:
         alarm_mapping = {
@@ -51,8 +52,7 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
             "107": "Flow Low Alarm",
         }
     else:
-        # For each alarm in the DB, use its string address and text.
-        for alarm in db.session.query(db.session.bind.class_.Alarm).all():
+        for alarm in db_alarms:
             alarm_mapping[str(alarm.address)] = alarm.alarm_text
 
     active_alarms = []
