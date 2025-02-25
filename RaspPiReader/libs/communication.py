@@ -1,6 +1,8 @@
 import serial
 import logging
-from pymodbus.client.sync import ModbusSerialClient as ModbusClient
+
+# Import both clients so we can choose based on configuration
+from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient
 
 from RaspPiReader import pool
 from RaspPiReader.ui.setting_form_handler import READ_HOLDING_REGISTERS, READ_INPUT_REGISTERS
@@ -10,45 +12,63 @@ logger.setLevel(logging.DEBUG)
 
 class DataReader:
     def start(self):
-        port = pool.config('port')
-        baudrate = pool.config('baudrate', int, 9600)      # default baudrate 9600
-        bytesize = pool.config('databits', int, 8)         # default databits: 8
+        # Determine communication mode: TCP or RS485
+        comm_mode = pool.config('comm_mode', str, 'RS485').upper()
 
-        # Use default parity "N" if not set
-        parity_config = pool.config('parity', str, "N")
-        parity = None
-        for key, value in serial.PARITY_NAMES.items():
-            if value == parity_config:
-                parity = key
-                break
-        if parity is None:
-            parity = "N"
-
-        stopbits = pool.config('stopbits', float, 1)  # default stopbits: 1
-        if stopbits % 1 == 0:
-            stopbits = int(stopbits)
-
-        self.client = ModbusClient(method='rtu',
-                                   port=port,
-                                   baudrate=baudrate,
-                                   bytesize=bytesize,
-                                   parity=parity,
-                                   stopbits=stopbits,
-                                   timeout=0.1)
-
-        if self.client.connect():
-            logger.info("Connected to MODBUS device on port %s", port)
+        if comm_mode == "TCP":
+            # For TCP, use host and port configuration
+            host = pool.config('host')
+            port = pool.config('port')
+            if host is None or port is None:
+                logger.error("TCP settings missing: 'host' and/or 'port' are not configured.")
+                return
+            self.client = ModbusTcpClient(host=host, port=port, timeout=0.1)
+            if self.client.connect():
+                logger.info("Connected to MODBUS TCP device at %s:%s", host, port)
+            else:
+                logger.error("Failed to connect to MODBUS TCP device at %s:%s", host, port)
         else:
-            logger.error("Failed to connect to MODBUS device on port %s", port)
+            # Assume RS485 mode
+            port = pool.config('port')
+            baudrate = pool.config('baudrate', int, 9600)  # default baudrate 9600
+            bytesize = pool.config('databits', int, 8)     # default databits: 8
 
+            # Use default parity "N" if not set
+            parity_config = pool.config('parity', str, "N")
+            parity = None
+            for key, value in serial.PARITY_NAMES.items():
+                if value.upper() == parity_config.upper():
+                    parity = key
+                    break
+            if parity is None:
+                parity = "N"
+
+            stopbits = pool.config('stopbits', float, 1)  # default stopbits: 1
+            if stopbits % 1 == 0:
+                stopbits = int(stopbits)
+
+            self.client = ModbusSerialClient(method='rtu',
+                                             port=port,
+                                             baudrate=baudrate,
+                                             bytesize=bytesize,
+                                             parity=parity,
+                                             stopbits=stopbits,
+                                             timeout=0.1)
+
+            if self.client.connect():
+                logger.info("Connected to MODBUS RTU device on port %s", port)
+            else:
+                logger.error("Failed to connect to MODBUS RTU device on port %s", port)
+
+        # Determine register read method based on configuration
         read_type = pool.config('register_read_type')
         if read_type == READ_HOLDING_REGISTERS:
             self.read_method = self._read_holding_registers
         elif read_type == READ_INPUT_REGISTERS:
             self.read_method = self._read_input_registers
         else:
-            logging.error(f"Invalid register read type: {read_type}")
-            return
+            logger.error("Invalid register read type: %s", read_type)
+            self.read_method = None
 
     def stop(self):
         try:
@@ -101,6 +121,9 @@ class DataReader:
             return None
 
     def readData(self, dev, addr):
+        if self.read_method is None:
+            logger.error("No valid read method configured.")
+            return None
         return self.read_method(dev, addr)
 
     def writeData(self, dev, addr, data):
