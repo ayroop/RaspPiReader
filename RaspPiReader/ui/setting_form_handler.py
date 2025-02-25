@@ -12,11 +12,12 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QErrorMessage,
 )
+from PyQt5 import QtWidgets
 from RaspPiReader import pool
 from .color_label import ColorLabel
 from .settingForm import Ui_SettingForm as SettingForm
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import GeneralConfigSettings, ChannelConfigSettings
+from RaspPiReader.libs.models import GeneralConfigSettings, ChannelConfigSettings, BooleanAddress
 
 CHANNEL_COUNT = 14
 READ_INPUT_REGISTERS = "Read Input Registers"
@@ -30,22 +31,64 @@ class SettingFormHandler(QMainWindow):
         self.form_obj = SettingForm()
         self.form_obj.setupUi(self)
         self.db = Database("sqlite:///local_database.db")
-        # Ensure database tables exist
-        self.db.create_tables()
         self.settings = QSettings('RaspPiHandler', 'RaspPiModbusReader')
         self.set_connections()
         self.close_prompt = True
         self.setWindowModality(Qt.ApplicationModal)
         self.showMaximized()
+        # Add new tab for Boolean addresses settings
+        self.add_boolean_addresses_tab()
         self.show()
 
+    def add_boolean_addresses_tab(self):
+        # Import configuration
+        from RaspPiReader.libs.configuration import config
+        boolean_tab = self.create_boolean_tab(config)
+        self.form_obj.tabWidget.addTab(boolean_tab, "Boolean Addresses")
+
+    def create_boolean_tab(self, config):
+        # Create a new widget as tab for Boolean Address settings
+        boolean_tab = QtWidgets.QWidget()
+        boolean_tab.setObjectName("booleanTab")
+        boolean_layout = QtWidgets.QVBoxLayout(boolean_tab)
+        boolean_layout.setObjectName("booleanLayout")
+        
+        self.boolTable = QtWidgets.QTableWidget(boolean_tab)
+        # Attempt to load existing BooleanAddress entries from the database; fall back on config defaults if none exist.
+        boolean_entries = self.db.session.query(BooleanAddress).all()
+        if boolean_entries:
+            rowCount = len(boolean_entries)
+        else:
+            rowCount = len(config.bool_addresses)
+        self.boolTable.setRowCount(rowCount)
+        self.boolTable.setColumnCount(2)
+        self.boolTable.setHorizontalHeaderLabels(["Address", "Label"])
+        
+        if boolean_entries:
+            for i, entry in enumerate(boolean_entries):
+                addr_item = QtWidgets.QTableWidgetItem(str(entry.address))
+                label_item = QtWidgets.QTableWidgetItem(entry.label)
+                self.boolTable.setItem(i, 0, addr_item)
+                self.boolTable.setItem(i, 1, label_item)
+        else:
+            for i, addr in enumerate(config.bool_addresses):
+                addr_item = QtWidgets.QTableWidgetItem(str(addr))
+                label_item = QtWidgets.QTableWidgetItem(f"Bool Addr {addr}")
+                self.boolTable.setItem(i, 0, addr_item)
+                self.boolTable.setItem(i, 1, label_item)
+        
+        boolean_layout.addWidget(self.boolTable)
+        return boolean_tab
+
     def set_connections(self):
-        self.form_obj.buttonSave.clicked.connect(self.save_and_close)
-        self.form_obj.buttonCancel.clicked.connect(self.close)
+        if hasattr(self.form_obj, "buttonSave"):
+            self.form_obj.buttonSave.clicked.connect(self.save_and_close)
+        if hasattr(self.form_obj, "buttonCancel"):
+            self.form_obj.buttonCancel.clicked.connect(self.close)
 
     def save_settings(self):
         try:
-            # Retrieve general settings from UI (using defaults where needed)
+            # Retrieve general settings from the UI (using get_val, with defaults)
             baudrate_val = self.get_val("baudrateLineEdit") or "9600"
             parity_val = self.get_val("parityLineEdit") or "N"
             databits_val = self.get_val("databitsLineEdit") or "8"
@@ -141,12 +184,11 @@ class SettingFormHandler(QMainWindow):
                 if not channel_settings:
                     channel_settings = ChannelConfigSettings(id=ch)
                     self.db.session.add(channel_settings)
-                # Loop over each field key; construct widget name and update attribute.
                 for prefix, (attribute, default_val) in channel_fields.items():
                     widget_name = f"{prefix}{ch}"
                     if hasattr(self.form_obj, widget_name):
                         value = self.get_val(widget_name)
-                        if prefix == "checkScale" or prefix == "active":
+                        if prefix in ["checkScale", "active"]:
                             try:
                                 value = bool(int(value))
                             except Exception:
@@ -155,6 +197,24 @@ class SettingFormHandler(QMainWindow):
                         value = default_val
                     setattr(channel_settings, attribute, value)
             self.db.session.commit()
+
+            # Save Boolean Address settings to the database.
+            numRows = self.boolTable.rowCount()
+            # Remove existing BooleanAddress entries.
+            self.db.session.query(BooleanAddress).delete()
+            for row in range(numRows):
+                addr_item = self.boolTable.item(row, 0)
+                label_item = self.boolTable.item(row, 1)
+                if addr_item and label_item:
+                    try:
+                        address = int(addr_item.text())
+                    except ValueError:
+                        address = 0
+                    label = label_item.text().strip()
+                    new_entry = BooleanAddress(address=address, label=label)
+                    self.db.session.add(new_entry)
+            self.db.session.commit()
+
             logging.info("Settings saved successfully.")
             self.write_to_device()
         except Exception as e:
@@ -230,7 +290,7 @@ class SettingFormHandler(QMainWindow):
                     self.set_val("panelTimeIntervalLineEdit", 1.0)
                 if hasattr(self.form_obj, "accurateDataTimeLineEdit"):
                     self.set_val("accurateDataTimeLineEdit", 1.0)
-            # Load dynamic channel settings
+            # Load dynamic channel settings.
             for ch in range(1, CHANNEL_COUNT + 1):
                 channel_settings = self.db.session.query(ChannelConfigSettings).filter_by(id=ch).first()
                 if channel_settings:
@@ -337,7 +397,7 @@ class SettingFormHandler(QMainWindow):
         except Exception as e:
             logging.error(f"Failed to start data reader or it is already started: {e}")
         for ch in range(CHANNEL_COUNT):
-            # Example: use 'active' flag if defined in pool config (adjust as needed)
+            # Example: if an 'active' flag exists in the configuration.
             if not pool.config("active" + str(ch + 1), bool):
                 continue
             try:

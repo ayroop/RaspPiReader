@@ -153,3 +153,9 @@ class Alarm(Base):
     id = Column(Integer, primary_key=True)
     address = Column(String, nullable=False, unique=True)  # e.g. "100"
     alarm_text = Column(String, nullable=False)
+
+class BooleanAddress(Base):
+    __tablename__ = 'boolean_addresses'
+    id = Column(Integer, primary_key=True)
+    address = Column(Integer, nullable=False)
+    label = Column(String, nullable=False)
