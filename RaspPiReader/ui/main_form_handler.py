@@ -96,6 +96,26 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.add_default_program_menu()
         # Alarm Settings Menu
         self.add_alarm_settings_menu()
+        # Fix menu hover styles with targeted CSS
+        menuStyle = """
+            /* Only target menu items, not other widgets */
+            QMenu::item:selected {
+                background-color: #0078d7;
+                color: white;
+                /* Fix text position shifting */
+                padding-left: 10px;
+                padding-top: 4px;
+                padding-bottom: 4px;
+            }
+            
+            QMenuBar::item:selected {
+                background-color: #0078d7;
+                color: white;
+            }
+        """
+        
+        # Apply this style only to the menubar and its menus
+        self.menubar.setStyleSheet(menuStyle)
         # Add Background setting
         self.add_background_settings_menu()
         self.load_background()
