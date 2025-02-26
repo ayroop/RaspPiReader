@@ -326,6 +326,8 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.actionStart.triggered.connect(self._start)
         self.actionStart.triggered.connect(lambda: self.actionPlot_preview.setEnabled(False))
         self.actionStop.triggered.connect(self._stop)
+        self.actionSync_GDrive.triggered.connect(self._sync_gdrive)
+        self.actionTest_GDrive.triggered.connect(self.test_gdrive_connection)
         self.actionPlot_preview.triggered.connect(self.show_plot_preview)
         self.actionPrint_results.triggered.connect(self.open_pdf)
         self.cycle_timer.timeout.connect(self.cycle_timer_update)

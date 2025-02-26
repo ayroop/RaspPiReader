@@ -927,6 +927,88 @@ class MainForm():
         parent.gridLayout_9.addLayout(parent.horizontalLayout_6, 0, 0, 1, 1)
         parent.gridLayout_11.addWidget(parent.mainPlotGroupBox, 2, 0, 1, 1)
         parent.setCentralWidget(parent.centralwidget)
+
+        parent.actionSetting = QtWidgets.QAction(parent)
+
+        parent.actionSetting.setObjectName("actionSetting")
+
+        parent.actionExit = QtWidgets.QAction(parent)
+
+        parent.actionExit.setObjectName("actionExit")
+
+        parent.actionStart = QtWidgets.QAction(parent)
+
+        parent.actionStart.setObjectName("actionStart")
+
+        parent.actionStop = QtWidgets.QAction(parent)
+
+        parent.actionStop.setObjectName("actionStop")
+
+        parent.actionPlot_preview = QtWidgets.QAction(parent)
+
+        parent.actionPlot_preview.setObjectName("actionPlot_preview")
+
+        parent.actionPrint_results = QtWidgets.QAction(parent)
+
+        parent.actionPrint_results.setObjectName("actionPrint_results")
+
+        parent.actionSave = QtWidgets.QAction(parent)
+
+        parent.actionSave.setObjectName("actionSave")
+
+        parent.actionSave_AS = QtWidgets.QAction(parent)
+
+        parent.actionSave_AS.setObjectName("actionSave_AS")
+
+        parent.actionPlot = QtWidgets.QAction(parent)
+
+        parent.actionPlot.setObjectName("actionPlot")
+
+        parent.actionCycle_Info = QtWidgets.QAction(parent)
+
+        parent.actionCycle_Info.setObjectName("actionCycle_Info")
+
+
+        parent.actionSetting = QtWidgets.QAction(parent)
+
+        parent.actionSetting.setObjectName("actionSetting")
+
+        parent.actionExit = QtWidgets.QAction(parent)
+
+        parent.actionExit.setObjectName("actionExit")
+
+        parent.actionStart = QtWidgets.QAction(parent)
+
+        parent.actionStart.setObjectName("actionStart")
+
+        parent.actionStop = QtWidgets.QAction(parent)
+
+        parent.actionStop.setObjectName("actionStop")
+
+        parent.actionPlot_preview = QtWidgets.QAction(parent)
+
+        parent.actionPlot_preview.setObjectName("actionPlot_preview")
+
+        parent.actionPrint_results = QtWidgets.QAction(parent)
+
+        parent.actionPrint_results.setObjectName("actionPrint_results")
+
+        parent.actionSave = QtWidgets.QAction(parent)
+
+        parent.actionSave.setObjectName("actionSave")
+
+        parent.actionSave_AS = QtWidgets.QAction(parent)
+
+        parent.actionSave_AS.setObjectName("actionSave_AS")
+
+        parent.actionPlot = QtWidgets.QAction(parent)
+
+        parent.actionPlot.setObjectName("actionPlot")
+
+        parent.actionCycle_Info = QtWidgets.QAction(parent)
+
+        parent.actionCycle_Info.setObjectName("actionCycle_Info")
+
         parent.menubar = QtWidgets.QMenuBar(parent)
         parent.menubar.setGeometry(QtCore.QRect(0, 0, 641, 18))
         parent.menubar.setObjectName("menubar")
@@ -948,37 +1030,54 @@ class MainForm():
         parent.status_spacer_lbl2.setText(5 * " ")
         parent.status_run_time = QtWidgets.QLabel(parent.statusbar)
 
+
         parent.actionSetting = QtWidgets.QAction(parent)
+
         parent.actionSetting.setObjectName("actionSetting")
+
         parent.actionExit = QtWidgets.QAction(parent)
+
         parent.actionExit.setObjectName("actionExit")
+
         parent.actionStart = QtWidgets.QAction(parent)
+
         parent.actionStart.setObjectName("actionStart")
+
         parent.actionStop = QtWidgets.QAction(parent)
+
         parent.actionStop.setObjectName("actionStop")
+
         parent.actionStop.setEnabled(False)
+
         parent.actionPlot_preview = QtWidgets.QAction(parent)
+
         parent.actionPlot_preview.setObjectName("actionPlot_preview")
+
         parent.actionPlot_preview.setEnabled(False)
-        parent.actionSync_GDrive = QtWidgets.QAction(parent)
-        parent.actionSync_GDrive.setObjectName("actionSync_GDrive")
-        parent.actionSync_GDrive.setEnabled(False)
-        parent.actionTest_GDrive = QtWidgets.QAction(parent)
-        parent.actionTest_GDrive.setObjectName("actionTest_GDrive")
-        parent.actionPrint_results = QtWidgets.QAction(parent)
+        #        parent.actionPrint_results = QtWidgets.QAction(parent)
+
         parent.actionPrint_results.setObjectName("actionPrint_results")
+
         parent.actionPrint_results.setEnabled(False)
         # parent.actionSave = QtWidgets.QAction(parent)
         # parent.actionSave.setObjectName("actionSave")
         # parent.actionSave_AS = QtWidgets.QAction(parent)
         # parent.actionSave_AS.setObjectName("actionSave_AS")
+
         parent.actionPlot = QtWidgets.QAction(parent)
+
         parent.actionPlot.setCheckable(True)
+
         parent.actionPlot.setChecked(True)
+
         parent.actionPlot.setObjectName("actionPlot")
+
         parent.actionCycle_Info = QtWidgets.QAction(parent)
+
         parent.actionCycle_Info.setCheckable(True)
+
         parent.actionCycle_Info.setChecked(True)
+
         parent.actionCycle_Info.setObjectName("actionCycle_Info")
         # parent.menuSetting.addAction(parent.actionSave)
         # parent.menuSetting.addAction(parent.actionSave_AS)
@@ -988,9 +1087,7 @@ class MainForm():
         parent.menuAction.addAction(parent.actionStart)
         parent.menuAction.addAction(parent.actionStop)
         parent.menuAction.addAction(parent.actionPlot_preview)
-        parent.menuAction.addAction(parent.actionSync_GDrive)
-        parent.menuAction.addAction(parent.actionTest_GDrive)
-        parent.menuAction.addAction(parent.actionPrint_results)
+        # parent.menuAction.addAction(        # parent.menuAction.addAction(        parent.menuAction.addAction(parent.actionPrint_results)
         parent.menuView.addAction(parent.actionCycle_Info)
         parent.menuView.addAction(parent.actionPlot)
         parent.menubar.addAction(parent.menuSetting.menuAction())
@@ -1061,17 +1158,23 @@ class MainForm():
         parent.menuSetting.setTitle(_translate("parent", "File"))
         parent.menuAction.setTitle(_translate("parent", "Action"))
         parent.menuView.setTitle(_translate("parent", "View"))
+
         parent.actionSetting.setText(_translate("parent", "Settings"))
+
         parent.actionExit.setText(_translate("parent", "Exit"))
+
         parent.actionStart.setText(_translate("parent", "Start"))
+
         parent.actionStop.setText(_translate("parent", "Stop"))
+
         parent.actionPlot_preview.setText(_translate("parent", "Export Plot"))
-        parent.actionSync_GDrive.setText(_translate("parent", "Sync GDrive"))
-        parent.actionTest_GDrive.setText(_translate("parent", "Test GDrive Connection"))
+
         parent.actionPrint_results.setText(_translate("parent", "Print Results"))
         # parent.actionSave.setText(_translate("parent", "Save"))
         # parent.actionSave_AS.setText(_translate("parent", "Save As..."))
+
         parent.actionPlot.setText(_translate("parent", "Plot"))
+
         parent.actionCycle_Info.setText(_translate("parent", "Cycle Info"))
         parent.Label_run_duration.setText(_translate("parent", "CYCLE DURATION:"))
         parent.run_duration.setText(_translate("parent", "00:00:00"))

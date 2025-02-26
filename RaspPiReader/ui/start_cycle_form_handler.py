@@ -161,17 +161,6 @@ class StartCycleFormHandler(QMainWindow):
         self.gdrive_update_thread.daemon = True
         self.gdrive_update_thread.start()
 
-    def gdrive_upload_loop(self):
-        last_time = datetime.now()
-        while self.running:
-            interval = pool.config('gdrive_update_interval', int, 60)
-            if (datetime.now() - last_time).total_seconds() >= interval:
-                main_form = pool.get('main_form')
-                if main_form:
-                    main_form._sync_gdrive(upload_pdf=False, show_message=False, delete_existing=False)
-                last_time = datetime.now()
-            sleep(3)
-
     def initiate_reader_thread(self):
         dt = pool.config('time_interval', float, 1.0)
         self.read_thread = Thread(

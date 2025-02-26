@@ -1,8 +1,11 @@
 from PyQt5 import QtWidgets
+from PyQt5.QtWidgets import QMessageBox
 from .one_drive_settings import Ui_OneDriveSettingsDialog
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import OneDriveSettings
+from RaspPiReader.libs.onedrive_api import OneDriveAPI
 from RaspPiReader import pool
+import logging
 
 class OneDriveSettingsFormHandler(QtWidgets.QDialog):
     def __init__(self, parent=None):
@@ -23,10 +26,10 @@ class OneDriveSettingsFormHandler(QtWidgets.QDialog):
             self.ui.tenantIdLineEdit.setText(settings.tenant_id)
             self.ui.updateIntervalSpinBox.setValue(settings.update_interval)
         else:
-            self.ui.clientIdLineEdit.setText('')
-            self.ui.clientSecretLineEdit.setText('')
-            self.ui.tenantIdLineEdit.setText('')
-            self.ui.updateIntervalSpinBox.setValue(60)  # Default to 60 seconds
+            self.ui.clientIdLineEdit.setText("")
+            self.ui.clientSecretLineEdit.setText("")
+            self.ui.tenantIdLineEdit.setText("")
+            self.ui.updateIntervalSpinBox.setValue(60)
 
     def save_settings(self):
         client_id = self.ui.clientIdLineEdit.text().strip()
@@ -50,6 +53,12 @@ class OneDriveSettingsFormHandler(QtWidgets.QDialog):
             self.db.session.add(settings)
         self.db.session.commit()
 
+        # Update pool config for immediate use
+        pool.set_config('onedrive_client_id', client_id)
+        pool.set_config('onedrive_client_secret', client_secret)
+        pool.set_config('onedrive_tenant_id', tenant_id)
+        pool.set_config('onedrive_update_interval', update_interval)
+        
         self.accept()
 
     def test_connection(self):
@@ -60,8 +69,9 @@ class OneDriveSettingsFormHandler(QtWidgets.QDialog):
             onedrive_api = OneDriveAPI()
             onedrive_api.authenticate(client_id, client_secret, tenant_id)
             if onedrive_api.check_connection():
-                QtWidgets.QMessageBox.information(self, "Success", "Connection successful")
+                QMessageBox.information(self, "Success", "Connected to OneDrive successfully!")
             else:
-                QtWidgets.QMessageBox.critical(self, "Error", "Connection failed")
+                QMessageBox.warning(self, "Warning", "Authentication succeeded but connection test failed.")
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "Error", str(e))
+            QMessageBox.critical(self, "Error", f"Connection test failed: {str(e)}")
+            logging.error(f"OneDrive connection test failed: {str(e)}")

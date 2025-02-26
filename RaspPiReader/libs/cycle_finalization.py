@@ -1,13 +1,16 @@
-import os
-import csv
-import datetime
-import pdfkit
 from jinja2 import Template
+import os
+import logging
+import csv
+import pdfkit
+from datetime import datetime
 from RaspPiReader.libs.plc_communication import write_bool_address
 from RaspPiReader.libs.onedrive_api import OneDriveAPI
 from RaspPiReader import pool
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import Alarm
+from RaspPiReader.libs.models import Alarm, OneDriveSettings
+
+logger = logging.getLogger(__name__)
 
 def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_values={}, 
                    reports_folder="reports", template_file="RaspPiReader/ui/result_template.html"):
@@ -21,7 +24,7 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     Parameters:
          cycle_data         : dict with keys like order_id, program, start_time, stop_time
          serial_numbers     : list of serial numbers (strings; duplicates allowed if overridden, e.g., "12345R")
-         supervisor_username: if duplicate override occurred, the supervisor’s username (string), else None.
+         supervisor_username: if duplicate override occurred, the supervisor's username (string), else None.
          alarm_values       : dict mapping alarm addresses (e.g. 100) to integer values (0 or 1)
          reports_folder     : local folder to store the reports
          template_file      : file path to the HTML template (result_template.html)
@@ -65,45 +68,137 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     # --- 3. Load the HTML template and render report ---
     if not os.path.exists(template_file):
         raise FileNotFoundError(f"Template file not found: {template_file}")
-    with open(template_file, "r", encoding="utf-8") as f:
-        template_content = f.read()
-    template = Template(template_content)
-    html_output = template.render(
-        order_id = cycle_data.get("order_id", "N/A"),
-        program = cycle_data.get("program", "N/A"),
-        start_time = cycle_data.get("start_time", "N/A"),
-        stop_time = cycle_data.get("stop_time", "N/A"),
-        supervisor_username = supervisor_username if supervisor_username else "No",
-        alarm_info = alarm_info,
-        serial_numbers = serial_numbers
-    )
-
-    # --- 4. Save PDF and CSV reports locally ---
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+    # Ensure reports folder exists
     if not os.path.exists(reports_folder):
         os.makedirs(reports_folder)
-    pdf_filename = os.path.join(reports_folder, f"CycleReport_{timestamp}.pdf")
-    csv_filename = os.path.join(reports_folder, f"CycleReport_{timestamp}.csv")
-    pdfkit.from_string(html_output, pdf_filename)
     
-    with open(csv_filename, "w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.writer(csv_file)
-        writer.writerow(["Serial Number"])
+    # Generate timestamp for filenames
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    order_id = cycle_data.order_id if hasattr(cycle_data, 'order_id') else "unknown"
+    
+    # Format report filenames
+    base_filename = f"{order_id}_{timestamp}"
+    csv_filename = f"{base_filename}.csv"
+    pdf_filename = f"{base_filename}.pdf"
+    
+    csv_path = os.path.join(reports_folder, csv_filename)
+    pdf_path = os.path.join(reports_folder, pdf_filename)
+    
+    # --- 4. Generate CSV report with serial numbers ---
+    generate_csv_report(serial_numbers, csv_path)
+    logger.info(f"CSV report generated: {csv_path}")
+    
+    # --- 5. Generate PDF report ---
+    with open(template_file, 'r', encoding='utf-8') as file:
+        template_content = file.read()
+    
+    template = Template(template_content)
+    
+    # Format cycle data for report
+    cycle_start_time = cycle_data.start_time if hasattr(cycle_data, 'start_time') else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    cycle_end_time = cycle_data.stop_time if hasattr(cycle_data, 'stop_time') else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Prepare serial number format for display (comma-separated)
+    serial_list = ", ".join(serial_numbers)
+    
+    # Format replacement values for template
+    report_data = {
+        'order_id': cycle_data.order_id if hasattr(cycle_data, 'order_id') else "N/A",
+        'cycle_id': cycle_data.cycle_id if hasattr(cycle_data, 'cycle_id') else "N/A",
+        'quantity': cycle_data.quantity if hasattr(cycle_data, 'quantity') else len(serial_numbers),
+        'size': cycle_data.size if hasattr(cycle_data, 'size') else "N/A",
+        'serial_numbers': serial_list,
+        'cycle_location': cycle_data.cycle_location if hasattr(cycle_data, 'cycle_location') else "N/A",
+        'start_time': cycle_start_time,
+        'end_time': cycle_end_time,
+        'dwell_time': cycle_data.dwell_time if hasattr(cycle_data, 'dwell_time') else "N/A",
+        'cool_down_temp': cycle_data.cool_down_temp if hasattr(cycle_data, 'cool_down_temp') else "N/A",
+        'core_temp_setpoint': cycle_data.core_temp_setpoint if hasattr(cycle_data, 'core_temp_setpoint') else "N/A",
+        'temp_ramp': cycle_data.temp_ramp if hasattr(cycle_data, 'temp_ramp') else "N/A",
+        'set_pressure': cycle_data.set_pressure if hasattr(cycle_data, 'set_pressure') else "N/A",
+        'maintain_vacuum': "Yes" if (hasattr(cycle_data, 'maintain_vacuum') and cycle_data.maintain_vacuum) else "No",
+        'initial_set_cure_temp': cycle_data.initial_set_cure_temp if hasattr(cycle_data, 'initial_set_cure_temp') else "N/A",
+        'final_set_cure_temp': cycle_data.final_set_cure_temp if hasattr(cycle_data, 'final_set_cure_temp') else "N/A",
+        'alarms': alarm_info,
+        'supervisor': supervisor_username if supervisor_username else "N/A",
+        'current_date': datetime.now().strftime("%Y-%m-%d"),
+        'generation_time': datetime.now().strftime("%H:%M:%S")
+    }
+    
+    # Render HTML content
+    html_content = template.render(**report_data)
+    
+    # Convert HTML to PDF
+    try:
+        pdfkit.from_string(html_content, pdf_path)
+        logger.info(f"PDF report generated: {pdf_path}")
+    except Exception as e:
+        logger.error(f"Failed to generate PDF report: {e}")
+        # Create a simple text file as fallback
+        with open(pdf_path.replace('.pdf', '.txt'), 'w', encoding='utf-8') as file:
+            file.write(f"Report for {order_id} (fallback due to PDF generation failure)\n")
+            for key, value in report_data.items():
+                file.write(f"{key}: {value}\n")
+    
+    # --- 6. Upload reports to OneDrive ---
+    upload_to_onedrive(csv_path, pdf_path)
+    
+    return (pdf_filename, csv_filename)
+
+def generate_csv_report(serial_numbers, filepath):
+    """Generate a CSV file with serial numbers"""
+    with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Serial Numbers'])
         for sn in serial_numbers:
             writer.writerow([sn])
 
-    # --- 5. Upload reports to OneDrive using dynamic settings ---
-    od_api = OneDriveAPI()
-    client_id = pool.config("onedrive_client_id", str, "")
-    client_secret = pool.config("onedrive_client_secret", str, "")
-    tenant_id = pool.config("onedrive_tenant_id", str, "")
-    if od_api.authenticate(client_id, client_secret, tenant_id):
-        parent_folder_id = pool.config("onedrive_folder_id", str, "DEFAULT_FOLDER_ID")
-        if od_api.upload_file(pdf_filename, folder_id=parent_folder_id):
-            print(f"Uploaded PDF: {pdf_filename}")
-        if od_api.upload_file(csv_filename, folder_id=parent_folder_id):
-            print(f"Uploaded CSV: {csv_filename}")
-    else:
-        print("OneDrive authentication failed; skipping upload.")
-
-    return pdf_filename, csv_filename
+def upload_to_onedrive(csv_path, pdf_path):
+    """Upload reports to OneDrive"""
+    try:
+        # Get OneDrive credentials from database
+        db = Database("sqlite:///local_database.db")
+        settings = db.session.query(OneDriveSettings).first()
+        
+        if not settings or not all([settings.client_id, settings.client_secret, settings.tenant_id]):
+            logger.warning("OneDrive settings not properly configured. Files saved locally only.")
+            return False
+        
+        # Initialize OneDrive API and authenticate
+        onedrive = OneDriveAPI()
+        onedrive.authenticate(settings.client_id, settings.client_secret, settings.tenant_id)
+        
+        # Create a folder for reports using current date
+        folder_name = f"PLC_Reports_{datetime.now().strftime('%Y-%m-%d')}"
+        try:
+            folder_response = onedrive.create_folder(folder_name)
+            folder_id = folder_response.get('id')
+            logger.info(f"Created OneDrive folder: {folder_name}")
+        except Exception as e:
+            logger.warning(f"Could not create OneDrive folder: {e}")
+            folder_id = None  # Upload to root if folder creation fails
+        
+        # Upload CSV file
+        if os.path.exists(csv_path):
+            try:
+                csv_response = onedrive.upload_file(csv_path, folder_id)
+                csv_id = csv_response.get('id')
+                logger.info(f"CSV uploaded to OneDrive: {os.path.basename(csv_path)}")
+            except Exception as e:
+                logger.error(f"Failed to upload CSV to OneDrive: {e}")
+        
+        # Upload PDF file
+        if os.path.exists(pdf_path):
+            try:
+                pdf_response = onedrive.upload_file(pdf_path, folder_id)
+                pdf_id = pdf_response.get('id')
+                logger.info(f"PDF uploaded to OneDrive: {os.path.basename(pdf_path)}")
+            except Exception as e:
+                logger.error(f"Failed to upload PDF to OneDrive: {e}")
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"OneDrive upload process failed: {e}")
+        return False
