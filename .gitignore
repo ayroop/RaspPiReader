@@ -27,6 +27,7 @@ Thumbs.db
 
 # Log files
 *.log
+logs
 
 # Temporary files
 *.tmp
@@ -39,5 +40,4 @@ RaspPiReader-backup/
 .qodo
 __pycache__
 scripts
-# Ignore the backup directory
-23465332  2025.02.09  19.19.51/
+local_database.db.bak

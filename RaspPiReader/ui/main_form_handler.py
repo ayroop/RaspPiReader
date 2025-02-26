@@ -37,7 +37,8 @@ from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler
 from RaspPiReader.ui.alarm_settings_form_handler import AlarmSettingsFormHandler
 # BackgroundSettingsForm
 from RaspPiReader.ui.background_settings_form import BackgroundSettingsForm
-
+# Add PLC connection status
+from RaspPiReader.libs import plc_communication
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
     m, s = divmod(rem, 60)
@@ -98,6 +99,10 @@ class MainFormHandler(QtWidgets.QMainWindow):
         # Add Background setting
         self.add_background_settings_menu()
         self.load_background()
+        # Add PLC connection status
+        self.connectionTimer = QTimer()
+        self.connectionTimer.timeout.connect(self.update_connection_status_display)
+        self.connectionTimer.start(5000)  # Update every 5 seconds
         print("MainFormHandler initialized.")
     
     def add_background_settings_menu(self):
@@ -744,3 +749,47 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.statusbar.showMessage(msg, ms_timeout)
         self.statusbar.setStyleSheet("color: {}".format(color.lower()))
         self.statusBar().setFont(QFont('Times', 12))
+    
+    def update_connection_status_display(self):
+        """Update the UI to show current connection status and type"""
+        # Check if we're in demo/simulation mode
+        is_demo = pool.config('demo', bool, False)
+        is_simulation = pool.config('plc/simulation_mode', bool, False)
+        connection_type = pool.config('plc/connection_type', str, 'rtu')
+        
+        # Create or update the connection type label in the status bar
+        if not hasattr(self, 'connectionTypeLabel'):
+            self.connectionTypeLabel = QLabel()
+            self.statusbar.addPermanentWidget(self.connectionTypeLabel)
+        
+        # Update the label with the current connection type
+        if connection_type == 'tcp':
+            host = pool.config('plc/host', str, 'Not Set')
+            port = pool.config('plc/tcp_port', int, 502)
+            self.connectionTypeLabel.setText(f"TCP: {host}:{port}")
+            self.connectionTypeLabel.setStyleSheet("color: blue;")
+        else:
+            port = pool.config('plc/port', str, 'Not Set')
+            self.connectionTypeLabel.setText(f"RTU: {port}")
+            self.connectionTypeLabel.setStyleSheet("color: green;")
+        
+        # Update status bar with enhanced information and colors
+        if is_demo:
+            self.statusbar.showMessage("DEMO MODE - No real PLC connection", 0)  # 0 = show permanently
+            self.statusbar.setStyleSheet("background-color: #FFF2CC; color: #9C6500;")
+        elif is_simulation:
+            self.statusbar.showMessage("SIMULATION MODE - No real PLC connection", 0)
+            self.statusbar.setStyleSheet("background-color: #FFF2CC; color: #9C6500;")
+        else:
+            # Only check real connection status if not in simulation mode
+            try:
+                is_connected = plc_communication.is_connected()
+                if is_connected:
+                    self.statusbar.showMessage("Connected to PLC", 5000)
+                    self.statusbar.setStyleSheet("background-color: #D5F5E3; color: #196F3D;")
+                else:
+                    self.statusbar.showMessage("Not connected to PLC - Check settings", 0)
+                    self.statusbar.setStyleSheet("background-color: #FADBD8; color: #943126;")
+            except Exception as e:
+                self.statusbar.showMessage(f"Error checking connection: {str(e)}", 0)
+                self.statusbar.setStyleSheet("background-color: #FADBD8; color: #943126;")

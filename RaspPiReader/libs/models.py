@@ -17,9 +17,14 @@ class PLCCommSettings(Base):
     __tablename__ = 'plc_comm_settings'
     id = Column(Integer, primary_key=True)
     comm_mode = Column(String, nullable=False)
-    tcp_host = Column(String, nullable=False)
-    tcp_port = Column(Integer, nullable=False)
-    com_port = Column(String, nullable=False)
+    tcp_host = Column(String, nullable=True)
+    tcp_port = Column(Integer, nullable=True)
+    com_port = Column(String, nullable=True)  # Using com_port instead of rtu_port
+    baudrate = Column(Integer, nullable=True)
+    bytesize = Column(Integer, nullable=True)
+    parity = Column(String, nullable=True)
+    stopbits = Column(Float, nullable=True)
+    timeout = Column(Float, nullable=True)
 
 class DatabaseSettings(Base):
     __tablename__ = 'database_settings'

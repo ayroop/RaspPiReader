@@ -25,3 +25,24 @@ class WorkOrderFormHandler(QtWidgets.QWidget):
         self.serial_form = SerialNumberEntryFormHandler(work_order, quantity)
         self.serial_form.show()
         self.close()
+    
+    def _start(self):
+        """Start reading data"""
+        # First make sure communication is properly set up
+        if not plc_communication.is_connected():
+            # Try to initialize PLC communication
+            success = plc_communication.initialize_plc_communication()
+            if not success:
+                QMessageBox.critical(self, "Connection Error",
+                                    "Failed to connect to PLC. Please check your connection settings.")
+                return
+
+        # Start the data reader
+        dataReader.start()
+        
+        # Update the UI to reflect the current connection type
+        self.update_connection_status_display()
+        
+        # Start the data reading timer
+        self.timer.start(1000)
+        self.running = True

@@ -26,8 +26,18 @@ class Database:
         return self.session.query(User).all()
 
     def add_cycle_data(self, cycle_data):
-        self.session.add(cycle_data)
-        self.session.commit()
+        try:
+            self.session.add(cycle_data)
+            self.session.commit()
+            return True
+        except RecursionError:
+            self.session.rollback()
+            logging.error("RecursionError in database operation - check model definitions")
+            return False
+        except Exception as e:
+            self.session.rollback()
+            logging.error(f"Error adding cycle data: {e}")
+            return False
 
     def get_cycle_data(self):
         return self.session.query(CycleData).all()

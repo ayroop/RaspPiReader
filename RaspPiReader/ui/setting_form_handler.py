@@ -364,31 +364,27 @@ class SettingFormHandler(QMainWindow):
         except Exception as e:
             logging.error(f"Error getting value for {name}: {e}")
             return ""
-
     def set_val(self, name, value):
-        if not hasattr(self.form_obj, name):
-            logging.warning(f"{name} widget not found in form.")
-            return
-        obj = getattr(self.form_obj, name)
-        try:
-            if isinstance(obj, QSpinBox):
-                obj.setValue(int(value))
-            elif isinstance(obj, QDoubleSpinBox):
-                obj.setValue(float(value))
-            elif isinstance(obj, QLineEdit):
-                obj.setText(str(value))
-            elif isinstance(obj, QComboBox):
-                obj.setCurrentText(str(value))
-            elif isinstance(obj, QLabel):
-                obj.setText(str(value))
-            elif isinstance(obj, QCheckBox):
-                obj.setChecked(bool(int(value)))
-            elif isinstance(obj, ColorLabel):
-                obj.setValue(str(value))
-            else:
-                logging.warning(f"No set method defined for widget {name} of type {type(obj)}")
-        except Exception as e:
-            logging.error(f"Error setting value for {name}: {e}")
+        """Set a value in a UI widget with proper type conversion"""
+        widget = self.findChild(QtWidgets.QWidget, name)
+        if widget:
+            try:
+                if isinstance(widget, QtWidgets.QSpinBox):
+                    widget.setValue(int(float(value)))  # Convert to int for QSpinBox
+                elif isinstance(widget, QtWidgets.QDoubleSpinBox):
+                    widget.setValue(float(value))  # Convert to float for QDoubleSpinBox
+                elif isinstance(widget, QtWidgets.QLineEdit):
+                    widget.setText(str(value))
+                elif isinstance(widget, QtWidgets.QComboBox):
+                    index = widget.findText(str(value))
+                    if index >= 0:
+                        widget.setCurrentIndex(index)
+                elif isinstance(widget, QtWidgets.QCheckBox):
+                    widget.setChecked(bool(value))
+            except Exception as e:
+                logger.error(f"Error setting {name}: {e}")
+        else:
+            logger.warning(f"Widget {name} not found in UI")
 
     def write_to_device(self):
         from RaspPiReader.libs.communication import dataReader
