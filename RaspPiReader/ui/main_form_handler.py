@@ -638,36 +638,59 @@ class MainFormHandler(QtWidgets.QMainWindow):
 
     def _sync_onedrive(self, *args, upload_csv=True, upload_pdf=True, show_message=True, delete_existing=True):
         try:
+            # Check if settings are configured
+            client_id = pool.config("onedrive_client_id")
+            client_secret = pool.config("onedrive_client_secret")
+            tenant_id = pool.config("onedrive_tenant_id")
+            
+            if not all([client_id, client_secret, tenant_id]):
+                if show_message:
+                    QMessageBox.warning(self, "OneDrive Not Configured", 
+                                    "Please configure OneDrive settings first.")
+                return False
+                
+            # Create OneDrive API instance
             onedrive_api = OneDriveAPI()
-            onedrive_api.authenticate(
-                pool.config('onedrive_client_id'),
-                pool.config('onedrive_client_secret'),
-                pool.config('onedrive_tenant_id')
-            )
+            onedrive_api.authenticate(client_id, client_secret, tenant_id)
             
+            # Create folder for reports
+            folder_name = f"PLC_Reports_{datetime.now().strftime('%Y-%m-%d')}"
+            try:
+                folder_response = onedrive_api.create_folder(folder_name)
+                folder_id = folder_response.get('id')
+                # Use logger instead of print for consistent logging
+                logger.info(f"Created OneDrive folder: {folder_name}")
+            except Exception as e:
+                logger.warning(f"Could not create OneDrive folder: {e}")
+                folder_id = None
+                
+            # Upload CSV file if requested
             if upload_csv:
-                csv_file_path = self.get_csv_file_path()
-                if os.path.exists(csv_file_path):
-                    file_resp = onedrive_api.upload_file(csv_file_path)
-                    print(f"OneDrive CSV upload successful: {datetime.now().strftime('%H:%M:%S')}")
-                    self.update_status_bar_signal.emit(f"OneDrive CSV upload successful: {datetime.now().strftime('%H:%M:%S')}", 10000, 'green')
+                csv_file_path = self.csv_path
+                if csv_file_path and os.path.exists(csv_file_path):  # Added null check
+                    file_resp = onedrive_api.upload_file(csv_file_path, folder_id)
+                    logger.info(f"CSV uploaded to OneDrive: {os.path.basename(csv_file_path)}")
+                    self.update_status_bar_signal.emit(f"CSV uploaded to OneDrive", 10000, 'green')
             
+            # Upload PDF file if requested
             if upload_pdf:
-                pdf_file_path = self.get_pdf_file_path()
-                if os.path.exists(pdf_file_path):
-                    file_resp = onedrive_api.upload_file(pdf_file_path)
-                    print(f"OneDrive PDF upload successful: {datetime.now().strftime('%H:%M:%S')}")
-                    self.update_status_bar_signal.emit(f"OneDrive PDF upload successful: {datetime.now().strftime('%H:%M:%S')}", 10000, 'green')
+                pdf_file_path = self.pdf_path
+                if pdf_file_path and os.path.exists(pdf_file_path):  # Added null check
+                    file_resp = onedrive_api.upload_file(pdf_file_path, folder_id)
+                    logger.info(f"PDF uploaded to OneDrive: {os.path.basename(pdf_file_path)}")
+                    self.update_status_bar_signal.emit(f"PDF uploaded to OneDrive", 10000, 'green')
             
             if show_message:
                 QMessageBox.information(self, "Success", "Files uploaded to OneDrive successfully")
+            return True
+            
         except Exception as e:
+            logger.error(f"OneDrive upload failed: {e}")
             if show_message:
                 QMessageBox.critical(self, "Error", f"OneDrive upload failed: {str(e)}")
             else:
-                msg = f"OneDrive update/upload failed: {datetime.now().strftime('%H:%M:%S')} - {str(e)}"
-                print(Fore.RED + msg)
-                self.update_status_bar_signal.emit(msg, 0, 'red')
+                self.update_status_bar_signal.emit(f"OneDrive upload failed: {str(e)}", 5000, 'red')
+            return False
 
     def closeEvent(self, event):
         if hasattr(self, 'start_cycle_form') \

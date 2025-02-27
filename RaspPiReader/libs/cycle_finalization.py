@@ -1,8 +1,8 @@
-from jinja2 import Template
 import os
-import logging
 import csv
+import logging
 import pdfkit
+from jinja2 import Template
 from datetime import datetime
 from RaspPiReader.libs.plc_communication import write_bool_address
 from RaspPiReader.libs.onedrive_api import OneDriveAPI
@@ -65,19 +65,14 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
             active_alarms.append(text)
     alarm_info = ", ".join(active_alarms) if active_alarms else "None"
 
-    # --- 3. Load the HTML template and render report ---
-    if not os.path.exists(template_file):
-        raise FileNotFoundError(f"Template file not found: {template_file}")
-        
-    # Ensure reports folder exists
+    # --- 3. Create reports directory if it doesn't exist ---
     if not os.path.exists(reports_folder):
         os.makedirs(reports_folder)
     
-    # Generate timestamp for filenames
+    # --- 4. Generate filenames with timestamps ---
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     order_id = cycle_data.order_id if hasattr(cycle_data, 'order_id') else "unknown"
     
-    # Format report filenames
     base_filename = f"{order_id}_{timestamp}"
     csv_filename = f"{base_filename}.csv"
     pdf_filename = f"{base_filename}.pdf"
@@ -85,63 +80,78 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     csv_path = os.path.join(reports_folder, csv_filename)
     pdf_path = os.path.join(reports_folder, pdf_filename)
     
-    # --- 4. Generate CSV report with serial numbers ---
+    # --- 5. Generate CSV report with serial numbers ---
     generate_csv_report(serial_numbers, csv_path)
     logger.info(f"CSV report generated: {csv_path}")
     
-    # --- 5. Generate PDF report ---
-    with open(template_file, 'r', encoding='utf-8') as file:
-        template_content = file.read()
-    
-    template = Template(template_content)
-    
-    # Format cycle data for report
-    cycle_start_time = cycle_data.start_time if hasattr(cycle_data, 'start_time') else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    cycle_end_time = cycle_data.stop_time if hasattr(cycle_data, 'stop_time') else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    # Prepare serial number format for display (comma-separated)
-    serial_list = ", ".join(serial_numbers)
-    
-    # Format replacement values for template
-    report_data = {
-        'order_id': cycle_data.order_id if hasattr(cycle_data, 'order_id') else "N/A",
-        'cycle_id': cycle_data.cycle_id if hasattr(cycle_data, 'cycle_id') else "N/A",
-        'quantity': cycle_data.quantity if hasattr(cycle_data, 'quantity') else len(serial_numbers),
-        'size': cycle_data.size if hasattr(cycle_data, 'size') else "N/A",
-        'serial_numbers': serial_list,
-        'cycle_location': cycle_data.cycle_location if hasattr(cycle_data, 'cycle_location') else "N/A",
-        'start_time': cycle_start_time,
-        'end_time': cycle_end_time,
-        'dwell_time': cycle_data.dwell_time if hasattr(cycle_data, 'dwell_time') else "N/A",
-        'cool_down_temp': cycle_data.cool_down_temp if hasattr(cycle_data, 'cool_down_temp') else "N/A",
-        'core_temp_setpoint': cycle_data.core_temp_setpoint if hasattr(cycle_data, 'core_temp_setpoint') else "N/A",
-        'temp_ramp': cycle_data.temp_ramp if hasattr(cycle_data, 'temp_ramp') else "N/A",
-        'set_pressure': cycle_data.set_pressure if hasattr(cycle_data, 'set_pressure') else "N/A",
-        'maintain_vacuum': "Yes" if (hasattr(cycle_data, 'maintain_vacuum') and cycle_data.maintain_vacuum) else "No",
-        'initial_set_cure_temp': cycle_data.initial_set_cure_temp if hasattr(cycle_data, 'initial_set_cure_temp') else "N/A",
-        'final_set_cure_temp': cycle_data.final_set_cure_temp if hasattr(cycle_data, 'final_set_cure_temp') else "N/A",
-        'alarms': alarm_info,
-        'supervisor': supervisor_username if supervisor_username else "N/A",
-        'current_date': datetime.now().strftime("%Y-%m-%d"),
-        'generation_time': datetime.now().strftime("%H:%M:%S")
-    }
-    
-    # Render HTML content
-    html_content = template.render(**report_data)
-    
-    # Convert HTML to PDF
+    # --- 6. Generate PDF report ---
     try:
-        pdfkit.from_string(html_content, pdf_path)
+        # Load the HTML template
+        with open(template_file, 'r', encoding='utf-8') as file:
+            template_content = file.read()
+        
+        template = Template(template_content)
+        
+        # Format cycle data for report
+        cycle_start_time = cycle_data.start_time if hasattr(cycle_data, 'start_time') else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cycle_end_time = cycle_data.stop_time if hasattr(cycle_data, 'stop_time') else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # Format serial numbers as comma-separated list
+        serial_list = ", ".join(serial_numbers)
+        
+        # Format replacement values for template
+        report_data = {
+            'data': {
+                'order_id': cycle_data.order_id if hasattr(cycle_data, 'order_id') else "N/A",
+                'cycle_id': cycle_data.cycle_id if hasattr(cycle_data, 'cycle_id') else "N/A",
+                'quantity': cycle_data.quantity if hasattr(cycle_data, 'quantity') else len(serial_numbers),
+                'size': cycle_data.size if hasattr(cycle_data, 'size') else "N/A",
+                'serial_numbers': serial_list,
+                'cycle_location': cycle_data.cycle_location if hasattr(cycle_data, 'cycle_location') else "N/A",
+                'start_time': cycle_start_time,
+                'end_time': cycle_end_time,
+                'dwell_time': cycle_data.dwell_time if hasattr(cycle_data, 'dwell_time') else "N/A",
+                'cool_down_temp': cycle_data.cool_down_temp if hasattr(cycle_data, 'cool_down_temp') else "N/A",
+                'core_temp_setpoint': cycle_data.core_temp_setpoint if hasattr(cycle_data, 'core_temp_setpoint') else "N/A",
+                'temp_ramp': cycle_data.temp_ramp if hasattr(cycle_data, 'temp_ramp') else "N/A",
+                'set_pressure': cycle_data.set_pressure if hasattr(cycle_data, 'set_pressure') else "N/A",
+                'maintain_vacuum': "Yes" if (hasattr(cycle_data, 'maintain_vacuum') and cycle_data.maintain_vacuum) else "No",
+                'initial_set_cure_temp': cycle_data.initial_set_cure_temp if hasattr(cycle_data, 'initial_set_cure_temp') else "N/A",
+                'final_set_cure_temp': cycle_data.final_set_cure_temp if hasattr(cycle_data, 'final_set_cure_temp') else "N/A",
+                'alarms': alarm_info,
+                'supervisor': supervisor_username if supervisor_username else "N/A",
+                'current_date': datetime.now().strftime("%Y-%m-%d"),
+                'generation_time': datetime.now().strftime("%H:%M:%S")
+            }
+        }
+        
+        # Render HTML content
+        html_content = template.render(**report_data)
+        
+        # Convert HTML to PDF
+        options = {
+            'page-size': 'A4',
+            'encoding': "UTF-8",
+            'enable-local-file-access': None
+        }
+        
+        # Find wkhtmltopdf executable path
+        path_wkhtmltopdf = os.path.join(os.getcwd(), 'wkhtmltopdf.exe')
+        config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
+        
+        # Generate PDF
+        pdfkit.from_string(html_content, pdf_path, options=options, configuration=config)
         logger.info(f"PDF report generated: {pdf_path}")
+        
     except Exception as e:
         logger.error(f"Failed to generate PDF report: {e}")
         # Create a simple text file as fallback
         with open(pdf_path.replace('.pdf', '.txt'), 'w', encoding='utf-8') as file:
             file.write(f"Report for {order_id} (fallback due to PDF generation failure)\n")
-            for key, value in report_data.items():
+            for key, value in report_data['data'].items():
                 file.write(f"{key}: {value}\n")
     
-    # --- 6. Upload reports to OneDrive ---
+    # --- 7. Upload reports to OneDrive ---
     upload_to_onedrive(csv_path, pdf_path)
     
     return (pdf_filename, csv_filename)
