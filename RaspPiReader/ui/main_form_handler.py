@@ -59,12 +59,12 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.folder_name = None
         self.csv_path = None
         self.pdf_path = None
+      # self.plot = None
         self.username = self.user_record.username if self.user_record else ''
         pool.set('main_form', self)
         self.cycle_timer = QTimer()
         self.set_connections()
         self.start_cycle_form = pool.set('cycle_start_form', StartCycleFormHandler())
-        self.showMaximized()
         self.display_username()
         # (Optional) create data stacks
         self.create_stack()
@@ -122,6 +122,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.connectionTimer = QTimer()
         self.connectionTimer.timeout.connect(self.update_connection_status_display)
         self.connectionTimer.start(5000)  # Update every 5 seconds
+        self.showMaximized()
         print("MainFormHandler initialized.")
     
     def add_background_settings_menu(self):
