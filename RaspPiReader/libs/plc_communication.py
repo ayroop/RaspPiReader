@@ -22,12 +22,17 @@ def initialize_plc_communication():
     is_demo = pool.config('demo', bool, False)
     is_simulation = pool.config('plc/simulation_mode', bool, False)
     
+    logger.info(f"Initializing PLC communication - Connection type: {connection_type}, Demo: {is_demo}, Simulation: {is_simulation}")
+    
     if is_demo:
         logger.warning("DEMO MODE: Using simulated PLC communication")
+        modbus_comm.configure(connection_type='dummy', simulation_mode=True)
+        return True
     
     if is_simulation:
         logger.warning("*** SIMULATION MODE ACTIVE - No real PLC connection will be established ***")
-    
+        modbus_comm.configure(connection_type='dummy', simulation_mode=True)
+        return True
     # Configure client based on connection type
     if connection_type == 'tcp':
         host = pool.config('plc/host', str, 'localhost')
@@ -94,30 +99,39 @@ def set_port(port):
             logger.error(f"Error setting serial port: {e}")
     return False
 
-def is_connected():
-    """Check if the PLC is connected"""
-    global modbus_comm
-    
-    # If in demo or simulation mode, show connection status based on configuration
-    is_demo = pool.config('demo', bool, False)
-    is_simulation = pool.config('plc/simulation_mode', bool, False)
-    
-    if is_demo or is_simulation:
-        logger.debug("SIMULATION MODE: Connection status check")
-        return True  # Always return True in simulation mode
-    
-    # Real connection check for actual hardware
-    if modbus_comm and hasattr(modbus_comm, 'connected'):
-        try:
-            # For TCP clients, explicitly check if socket is open
-            if hasattr(modbus_comm.client, 'is_socket_open'):
-                return modbus_comm.client.is_socket_open()
-            # For RTU/Serial clients, return stored connection status
-            return modbus_comm.connected
-        except Exception as e:
-            logger.error(f"Error checking connection status: {e}")
+    def is_connected():
+        """Check if we have an active PLC connection"""
+        global modbus_comm
+        
+        # If in simulation mode, the "connection" is always considered active
+        if pool.config('demo', bool, False) or pool.config('plc/simulation_mode', bool, False):
+            logger.debug("Connection status: SIMULATED (always on)")
+            return True
+            
+        # Check if we have a client object
+        if modbus_comm is None or not hasattr(modbus_comm, 'client'):
+            logger.debug("Connection status: OFF (no client)")
             return False
-    return False
+            
+        # Check if client exists but isn't properly connected
+        if not modbus_comm.connected:
+            logger.debug("Connection status: OFF (client reports not connected)")
+            return False
+        
+        # For TCP connections, try a quick read to verify connection is alive
+        if modbus_comm.connection_type == 'tcp':
+            try:
+                result = modbus_comm.read_registers(0, 1, 1, 'holding')
+                connection_ok = result is not None
+                logger.debug(f"TCP connection status check: {'OK' if connection_ok else 'FAILED'}")
+                return connection_ok
+            except Exception as e:
+                logger.debug(f"TCP connection test error: {e}")
+                return False
+        
+        # For RTU connections, we trust the serial port status since testing can be slower
+        # But we could add similar verification if needed
+        return True
 
 def ensure_connection():
     """Ensure that we have a connection to the PLC"""
@@ -286,9 +300,10 @@ def write_bool_address(address, value, unit=1):
 
 def test_connection(connection_type=None, simulation_mode=False, **params):
     """Test a connection with given parameters without affecting the current connection"""
-    # Save existing communication settings
-    global modbus_comm
-    existing_comm = modbus_comm
+    # Early return for simulation mode with clear logging
+    if simulation_mode:
+        logger.warning("SIMULATION MODE: Connection test skipped - automatically reporting success")
+        return True
     
     # Create a temporary communication object just for testing
     test_comm = ModbusCommunication()
@@ -297,60 +312,66 @@ def test_connection(connection_type=None, simulation_mode=False, **params):
     if connection_type is None:
         connection_type = pool.config('plc/connection_type', str, 'rtu')
     
-    # Configure the test connection
+    # Fill in missing parameters from pool config
     if connection_type == 'tcp':
-        # Ensure required TCP parameters exist
         required_params = ['host', 'port', 'timeout']
         for param in required_params:
             if param not in params:
                 params[param] = pool.config(f'plc/{param}', str if param == 'host' else (float if param == 'timeout' else int))
+        
+        # Log the TCP connection parameters for debugging
+        logger.info(f"Testing TCP connection to {params.get('host')}:{params.get('port')} with timeout {params.get('timeout')}")
     else:
-        # Ensure required RTU parameters exist
+        # RTU
         required_params = ['port', 'baudrate', 'bytesize', 'parity', 'stopbits', 'timeout']
         for param in required_params:
             if param not in params:
                 params[param] = pool.config(f'plc/{param}', 
-                                           float if param in ['stopbits', 'timeout'] else 
-                                           (str if param in ['port', 'parity'] else int))
+                                          float if param in ['stopbits', 'timeout'] else 
+                                          (str if param in ['port', 'parity'] else int))
+        
+        # Log the RTU connection parameters for debugging
+        logger.info(f"Testing RTU connection to {params.get('port')} at {params.get('baudrate')} baud")
     
-    # Set simulation mode for testing
-    params['simulation_mode'] = simulation_mode
+    # Force simulation_mode to False for the test connection
+    params['simulation_mode'] = False
     
     try:
-        # Configure the test connection
-        if test_comm.configure(connection_type, **params):
-            # Try to connect
-            if test_comm.connect():
-                # Try a simple read operation to verify connection works
-                try:
-                    # For simulation mode, we don't need to read anything
-                    if simulation_mode:
-                        return True
-                    
-                    # For real mode, try to read a register to ensure communication works
-                    if connection_type == 'tcp':
-                        result = test_comm.read_registers(0, 1, 1, 'holding')
-                    else:
-                        result = test_comm.read_registers(0, 1, 1, 'holding')
-                    
-                    # If we got a result (even empty), the connection is working
-                    return result is not None
-                except Exception as e:
-                    logger.error(f"Test connection failed during read test: {e}")
-                    return False
-                finally:
-                    # Always disconnect the test connection
-                    test_comm.disconnect()
-            else:
-                logger.error("Test connection failed - could not connect")
-                return False
-        else:
-            logger.error("Test connection failed - could not configure")
+        # Clear flow with early returns for better error isolation
+        if not test_comm.configure(connection_type, **params):
+            logger.error("Failed to configure test connection - invalid parameters")
             return False
+            
+        if not test_comm.connect():
+            logger.error(f"Connection failed - could not connect to {connection_type.upper()} device")
+            return False
+            
+        # Try reading a register to verify communication works
+        try:
+            # Attempt to read the first register - this should work on any PLC
+            register_value = test_comm.read_registers(0, 1, 1, 'holding')
+            
+            # Check if we got a valid response (not None)
+            success = register_value is not None
+            
+            if success:
+                logger.info(f"Connection test successful - register read returned: {register_value}")
+            else:
+                logger.error("Connection test failed - register read returned None")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Connection test failed during read operation: {str(e)}")
+            return False
+            
+        finally:
+            # Always disconnect the test connection
+            test_comm.disconnect()
+            
     except Exception as e:
-        logger.error(f"Error during connection test: {e}")
+        logger.error(f"Connection test exception: {str(e)}")
         return False
-
 def get_available_ports():
     """Get a list of available serial ports"""
     try:

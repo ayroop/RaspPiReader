@@ -41,3 +41,4 @@ RaspPiReader-backup/
 __pycache__
 scripts
 local_database.db.bak
+reports

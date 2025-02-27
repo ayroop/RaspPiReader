@@ -100,7 +100,6 @@ class Database:
                 azure_plc_settings.com_port = plc_settings.com_port
         azure_session.commit()
 
-        # Sync other tables similarly
         # Sync DatabaseSettings
         db_settings = self.session.query(DatabaseSettings).first()
         if db_settings:

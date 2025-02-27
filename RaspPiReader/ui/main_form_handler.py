@@ -59,7 +59,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.folder_name = None
         self.csv_path = None
         self.pdf_path = None
-      # self.plot = None
+        self.plot = None
         self.username = self.user_record.username if self.user_record else ''
         pool.set('main_form', self)
         self.cycle_timer = QTimer()
@@ -247,14 +247,23 @@ class MainFormHandler(QtWidgets.QMainWindow):
                 self.boolStatusLabels[i].setText(f"Bool Addr {config.bool_addresses[i]}: {state}")
 
     def setup_plot_data_display(self):
+        # Create container first
         self.plotWidgetContainer = QtWidgets.QWidget()
-        self.plotWidgetContainer.setLayout(QtWidgets.QVBoxLayout())  # Ensure the container has a layout
-        self.plotWidget = InitiatePlotWidget(active_channels=[], parent_layout=self.plotWidgetContainer.layout(), headers=["Time", "Value", ""])
+        self.plotWidgetContainer.setLayout(QtWidgets.QVBoxLayout())
         central_layout = self.centralWidget().layout()
         if central_layout is None:
             central_layout = QtWidgets.QVBoxLayout(self.centralWidget())
         central_layout.addWidget(self.plotWidgetContainer)
-
+        
+        # Delay plot initialization to prevent UI freezes during startup
+        QTimer.singleShot(100, self.initialize_plot_widget)
+    def initialize_plot_widget(self):
+    # This method will be called after a short delay
+        self.plotWidget = InitiatePlotWidget(
+            active_channels=[], 
+            parent_layout=self.plotWidgetContainer.layout(), 
+            headers=["Time", "Value", ""]
+        )
     def add_one_drive_menu(self):
         one_drive_action = QAction("OneDrive Settings", self)
         one_drive_action.triggered.connect(self.show_onedrive_settings)
@@ -365,11 +374,26 @@ class MainFormHandler(QtWidgets.QMainWindow):
         return pool.set('active_channels', self.active_channels)
         pass
     def _start(self):
-
+        # Reset data stack
         self.create_stack()
         self.active_channels = self.load_active_channels()
         self.initialize_ui_panels()
-        self.plot = self.create_plot(plot_layout=self.plotAreaLayout, legend_layout=self.formLayoutLegend)
+        
+        # Use a smarter approach to plot creation
+        def setup_plot():
+            # Clean up old plot if it exists
+            if hasattr(self, 'plot') and self.plot:
+                self.plot.cleanup()  # Add a cleanup method to your plot class
+            
+            self.plot = self.create_plot(
+                plot_layout=self.plotAreaLayout, 
+                legend_layout=self.formLayoutLegend
+            )
+        
+        # Use a timer to ensure UI responsiveness
+        QTimer.singleShot(50, setup_plot)
+        
+        # Continue with other operations
         self.start_cycle_form.show()
 
     def _stop(self):
@@ -406,8 +430,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
         pass
 
     def create_plot(self, plot_layout=None, legend_layout=None):
-
-        self.plot_update_locked = False
         self.headers = list()
         self.headers.append(pool.config('h_label'))
         self.headers.append(pool.config('left_v_label'))
@@ -415,24 +437,55 @@ class MainFormHandler(QtWidgets.QMainWindow):
         for i in range(1, CHANNEL_COUNT + 1):
             self.headers.append(pool.config('label' + str(i)))
 
-        # Clear old plot if exists
+        # Properly clean up old plots
         if plot_layout is not None:
-            for i in reversed(range(plot_layout.count())):
-                plot_layout.itemAt(i).widget().setParent(None)
+            while plot_layout.count():
+                item = plot_layout.takeAt(0)
+                widget = item.widget()
+                if widget:
+                    widget.setParent(None)
+                    widget.deleteLater()  # Properly delete the widget
+        
         if legend_layout is not None:
-            for i in reversed(range(legend_layout.count())):
-                legend_layout.itemAt(i).widget().setParent(None)
+            while legend_layout.count():
+                item = legend_layout.takeAt(0)
+                widget = item.widget()
+                if widget:
+                    widget.setParent(None)
+                    widget.deleteLater()
 
-        return InitiatePlotWidget(pool.get('active_channels'), plot_layout, legend_layout=legend_layout,
-                                  headers=self.headers)
+        # Create and return the new plot widget
+        return InitiatePlotWidget(
+            pool.get('active_channels'), 
+            plot_layout, 
+            legend_layout=legend_layout,
+            headers=self.headers
+        )
 
     def update_plot(self):
-        if self.plot_update_locked:
-            return
-        self.plot_update_locked = True
-        self.plot.update_plot()
-        self.plot_update_locked = False
-
+        # Don't use instance variables for locking state, use a proper lock
+        if not hasattr(self, '_plot_lock'):
+            from threading import Lock
+            self._plot_lock = Lock()
+        
+        # Use with statement for proper lock management
+        if self._plot_lock.acquire(False):  # Non-blocking
+            try:
+                if hasattr(self, 'plot') and self.plot:
+                    self.plot.update_plot()
+            finally:
+                self._plot_lock.release()
+    def cleanup(self):
+        """Clean up all resources used by the plot"""
+        # Remove any timers
+        if hasattr(self, 'update_timer') and self.update_timer:
+            self.update_timer.stop()
+            
+        # Clear all plot items
+        if hasattr(self, 'plot') and self.plot:
+            self.plot.clear()
+            
+        # Any other cleanup needed
     def initialize_ui_panels(self):
         self.immediate_panel_update_locked = False
         active_channels = pool.get('active_channels')
@@ -450,12 +503,16 @@ class MainFormHandler(QtWidgets.QMainWindow):
                 spin_widget.setMaximum(+999999)
 
     def update_data(self):
+        # Update CSV file
         self.update_csv_file()
-        QApplication.processEvents()
-        self.update_immediate_values_panel()
-        # QApplication.processEvents()
-        self.update_plot()
-        # QApplication.processEvents()
+        
+        # Update UI elements in a way that maintains responsiveness
+        def update_ui():
+            self.update_immediate_values_panel()
+            self.update_plot()
+        
+        # Use a short timer instead of processEvents()
+        QTimer.singleShot(10, update_ui)
 
     def update_immediate_test_values_panel(self):
         for i in self.active_channels:

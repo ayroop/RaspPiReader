@@ -1,6 +1,6 @@
 from PyQt5 import QtWidgets, QtCore, QtSerialPort
 from PyQt5.QtCore import QSettings
-from PyQt5.QtWidgets import QApplication
+from PyQt5.QtWidgets import QApplication, QDialog
 from PyQt5.QtGui import QFont
 import logging
 import sqlite3
@@ -17,27 +17,49 @@ logger = logging.getLogger(__name__)
 class PLCCommSettingsFormHandler(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(PLCCommSettingsFormHandler, self).__init__(parent)
+        
+        # First, ensure modal is set to avoid the window appearing/disappearing
         self.setWindowTitle("PLC Communication Settings")
+        self.setModal(True)
+        
+        # Initialize before creating UI to avoid partial state display
+        self._previous_simulation_mode = None
+        
+        # Build UI components in logical sequence
+        self._create_ui_elements()
+        self._connect_signals()
+        
+        # Initialize form values AFTER UI is built
+        self._initialize_serial_ports()
+        self._initialize_form_values()
+        self._update_settings_visibility()
+        self._update_connection_status()
+        
+        # Set size after everything is initialized
         self.resize(450, 380)
         
-        # Create UI layout
+        logger.info("PLC Communication Settings dialog initialized")
+    
+    def _create_ui_elements(self):
+        """Create all UI elements in a single method for better organization"""
+        # Main layout
         self.layout = QtWidgets.QVBoxLayout(self)
         
-        # Add connection mode selector at the top
+        # Connection mode group
         self.modeGroupBox = QtWidgets.QGroupBox("Communication Mode")
         self.modeLayout = QtWidgets.QHBoxLayout(self.modeGroupBox)
         
-        # Add radio buttons for connection type
+        # Radio buttons for connection type
         self.tcpRadio = QtWidgets.QRadioButton("TCP/IP")
         self.rtuRadio = QtWidgets.QRadioButton("RTU (Serial)")
         self.modeLayout.addWidget(self.tcpRadio)
         self.modeLayout.addWidget(self.rtuRadio)
         self.layout.addWidget(self.modeGroupBox)
         
-        # Create stacked layout for different connection types
+        # Stacked layout for different connection types
         self.stackedLayout = QtWidgets.QStackedLayout()
         
-        # TCP Settings
+        # TCP Settings widget
         self.tcpWidget = QtWidgets.QWidget()
         self.tcpLayout = QtWidgets.QFormLayout(self.tcpWidget)
         
@@ -53,7 +75,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         
         self.stackedLayout.addWidget(self.tcpWidget)
         
-        # RTU Settings
+        # RTU Settings widget
         self.rtuWidget = QtWidgets.QWidget()
         self.rtuLayout = QtWidgets.QFormLayout(self.rtuWidget)
         
@@ -84,7 +106,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         self.stackedLayout.addWidget(self.rtuWidget)
         self.layout.addLayout(self.stackedLayout)
         
-        # Common settings
+        # Common settings group
         self.commonGroupBox = QtWidgets.QGroupBox("Common Settings")
         self.commonLayout = QtWidgets.QFormLayout(self.commonGroupBox)
         
@@ -95,12 +117,13 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         self.timeoutSpinBox.setValue(1.0)
         self.commonLayout.addRow(self.timeoutLabel, self.timeoutSpinBox)
         
-        self.simulationModeCheckBox = QtWidgets.QCheckBox("Simulation Mode")
+        # Simulation mode checkbox with clearer label
+        self.simulationModeCheckBox = QtWidgets.QCheckBox("Simulation Mode (no physical PLC connection)")
         self.commonLayout.addRow("", self.simulationModeCheckBox)
         
         self.layout.addWidget(self.commonGroupBox)
         
-        # Status indicator
+        # Status indicator group
         self.statusGroupBox = QtWidgets.QGroupBox("Connection Status")
         self.statusLayout = QtWidgets.QHBoxLayout(self.statusGroupBox)
         
@@ -110,7 +133,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         
         self.layout.addWidget(self.statusGroupBox)
         
-        # Create button layout - ONLY ONCE
+        # Button layout
         self.buttonLayout = QtWidgets.QHBoxLayout()
         self.testButton = QtWidgets.QPushButton("Test Connection")
         self.saveButton = QtWidgets.QPushButton("Save")
@@ -120,27 +143,38 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         self.buttonLayout.addWidget(self.saveButton)
         self.buttonLayout.addWidget(self.cancelButton)
         
-        # Add the buttons to the main layout
         self.layout.addLayout(self.buttonLayout)
-        
-        # Connect the buttons to methods
+    
+    def _connect_signals(self):
+        """Connect UI elements to their action methods"""
+        # Connect button signals
         self.testButton.clicked.connect(self._test_connection)
-        self.saveButton.clicked.connect(self._save_settings_simple)
+        self.saveButton.clicked.connect(self.save_and_close)
         self.cancelButton.clicked.connect(self.reject)
         
-        # Connect radio buttons to update settings visibility
+        # Connect radio button toggle to update settings visibility
         self.tcpRadio.toggled.connect(self._update_settings_visibility)
         
-        # Initialize form
-        self._initialize_serial_ports()
-        self._initialize_form_values()
+        # Add simulation mode checkbox signal
+        self.simulationModeCheckBox.toggled.connect(self._on_simulation_mode_changed)
+    
+    def _on_simulation_mode_changed(self, checked):
+        """Handle simulation mode checkbox state changes"""
+        # Update the status indicator immediately when simulation mode changes
+        logger.info(f"Simulation mode changed to: {checked}")
+        self._update_connection_status()
     
     def _initialize_serial_ports(self):
         """Populate serial ports dropdown"""
+        # Clear existing items first
+        self.portComboBox.clear()
+        
+        # Get available ports
         ports = QtSerialPort.QSerialPortInfo.availablePorts()
         if ports:
             for port in ports:
                 self.portComboBox.addItem(port.portName())
+                logger.debug(f"Found serial port: {port.portName()}")
         else:
             logger.warning("No serial ports detected. Adding default COM port options.")
             for i in range(1, 10):
@@ -148,30 +182,76 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
     
     def _initialize_form_values(self):
         """Load current settings into form"""
+        # Load settings from QSettings first, then check pool
+        settings = QSettings('RaspPiHandler', 'RaspPiModbusReader')
+        
         # Set connection type
-        connection_type = pool.config('plc/connection_type', str, 'rtu')
+        connection_type = settings.value('plc/connection_type') or pool.config('plc/connection_type', str, 'rtu')
+        logger.info(f"Loading connection type: {connection_type}")
+        
         if connection_type == 'tcp':
             self.tcpRadio.setChecked(True)
         else:
             self.rtuRadio.setChecked(True)
         
         # Set RTU-specific values
-        self.portComboBox.setCurrentText(pool.config('plc/port', str, 'COM1'))
-        self.baudrateComboBox.setCurrentText(str(pool.config('plc/baudrate', int, 9600)))
-        self.bytesizeComboBox.setCurrentText(str(pool.config('plc/bytesize', int, 8)))
-        self.parityComboBox.setCurrentText(pool.config('plc/parity', str, 'N'))
-        self.stopbitsComboBox.setCurrentText(str(pool.config('plc/stopbits', float, 1.0)))
+        port = settings.value('plc/port') or pool.config('plc/port', str, 'COM1')
+        baudrate = settings.value('plc/baudrate') or pool.config('plc/baudrate', int, 9600)
+        bytesize = settings.value('plc/bytesize') or pool.config('plc/bytesize', int, 8)
+        parity = settings.value('plc/parity') or pool.config('plc/parity', str, 'N')
+        stopbits = settings.value('plc/stopbits') or pool.config('plc/stopbits', float, 1.0)
+        
+        # Find the port in the combobox
+        port_index = self.portComboBox.findText(port)
+        if port_index >= 0:
+            self.portComboBox.setCurrentIndex(port_index)
+        
+        # Set other RTU values
+        baudrate_index = self.baudrateComboBox.findText(str(baudrate))
+        if baudrate_index >= 0:
+            self.baudrateComboBox.setCurrentIndex(baudrate_index)
+            
+        bytesize_index = self.bytesizeComboBox.findText(str(bytesize))
+        if bytesize_index >= 0:
+            self.bytesizeComboBox.setCurrentIndex(bytesize_index)
+            
+        parity_index = self.parityComboBox.findText(parity)
+        if parity_index >= 0:
+            self.parityComboBox.setCurrentIndex(parity_index)
+            
+        stopbits_index = self.stopbitsComboBox.findText(str(stopbits))
+        if stopbits_index >= 0:
+            self.stopbitsComboBox.setCurrentIndex(stopbits_index)
         
         # Set TCP-specific values
-        self.hostLineEdit.setText(pool.config('plc/host', str, 'localhost'))
-        self.tcpPortSpinBox.setValue(pool.config('plc/tcp_port', int, 502))
+        host = settings.value('plc/host') or pool.config('plc/host', str, 'localhost')
+        tcp_port = settings.value('plc/tcp_port') or pool.config('plc/tcp_port', int, 502)
+        
+        self.hostLineEdit.setText(host)
+        self.tcpPortSpinBox.setValue(int(tcp_port))
         
         # Set common values
-        self.timeoutSpinBox.setValue(pool.config('plc/timeout', float, 1.0))
-        self.simulationModeCheckBox.setChecked(pool.config('plc/simulation_mode', bool, False))
+        timeout = settings.value('plc/timeout') or pool.config('plc/timeout', float, 1.0)
+        self.timeoutSpinBox.setValue(float(timeout))
         
-        # Update connection status
-        self._update_connection_status()
+        # Get simulation mode from both sources and compare them for debugging
+        sim_mode_settings = settings.value('plc/simulation_mode')
+        sim_mode_pool = pool.config('plc/simulation_mode', bool, False)
+        
+        # Convert string 'true'/'false' to Python bool if needed
+        if isinstance(sim_mode_settings, str):
+            sim_mode_settings = (sim_mode_settings.lower() == 'true')
+            
+        logger.info(f"Loading simulation mode - QSettings: {sim_mode_settings}, Pool: {sim_mode_pool}")
+        
+        # Use settings value if available, otherwise use pool
+        simulation_mode = sim_mode_settings if sim_mode_settings is not None else sim_mode_pool
+        self.simulationModeCheckBox.setChecked(bool(simulation_mode))
+        
+        # Store the initial simulation mode to detect changes
+        self._previous_simulation_mode = bool(simulation_mode)
+        
+        logger.info(f"Form initialized with connection type: {connection_type}, simulation mode: {simulation_mode}")
     
     def _update_settings_visibility(self):
         """Show appropriate settings based on connection type"""
@@ -181,26 +261,73 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             self.stackedLayout.setCurrentIndex(1)
     
     def _update_connection_status(self):
-        """Update the connection status indicator"""
-        # Check if we're in simulation mode
+        """Update the connection status indicator with real connection status"""
+        # Get current simulation states
+        is_simulation = self.simulationModeCheckBox.isChecked()
         is_demo = pool.config('demo', bool, False)
-        is_simulation = pool.config('plc/simulation_mode', bool, False)
+        
+        logger.info(f"Connection status check - Demo mode: {is_demo}, Simulation mode: {is_simulation}")
         
         if is_demo or is_simulation:
+            # In simulation mode, show orange status
             self.statusLabel.setText("SIMULATION MODE (No real connection)")
             self.statusLabel.setStyleSheet("color: orange; font-weight: bold;")
-        elif plc_communication.is_connected():
-            self.statusLabel.setText("Connected")
-            self.statusLabel.setStyleSheet("color: green; font-weight: bold;")
         else:
-            self.statusLabel.setText("Not Connected")
-            self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
+            # For real mode, perform a real connection test
+            try:
+                connection_type = 'tcp' if self.tcpRadio.isChecked() else 'rtu'
+                params = self._get_current_connection_params()
+                
+                # Explicitly force simulation mode off
+                params['simulation_mode'] = False
+                
+                # Show testing status
+                self.statusLabel.setText("Testing connection...")
+                self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
+                QApplication.processEvents()  # Update UI
+                
+                # Use test_connection function to verify a real connection
+                connection_ok = plc_communication.test_connection(
+                    connection_type=connection_type,
+                    **params
+                )
+                
+                # Update UI based on result
+                if connection_ok:
+                    self.statusLabel.setText("Connected")
+                    self.statusLabel.setStyleSheet("color: green; font-weight: bold;")
+                else:
+                    self.statusLabel.setText("Not Connected")
+                    self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
+            except Exception as e:
+                logger.error(f"Connection status test error: {e}")
+                self.statusLabel.setText("Connection Error")
+                self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
     
+    def _get_current_connection_params(self):
+        """Get current connection parameters from the UI"""
+        params = {}
+        
+        # Get common parameters
+        params['timeout'] = self.timeoutSpinBox.value()
+        
+        # Get connection-type specific parameters
+        if self.tcpRadio.isChecked():  # TCP parameters
+            params['host'] = self.hostLineEdit.text().strip()
+            params['port'] = self.tcpPortSpinBox.value()
+        else:  # RTU parameters
+            params['port'] = self.portComboBox.currentText()
+            params['baudrate'] = int(self.baudrateComboBox.currentText())
+            params['bytesize'] = int(self.bytesizeComboBox.currentText())
+            params['parity'] = self.parityComboBox.currentText()
+            params['stopbits'] = float(self.stopbitsComboBox.currentText())
+        
+        return params
     def _test_connection(self):
         """Test the connection with current settings"""
         try:
             # Temporarily save current simulation status
-            current_simulation_mode = pool.config('plc/simulation_mode', bool, False)
+            current_simulation_mode = self.simulationModeCheckBox.isChecked()
             current_demo_mode = pool.config('demo', bool, False)
             
             # Show a "Testing..." status
@@ -212,15 +339,22 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             self._save_settings_simple(test_only=True)
             
             # Temporarily disable simulation for a real connection test
-            # Only if we're not in demo mode
-            if not current_demo_mode:
+            # Only if we're not in demo mode and simulation is currently enabled
+            if not current_demo_mode and current_simulation_mode:
+                logger.info("Temporarily disabling simulation for connection test")
                 pool.set_config('plc/simulation_mode', False)
             
             # Try to connect with the test settings
+            connection_type = 'tcp' if self.tcpRadio.isChecked() else 'rtu'
+            logger.info(f"Testing connection with type: {connection_type}, " +
+                        f"simulation: {not (not current_demo_mode and current_simulation_mode)}")
+            
             success = plc_communication.initialize_plc_communication()
             
             # Restore the original simulation mode setting
-            pool.set_config('plc/simulation_mode', current_simulation_mode)
+            if not current_demo_mode and current_simulation_mode:
+                logger.info("Restoring simulation mode after test")
+                pool.set_config('plc/simulation_mode', current_simulation_mode)
             
             # Show result
             if success:
@@ -259,24 +393,26 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                 "Connection Test Error",
                 f"An error occurred while testing the connection: {str(e)}"
             )
-            
-            # Make sure simulation status is restored on error
-            pool.set_config('plc/simulation_mode', current_simulation_mode)
     
     def _save_settings_simple(self, test_only=False):
         """Save settings directly to config without triggering recursion"""
         try:
-            # Get connection type based on radio button instead of tabs
+            # Get connection type based on radio button
             connection_type = 'tcp' if self.tcpRadio.isChecked() else 'rtu'
             
-            # Direct settings update using QSettings
+            # Get simulation mode state from checkbox directly
+            simulation_mode = self.simulationModeCheckBox.isChecked()
+            
+            logger.info(f"Saving settings - Connection Type: {connection_type}, Simulation Mode: {simulation_mode}")
+            
+            # Save to QSettings
             settings = QSettings('RaspPiHandler', 'RaspPiModbusReader')
             
             # Save connection type
             settings.setValue('plc/connection_type', connection_type)
             
             # Save simulation mode
-            settings.setValue('plc/simulation_mode', self.simulationModeCheckBox.isChecked())
+            settings.setValue('plc/simulation_mode', simulation_mode)
             
             # Save RTU-specific settings
             if connection_type == 'rtu':
@@ -296,12 +432,28 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             
             # Save common settings
             settings.setValue('plc/timeout', self.timeoutSpinBox.value())
-            settings.sync()
+            settings.sync()  # Force settings to be written immediately
+            
+            # Also save to pool for immediate use
+            pool.set_config('plc/connection_type', connection_type)
+            pool.set_config('plc/simulation_mode', simulation_mode)
+            
+            if connection_type == 'rtu':
+                pool.set_config('plc/port', self.portComboBox.currentText())
+                pool.set_config('plc/baudrate', int(self.baudrateComboBox.currentText()))
+                pool.set_config('plc/bytesize', int(self.bytesizeComboBox.currentText()))
+                pool.set_config('plc/parity', self.parityComboBox.currentText())
+                pool.set_config('plc/stopbits', float(self.stopbitsComboBox.currentText()))
+            else:
+                pool.set_config('plc/host', self.hostLineEdit.text().strip())
+                pool.set_config('plc/tcp_port', self.tcpPortSpinBox.value())
+                
+            pool.set_config('plc/timeout', self.timeoutSpinBox.value())
             
             # Update the database directly using SQLite
             if not test_only:
                 try:
-                    # Connect directly to the database
+                    # Check if simulation_mode column exists, add it if not
                     conn = sqlite3.connect("local_database.db")
                     cursor = conn.cursor()
                     
@@ -320,9 +472,18 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                                 bytesize INTEGER,
                                 parity TEXT,
                                 stopbits REAL,
-                                timeout REAL
+                                timeout REAL,
+                                simulation_mode BOOLEAN
                             )
                         """)
+                    
+                    # Check if simulation_mode column exists
+                    cursor.execute("PRAGMA table_info(plc_comm_settings)")
+                    columns = [column[1] for column in cursor.fetchall()]
+                    
+                    if 'simulation_mode' not in columns:
+                        logger.info("Adding simulation_mode column to plc_comm_settings table")
+                        cursor.execute("ALTER TABLE plc_comm_settings ADD COLUMN simulation_mode BOOLEAN DEFAULT 0")
                     
                     # Check if record exists
                     cursor.execute("SELECT id FROM plc_comm_settings LIMIT 1")
@@ -341,18 +502,18 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                                 UPDATE plc_comm_settings SET 
                                 comm_mode = ?, tcp_host = NULL, tcp_port = NULL, 
                                 com_port = ?, baudrate = ?, bytesize = ?, 
-                                parity = ?, stopbits = ?, timeout = ?
+                                parity = ?, stopbits = ?, timeout = ?, simulation_mode = ?
                                 WHERE id = ?
                             """, (connection_type, port_value, baudrate, bytesize, 
-                                parity, stopbits, timeout, record[0]))
+                                parity, stopbits, timeout, simulation_mode, record[0]))
                         else:
                             cursor.execute("""
                                 INSERT INTO plc_comm_settings 
                                 (comm_mode, tcp_host, tcp_port, com_port, baudrate, 
-                                 bytesize, parity, stopbits, timeout)
-                                VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?)
+                                 bytesize, parity, stopbits, timeout, simulation_mode)
+                                VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)
                             """, (connection_type, port_value, baudrate, bytesize, 
-                                parity, stopbits, timeout))
+                                parity, stopbits, timeout, simulation_mode))
                     else:
                         tcp_host = self.hostLineEdit.text().strip()
                         tcp_port = self.tcpPortSpinBox.value()
@@ -363,16 +524,16 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                                 UPDATE plc_comm_settings SET 
                                 comm_mode = ?, tcp_host = ?, tcp_port = ?, 
                                 com_port = NULL, baudrate = NULL, bytesize = NULL, 
-                                parity = NULL, stopbits = NULL, timeout = ?
+                                parity = NULL, stopbits = NULL, timeout = ?, simulation_mode = ?
                                 WHERE id = ?
-                            """, (connection_type, tcp_host, tcp_port, timeout, record[0]))
+                            """, (connection_type, tcp_host, tcp_port, timeout, simulation_mode, record[0]))
                         else:
                             cursor.execute("""
                                 INSERT INTO plc_comm_settings 
                                 (comm_mode, tcp_host, tcp_port, com_port, baudrate, 
-                                 bytesize, parity, stopbits, timeout)
-                                VALUES (?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?)
-                            """, (connection_type, tcp_host, tcp_port, timeout))
+                                 bytesize, parity, stopbits, timeout, simulation_mode)
+                                VALUES (?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?, ?)
+                            """, (connection_type, tcp_host, tcp_port, timeout, simulation_mode))
                     
                     conn.commit()
                     conn.close()
@@ -386,17 +547,9 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                         f"Failed to save settings to database: {str(e)}"
                     )
             
-            # Initialize the PLC communication with new settings
+            # After successful save, update the connection status
             if not test_only:
-                success = plc_communication.initialize_plc_communication()
-                if success:
-                    self.accept()
-                else:
-                    QtWidgets.QMessageBox.warning(
-                        self,
-                        "PLC Communication Error",
-                        "Failed to initialize PLC communication with new settings."
-                    )
+                self._update_connection_status()
             
             return True
             
@@ -409,3 +562,22 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                     f"An error occurred while saving settings: {str(e)}"
                 )
             return False
+    
+    def save_and_close(self):
+        """Save settings and initialize PLC communication"""
+        if self._save_settings_simple(test_only=False):
+            # Initialize the PLC communication with new settings
+            logger.info("Initializing PLC communication with new settings")
+            success = plc_communication.initialize_plc_communication()
+            
+            if success:
+                logger.info("PLC communication initialized successfully")
+                # Accept the dialog only if initialization succeeds
+                self.accept()
+            else:
+                logger.error("Failed to initialize PLC communication")
+                QtWidgets.QMessageBox.warning(
+                    self,
+                    "PLC Communication Error",
+                    "Failed to initialize PLC communication with new settings."
+                )
