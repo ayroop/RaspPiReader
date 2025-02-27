@@ -21,10 +21,9 @@ class LoginFormHandler(QtWidgets.QDialog):
             pool.set('current_user', user.username)
             self.accept()
             main_form = MainFormHandler(user)
-            main_form.show()
+            main_form.showMaximized()  # Use showMaximized() instead of show()
         else:
             QtWidgets.QMessageBox.critical(self, "Login Failed", "Invalid username or password")
-
     def authenticate(self, username, password):
         user = self.db.get_user(username)
         if user and user.password == password:

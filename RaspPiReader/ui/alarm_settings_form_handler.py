@@ -6,15 +6,27 @@ from RaspPiReader.ui.alarm_settings_form import AlarmSettingsForm
 class AlarmSettingsFormHandler(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(AlarmSettingsFormHandler, self).__init__(parent)
-        self.form = AlarmSettingsForm(self)
+        self.setWindowTitle("Alarm Settings")
+        
+        # Create form
+        self.form = AlarmSettingsForm()
+        
+        # Create layout and add form to it
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(self.form)
+        self.setLayout(layout)
+        
+        # Initialize database and load data
         self.db = Database("sqlite:///local_database.db")
         self.load_alarms()
-        # Connect buttons to their actions.
+        
+        # Connect buttons to their actions
         self.form.addButton.clicked.connect(self.add_alarm)
         self.form.editButton.clicked.connect(self.edit_alarm)
         self.form.removeButton.clicked.connect(self.remove_alarm)
-        self.form.exec_()
-
+        
+        # Set a reasonable size for the dialog
+        self.resize(500, 400)
     def load_alarms(self):
         alarms = self.db.session.query(Alarm).all()
         table = self.form.tableWidget
