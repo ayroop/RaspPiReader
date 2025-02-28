@@ -3,6 +3,7 @@ import time
 import os
 import socket 
 from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient
+from PyQt5.QtCore import QSettings
 from RaspPiReader import pool
 from RaspPiReader.ui.setting_form_handler import READ_HOLDING_REGISTERS, READ_INPUT_REGISTERS
 
@@ -349,12 +350,18 @@ class DataReader:
             self.connected = True
             return
         
+        # Get settings directly from QSettings for consistency
+        settings = QSettings('RaspPiHandler', 'RaspPiModbusReader')
+        
+        # Get the simulation_mode directly from QSettings to avoid cached values
+        simulation_mode = settings.value('plc/simulation_mode', False, type=bool)
+        
         # Regular connection setup (not demo mode)
         connection_type = pool.config('plc/connection_type', str, 'rtu')
-        logger.info(f"DataReader reloading with connection type: {connection_type}")
+        logger.info(f"DataReader reloading with connection type: {connection_type}, simulation mode: {simulation_mode}")
         
         config_params = {
-            'simulation_mode': pool.config('plc/simulation_mode', bool, False)
+            'simulation_mode': simulation_mode
         }
         
         if connection_type == 'rtu':
@@ -369,7 +376,7 @@ class DataReader:
         else:  # TCP
             config_params.update({
                 'host': pool.config('plc/host', str, None),
-                'port': pool.config('plc/tcp_port', int, 502),
+                'port': pool.config('plc/port', int, 502),  # FIXED: Use consistent port parameter name
                 'timeout': pool.config('plc/timeout', float, 1.0)
             })
         

@@ -19,56 +19,43 @@ def Main():
     logger = logging.getLogger(__name__)
     logger.info("Starting RaspPiReader application")
     
+    # Process command line arguments
+    if args.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logger.debug("Debug mode enabled")
+    
     # Create Qt application
     app = QtWidgets.QApplication(sys.argv)
     
     try:
         # Check if we're in demo mode
         demo_mode = pool.config('demo', bool, False) or args.demo
-        if demo_mode:
-            pool.set('demo', True)
-            pool.set_config('plc/simulation_mode', True)  # Explicitly enable simulation in demo mode
-            logger.info("Demo mode enabled: Using simulation for PLC communications")
-        else:
-            # Make sure simulation mode is explicitly disabled unless set otherwise
-            simulation_mode = pool.config('plc/simulation_mode', bool, False)
-            # Override simulation mode with the command line argument
-            if args.debug:
-                simulation_mode = True
-                pool.set_config('plc/simulation_mode', True)
-                logger.info("Debug mode enabled: Using simulation for PLC communications")
-            
-            logger.info(f"Simulation mode: {simulation_mode}")
+        pool.set('demo', demo_mode)
         
+        # Check simulation mode - DO NOT DEFAULT TO TRUE!
+        simulation_mode = pool.config('plc/simulation_mode', bool, False)
+        logger.info(f"Simulation mode: {simulation_mode}")
         logger.info(f"Demo mode: {demo_mode}")
-
-        if demo_mode:
-            # Ensure demo data is loaded into the database
-            logger.info("Loading demo data into the database...")
-            demo_data  # This will trigger the loading of demo data
+        
+        # Initialize database
+        logger.info("Initializing local database...")
+        db = Database("sqlite:///local_database.db")
+        db.create_tables()
+        
+        # Initialize PLC communication
+        logger.info("Initializing PLC communication...")
+        success = initialize_plc_communication()
+        if success:
+            logger.info("PLC communication initialized successfully")
         else:
-            # Ensure local SQLite database is initialized
-            logger.info("Initializing local database...")
-            local_db = Database("sqlite:///local_database.db")
-            local_db.create_tables()
-
-            # Initialize PLC communication with settings from database/config
-            logger.info("Initializing PLC communication...")
-            plc_initialized = initialize_plc_communication()
-            if plc_initialized:
-                logger.info("PLC communication initialized successfully")
-            else:
-                logger.warning("Failed to initialize PLC communication. Check settings.")
-
-            # Start the sync thread
-            logger.info("Starting database sync thread...")
-            sync_thread = SyncThread(interval=60)  # Sync every 60 seconds
-            sync_thread.daemon = True  # Make thread exit when main program exits
-            sync_thread.start()
-            logger.info("Database sync thread started")
-            # Store the sync thread in the pool to prevent garbage collection
-            pool.set('sync_thread', sync_thread)
-
+            logger.error("Failed to initialize PLC communication")
+        
+        # Start database sync thread
+        logger.info("Starting database sync thread...")
+        sync_thread = SyncThread()
+        sync_thread.start()
+        logger.info("Database sync thread started")
+        
         # Launch login form
         logger.info("Launching login form...")
         login_form = LoginFormHandler()

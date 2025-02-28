@@ -4,6 +4,7 @@ from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient
 from pymodbus.exceptions import ConnectionException, ModbusException
 from RaspPiReader import pool
 from RaspPiReader.libs.communication import ModbusCommunication
+from PyQt5.QtCore import QSettings
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -20,19 +21,34 @@ def initialize_plc_communication():
     
     # Check if we're in demo mode or simulation mode
     is_demo = pool.config('demo', bool, False)
-    is_simulation = pool.config('plc/simulation_mode', bool, False)
+    
+    # CRITICAL FIX - Read simulation mode explicitly from QSettings to avoid cached values
+    settings = QSettings('RaspPiHandler', 'RaspPiModbusReader')
+    is_simulation = settings.value('plc/simulation_mode', False, type=bool)
+    
+    # Update pool with the correct simulation mode
+    pool.set_config('plc/simulation_mode', is_simulation)
     
     logger.info(f"Initializing PLC communication - Connection type: {connection_type}, Demo: {is_demo}, Simulation: {is_simulation}")
     
     if is_demo:
-        logger.warning("DEMO MODE: Using simulated PLC communication")
-        modbus_comm.configure(connection_type='dummy', simulation_mode=True)
-        return True
+        logger.warning("*** DEMO MODE ACTIVE - Using demo data instead of real PLC connection ***")
+        return True  # In demo mode, we don't need real connection
     
     if is_simulation:
         logger.warning("*** SIMULATION MODE ACTIVE - No real PLC connection will be established ***")
-        modbus_comm.configure(connection_type='dummy', simulation_mode=True)
-        return True
+        # Configure in simulation mode
+        modbus_comm = ModbusCommunication()
+        params = {
+            'simulation_mode': is_simulation,  # FIX: USE ACTUAL SETTING instead of forcing True
+            'host': pool.config('plc/host', str, '127.0.0.1'),
+            'port': pool.config('plc/port', int, 502),
+            'timeout': pool.config('plc/timeout', float, 1.2)
+        }
+        
+        if modbus_comm.configure(connection_type, **params):
+            return True
+        return False
     # Configure client based on connection type
     if connection_type == 'tcp':
         host = pool.config('plc/host', str, 'localhost')
@@ -300,9 +316,12 @@ def write_bool_address(address, value, unit=1):
 
 def test_connection(connection_type=None, simulation_mode=False, **params):
     """Test a connection with given parameters without affecting the current connection"""
-    # Early return for simulation mode with clear logging
+    # EXPLICITLY LOG the simulation mode to be clear
+    logger.info(f"Testing connection with explicit simulation_mode={simulation_mode}")
+    
+    # If explicitly using simulation mode, return success without testing
     if simulation_mode:
-        logger.warning("SIMULATION MODE: Connection test skipped - automatically reporting success")
+        logger.warning("SIMULATION MODE: Connection test skipped - reporting success automatically")
         return True
     
     # Create a temporary communication object just for testing
@@ -312,32 +331,29 @@ def test_connection(connection_type=None, simulation_mode=False, **params):
     if connection_type is None:
         connection_type = pool.config('plc/connection_type', str, 'rtu')
     
-    # Fill in missing parameters from pool config
+    # Configure the test connection - keep the parameter handling
     if connection_type == 'tcp':
+        # Ensure required TCP parameters exist
         required_params = ['host', 'port', 'timeout']
         for param in required_params:
             if param not in params:
                 params[param] = pool.config(f'plc/{param}', str if param == 'host' else (float if param == 'timeout' else int))
-        
-        # Log the TCP connection parameters for debugging
-        logger.info(f"Testing TCP connection to {params.get('host')}:{params.get('port')} with timeout {params.get('timeout')}")
+        logger.info(f"Testing REAL TCP connection to {params.get('host')}:{params.get('port')}")
     else:
-        # RTU
+        # Ensure required RTU parameters exist
         required_params = ['port', 'baudrate', 'bytesize', 'parity', 'stopbits', 'timeout']
         for param in required_params:
             if param not in params:
                 params[param] = pool.config(f'plc/{param}', 
                                           float if param in ['stopbits', 'timeout'] else 
                                           (str if param in ['port', 'parity'] else int))
-        
-        # Log the RTU connection parameters for debugging
-        logger.info(f"Testing RTU connection to {params.get('port')} at {params.get('baudrate')} baud")
+        logger.info(f"Testing REAL RTU connection to {params.get('port')}")
     
-    # Force simulation_mode to False for the test connection
+    # FORCE simulation_mode to False for real testing regardless of system config
     params['simulation_mode'] = False
     
     try:
-        # Clear flow with early returns for better error isolation
+        # Clear flow for better error isolation
         if not test_comm.configure(connection_type, **params):
             logger.error("Failed to configure test connection - invalid parameters")
             return False
@@ -355,14 +371,14 @@ def test_connection(connection_type=None, simulation_mode=False, **params):
             success = register_value is not None
             
             if success:
-                logger.info(f"Connection test successful - register read returned: {register_value}")
+                logger.info(f"REAL connection test successful - register read returned: {register_value}")
             else:
-                logger.error("Connection test failed - register read returned None")
+                logger.error("REAL connection test failed - register read returned None")
             
             return success
             
         except Exception as e:
-            logger.error(f"Connection test failed during read operation: {str(e)}")
+            logger.error(f"REAL connection test failed during read operation: {str(e)}")
             return False
             
         finally:
@@ -370,7 +386,7 @@ def test_connection(connection_type=None, simulation_mode=False, **params):
             test_comm.disconnect()
             
     except Exception as e:
-        logger.error(f"Connection test exception: {str(e)}")
+        logger.error(f"REAL connection test exception: {str(e)}")
         return False
 def get_available_ports():
     """Get a list of available serial ports"""

@@ -262,7 +262,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
     
     def _update_connection_status(self):
         """Update the connection status indicator with real connection status"""
-        # Get current simulation states
+        # Get current simulation states from UI and system
         is_simulation = self.simulationModeCheckBox.isChecked()
         is_demo = pool.config('demo', bool, False)
         
@@ -278,21 +278,24 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                 connection_type = 'tcp' if self.tcpRadio.isChecked() else 'rtu'
                 params = self._get_current_connection_params()
                 
-                # Explicitly force simulation mode off
-                params['simulation_mode'] = False
+                # CRITICAL FIX: Remove simulation_mode from params to avoid parameter conflict
+                if 'simulation_mode' in params:
+                    del params['simulation_mode']
                 
                 # Show testing status
                 self.statusLabel.setText("Testing connection...")
                 self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
                 QApplication.processEvents()  # Update UI
                 
-                # Use test_connection function to verify a real connection
+                # Perform a quick real connection test
+                logger.info(f"Testing REAL connection for status display with {connection_type}")
                 connection_ok = plc_communication.test_connection(
                     connection_type=connection_type,
+                    simulation_mode=False,  # Force real test
                     **params
                 )
                 
-                # Update UI based on result
+                # Update UI based on real result
                 if connection_ok:
                     self.statusLabel.setText("Connected")
                     self.statusLabel.setStyleSheet("color: green; font-weight: bold;")
@@ -303,7 +306,6 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                 logger.error(f"Connection status test error: {e}")
                 self.statusLabel.setText("Connection Error")
                 self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
-    
     def _get_current_connection_params(self):
         """Get current connection parameters from the UI"""
         params = {}
@@ -323,77 +325,85 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             params['stopbits'] = float(self.stopbitsComboBox.currentText())
         
         return params
+    
     def _test_connection(self):
         """Test the connection with current settings"""
         try:
-            # Temporarily save current simulation status
+            # Get current simulation mode from UI (not system settings)
             current_simulation_mode = self.simulationModeCheckBox.isChecked()
             current_demo_mode = pool.config('demo', bool, False)
+            
+            # For a connection test, we need the most accurate status
+            logger.info(f"Testing connection with UI simulation mode: {current_simulation_mode}, demo mode: {current_demo_mode}")
             
             # Show a "Testing..." status
             self.statusLabel.setText("Testing connection...")
             self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
             QApplication.processEvents()  # Ensure UI updates
             
-            # Save settings but just for testing
-            self._save_settings_simple(test_only=True)
-            
-            # Temporarily disable simulation for a real connection test
-            # Only if we're not in demo mode and simulation is currently enabled
-            if not current_demo_mode and current_simulation_mode:
-                logger.info("Temporarily disabling simulation for connection test")
-                pool.set_config('plc/simulation_mode', False)
-            
-            # Try to connect with the test settings
-            connection_type = 'tcp' if self.tcpRadio.isChecked() else 'rtu'
-            logger.info(f"Testing connection with type: {connection_type}, " +
-                        f"simulation: {not (not current_demo_mode and current_simulation_mode)}")
-            
-            success = plc_communication.initialize_plc_communication()
-            
-            # Restore the original simulation mode setting
-            if not current_demo_mode and current_simulation_mode:
-                logger.info("Restoring simulation mode after test")
-                pool.set_config('plc/simulation_mode', current_simulation_mode)
+            if current_demo_mode or current_simulation_mode:
+                # In simulation/demo mode, always report success
+                success = True
+                test_mode = "DEMO/SIMULATION MODE"
+            else:
+                # For real testing, get current params
+                connection_type = 'tcp' if self.tcpRadio.isChecked() else 'rtu'
+                params = self._get_current_connection_params()
+                
+                # CRITICAL FIX: Remove simulation_mode from params to avoid conflict
+                if 'simulation_mode' in params:
+                    del params['simulation_mode']
+                    
+                logger.info(f"Performing REAL CONNECTION TEST with: {connection_type}, params: {params}")
+                
+                # Call test_connection with explicit simulation_mode=False
+                success = plc_communication.test_connection(
+                    connection_type=connection_type,
+                    simulation_mode=False,  # Explicit parameter
+                    **params  # This no longer contains simulation_mode
+                )
+                test_mode = "REAL MODE"
             
             # Show result
             if success:
-                self.statusLabel.setText("Connected successfully")
-                self.statusLabel.setStyleSheet("color: green; font-weight: bold;")
-                
-                # Add connection details to the message
                 if current_demo_mode or current_simulation_mode:
+                    self.statusLabel.setText("SIMULATION Connected")
+                    self.statusLabel.setStyleSheet("color: orange; font-weight: bold;")
+                    
                     QtWidgets.QMessageBox.information(
                         self,
                         "Connection Test",
-                        "Connection test passed in SIMULATION mode.\n\n" +
+                        f"Connection test passed in {test_mode}.\n\n" +
                         "Note: This is not testing a physical connection."
                     )
                 else:
+                    self.statusLabel.setText("Connected")
+                    self.statusLabel.setStyleSheet("color: green; font-weight: bold;")
+                    
                     QtWidgets.QMessageBox.information(
                         self,
                         "Connection Test",
-                        "Successfully connected to PLC."
+                        "Successfully connected to PLC using REAL connection."
                     )
             else:
-                self.statusLabel.setText("Connection failed")
+                self.statusLabel.setText("Connection Failed")
                 self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
                 QtWidgets.QMessageBox.warning(
                     self,
                     "Connection Test",
-                    "Failed to connect to PLC. Check your settings."
+                    "Failed to connect to PLC. Check your settings and ensure the device is connected."
                 )
         
         except Exception as e:
             logger.error(f"Error testing connection: {e}")
-            self.statusLabel.setText("Connection error")
+            self.statusLabel.setText("Connection Error")
             self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
             QtWidgets.QMessageBox.critical(
                 self,
                 "Connection Test Error",
                 f"An error occurred while testing the connection: {str(e)}"
             )
-    
+        
     def _save_settings_simple(self, test_only=False):
         """Save settings directly to config without triggering recursion"""
         try:
