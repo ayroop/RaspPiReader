@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta
 from threading import Thread, Lock
 from time import sleep
@@ -14,7 +15,7 @@ from RaspPiReader.ui.setting_form_handler import CHANNEL_COUNT, SettingFormHandl
 from RaspPiReader.ui.startCycleForm import Ui_CycleStart  
 
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import CycleData, DefaultProgram
+from RaspPiReader.libs.models import CycleData, Alarm, DefaultProgram
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
 
 # Mapping from widget object names in the UI to model field names.
@@ -178,7 +179,7 @@ class StartCycleFormHandler(QMainWindow):
         main_form = pool.get('main_form')
         if main_form:
             main_form.folder_name = self.file_name
-        csv_file_path = pool.config('csv_file_path', str, os.getcwd())
+        csv_file_path = pool.config('csv_file_path', str, os.path.join(os.getcwd(), "reports"))
         self.folder_path = os.path.join(csv_file_path, self.file_name)
         os.makedirs(self.folder_path, exist_ok=True)
         cycle_data = CycleData(
@@ -223,9 +224,11 @@ class StartCycleFormHandler(QMainWindow):
     def stop_cycle(self):
         stop_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.cycle_data["stop_time"] = stop_time
-        serial_numbers = self.get_serial_numbers()  # Dummy implementation below
-        supervisor_username = self.get_supervisor_override()  # Dummy implementation
-        alarm_values = self.read_alarms()  # Dummy implementation
+        # Now get values from the database instead of dummy values
+        serial_numbers = self.get_serial_numbers()
+        supervisor_username = self.get_supervisor_override()
+        alarm_values = self.read_alarms()  # Now Alarm is defined after the import
+
         try:
             pdf_file, csv_file = finalize_cycle(
                 cycle_data=self.cycle_data,
@@ -238,6 +241,7 @@ class StartCycleFormHandler(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Report Generation Error", f"Error finalizing cycle: {e}")
             return
+
         db = Database("sqlite:///local_database.db")
         new_cycle = CycleData(
             order_id=self.cycle_data.get("order_id"),
@@ -253,19 +257,51 @@ class StartCycleFormHandler(QMainWindow):
             db.session.rollback()
             QMessageBox.critical(self, "Database Error", f"Could not save cycle data: {e}")
             return
-        QMessageBox.information(self, "Cycle Stopped",
-            f"Cycle stopped successfully!\nPDF Report: {pdf_file}\nCSV Report: {csv_file}")
+
+        QMessageBox.information(
+            self, "Cycle Stopped",
+            f"Cycle stopped successfully!\nPDF Report: {pdf_file}\nCSV Report: {csv_file}"
+        )
         self.close()
 
-    # Dummy implementations – replace with your real methods:
     def get_serial_numbers(self):
-        return ["SN001", "SN002", "SN003"]
+        """
+        Retrieve serial numbers from the current cycle saved in the database.
+        Assumes that the CycleData table contains a comma‑separated string.
+        """
+        db = Database("sqlite:///local_database.db")
+        latest_cycle = db.session.query(CycleData)\
+                               .order_by(CycleData.created_at.desc())\
+                               .first()
+        if latest_cycle and latest_cycle.serial_numbers:
+            return latest_cycle.serial_numbers.split(',')
+        else:
+            # Return an empty list if no cycle exists or no numbers stored.
+            return []
 
     def get_supervisor_override(self):
-        return "supervisor_user"
+        """
+        Retrieve the supervisor username from the database.
+        Assumes a User with username 'supervisor' has been created by an admin.
+        """
+        db = Database("sqlite:///local_database.db")
+        supervisor_user = db.get_user("supervisor")
+        if supervisor_user:
+            return supervisor_user.username
+        else:
+            return "supervisor"  # Fallback if not found
 
     def read_alarms(self):
-        return {100: 0, 101: 1, 102: 0, 103: 0, 104: 0, 105: 0, 106: 1, 107: 0}
+        """
+        Retrieve alarm values from the database.
+        Uses 'alarm_text' (defined in the Alarm model) for the alarm message.
+        """
+        db = Database("sqlite:///local_database.db")
+        alarms = db.session.query(Alarm).all()
+        alarm_dict = {}
+        for alarm in alarms:
+            alarm_dict[alarm.address] = alarm.alarm_text
+        return alarm_dict
 
     @staticmethod
     def read_data(handler, data_stack, updated_signal, dt, process_data=True):

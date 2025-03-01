@@ -115,55 +115,69 @@ def set_port(port):
             logger.error(f"Error setting serial port: {e}")
     return False
 
-    def is_connected():
-        """Check if we have an active PLC connection"""
-        global modbus_comm
-        
-        # If in simulation mode, the "connection" is always considered active
-        if pool.config('demo', bool, False) or pool.config('plc/simulation_mode', bool, False):
-            logger.debug("Connection status: SIMULATED (always on)")
-            return True
-            
-        # Check if we have a client object
-        if modbus_comm is None or not hasattr(modbus_comm, 'client'):
-            logger.debug("Connection status: OFF (no client)")
-            return False
-            
-        # Check if client exists but isn't properly connected
-        if not modbus_comm.connected:
-            logger.debug("Connection status: OFF (client reports not connected)")
-            return False
-        
-        # For TCP connections, try a quick read to verify connection is alive
-        if modbus_comm.connection_type == 'tcp':
-            try:
-                result = modbus_comm.read_registers(0, 1, 1, 'holding')
-                connection_ok = result is not None
-                logger.debug(f"TCP connection status check: {'OK' if connection_ok else 'FAILED'}")
-                return connection_ok
-            except Exception as e:
-                logger.debug(f"TCP connection test error: {e}")
-                return False
-        
-        # For RTU connections, we trust the serial port status since testing can be slower
-        # But we could add similar verification if needed
+def is_connected():
+    """
+    Check if there is an active connection to the PLC.
+    Returns True if the connection is active; otherwise, False.
+    """
+    global modbus_comm
+    # In demo or simulation mode, we assume the connection is always active.
+    if pool.config('demo', bool, False) or pool.config('plc/simulation_mode', bool, False):
+        logger.debug("Connection status: SIMULATED (always on)")
         return True
 
-def ensure_connection():
-    """Ensure that we have a connection to the PLC"""
-    global modbus_comm
-    if not modbus_comm:
-        logger.warning("No PLC communication object exists, initializing now")
-        return initialize_plc_communication()
-    
-    if not is_connected():
-        logger.warning("PLC not connected, trying to reconnect")
+    # Ensure the modbus_comm object exists and has a client.
+    if not modbus_comm or not hasattr(modbus_comm, 'client'):
+        logger.debug("Connection status: OFF (no client)")
+        return False
+
+    # Check the client's connection flag.
+    if not modbus_comm.connected:
+        logger.debug("Connection status: OFF (client reports not connected)")
+        return False
+
+    # For TCP connections, try a quick read to verify that the connection is alive.
+    if modbus_comm.connection_type == 'tcp':
         try:
-            return modbus_comm.connect()
+            result = modbus_comm.read_registers(0, 1, 1, 'holding')
+            connection_ok = (result is not None)
+            logger.debug(f"TCP connection status check: {'OK' if connection_ok else 'FAILED'}")
+            return connection_ok
+        except Exception as e:
+            logger.debug(f"TCP connection test error: {e}")
+            return False
+
+    # For RTU or other connection types, assume the connection is active if the flag is set.
+    return True
+
+def ensure_connection():
+    """
+    Ensure that the PLC connection is active.
+    If no connection exists or the connection is lost,
+    this will attempt to initialize or reconnect.
+    Returns True if the connection is active after checking, otherwise False.
+    """
+    global modbus_comm
+    # If the PLC communication object does not exist, initialize communication.
+    if modbus_comm is None:
+        logger.warning("No PLC communication object exists, initializing now.")
+        return initialize_plc_communication()  # Ensure this function returns a boolean.
+
+    # If not connected, attempt to reconnect.
+    if not is_connected():
+        logger.warning("PLC not connected, trying to reconnect.")
+        try:
+            if modbus_comm.connect():
+                logger.debug("Reconnection successful.")
+                return True
+            else:
+                logger.error("Reconnection failed.")
+                return False
         except Exception as e:
             logger.error(f"Error reconnecting to PLC: {e}")
             return False
-    
+
+    # If the connection is active, return True.
     return True
 
 def read_coil(address, device_id=1):

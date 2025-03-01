@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_WorkOrderForm(object):
     def setupUi(self, WorkOrderForm):
         WorkOrderForm.setObjectName("WorkOrderForm")
-        WorkOrderForm.resize(400, 250)
+        WorkOrderForm.resize(342, 194)
         self.verticalLayout = QtWidgets.QVBoxLayout(WorkOrderForm)
         self.verticalLayout.setObjectName("verticalLayout")
         self.formLayout = QtWidgets.QFormLayout()
@@ -32,12 +32,6 @@ class Ui_WorkOrderForm(object):
         self.quantitySpinBox.setMaximum(250)
         self.quantitySpinBox.setObjectName("quantitySpinBox")
         self.formLayout.setWidget(1, QtWidgets.QFormLayout.FieldRole, self.quantitySpinBox)
-        self.serialNumbersLabel = QtWidgets.QLabel(WorkOrderForm)
-        self.serialNumbersLabel.setObjectName("serialNumbersLabel")
-        self.formLayout.setWidget(2, QtWidgets.QFormLayout.LabelRole, self.serialNumbersLabel)
-        self.serialNumbersLineEdit = QtWidgets.QLineEdit(WorkOrderForm)
-        self.serialNumbersLineEdit.setObjectName("serialNumbersLineEdit")
-        self.formLayout.setWidget(2, QtWidgets.QFormLayout.FieldRole, self.serialNumbersLineEdit)
         self.verticalLayout.addLayout(self.formLayout)
         self.buttonLayout = QtWidgets.QHBoxLayout()
         self.buttonLayout.setObjectName("buttonLayout")
@@ -57,7 +51,6 @@ class Ui_WorkOrderForm(object):
         WorkOrderForm.setWindowTitle(_translate("WorkOrderForm", "Enter Work Order"))
         self.workOrderLabel.setText(_translate("WorkOrderForm", "Work Order Number:"))
         self.quantityLabel.setText(_translate("WorkOrderForm", "Product Quantity:"))
-        self.serialNumbersLabel.setText(_translate("WorkOrderForm", "Serial Numbers:"))
         self.nextButton.setText(_translate("WorkOrderForm", "Next"))
         self.cancelButton.setText(_translate("WorkOrderForm", "Cancel"))
 
