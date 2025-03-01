@@ -118,11 +118,8 @@ class ModbusCommunication:
             
             # For TCP connections, perform a pre-check if host is reachable
             if self.connection_type == 'tcp':
-                import socket
                 host = self.client.host
                 port = self.client.port
-                
-                # Always perform the socket test for TCP connections
                 try:
                     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                     s.settimeout(2.0)  # 2 seconds timeout
@@ -137,14 +134,12 @@ class ModbusCommunication:
                     return False
             
             # Try to connect with the Modbus client
-            # For TCP, this often succeeds even without a real connection, so we rely on our socket test above
             self.connected = self.client.connect()
             
             if self.connected:
                 # For TCP connections, verify we can actually communicate
                 if self.connection_type == 'tcp':
                     try:
-                        # Try a simple read operation to validate the connection
                         test_result = self.client.read_holding_registers(0, 1, unit=1)
                         if test_result is None or test_result.isError():
                             self.last_error = f"Connection test failed: {test_result}"
@@ -329,6 +324,7 @@ class DataReader:
         self.running = False
         self.connected = False
         logger.info("Data reader stopped")
+        
     def reload(self):
         """Reload configuration and reconnect"""
         # Completely disconnect first
@@ -376,14 +372,15 @@ class DataReader:
         else:  # TCP
             config_params.update({
                 'host': pool.config('plc/host', str, None),
-                'port': pool.config('plc/port', int, 502),  # FIXED: Use consistent port parameter name
+                'port': pool.config('plc/port', int, 502),
                 'timeout': pool.config('plc/timeout', float, 1.0)
             })
         
         # Configure and connect
         logger.info(f"Configuring with: {config_params}")
         self.modbus_comm.configure(connection_type, **config_params)
-        self.connected = self.modbus_comm.connect()    
+        self.connected = self.modbus_comm.connect()
+    
     def _read_holding_registers(self, dev, addr):
         """Read holding registers"""
         return self.modbus_comm.read_registers(addr, 1, dev, 'holding')
@@ -411,6 +408,15 @@ class DataReader:
         else:
             logger.error(f"Invalid register read type: {self.read_type}")
             return None
+
+    def read_bool_address(self, address, dev=1):
+        """Read a single boolean value (coil) from the PLC.
+        Returns True, False, or None on error.
+        """
+        values = self.modbus_comm.read_bool_addresses(address, count=1, dev=dev)
+        if values is not None and len(values) > 0:
+            return values[0]
+        return None
 
 # Create a singleton instance
 dataReader = DataReader()

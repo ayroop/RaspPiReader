@@ -24,7 +24,7 @@ from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.configuration import config
 from RaspPiReader.ui.mainForm import MainForm
 from .boolean_status import Ui_BooleanStatusWidget
-from RaspPiReader.libs.models import BooleanStatus, PlotData
+from RaspPiReader.libs.models import BooleanStatus, PlotData, BooleanAddress
 from RaspPiReader.libs.database import Database
 from RaspPiReader.ui.new_cycle_handler import NewCycleHandler
 
@@ -47,7 +47,6 @@ def timedelta2str(td):
 
 class MainFormHandler(QtWidgets.QMainWindow):
     update_status_bar_signal = pyqtSignal(str, int, str)
-    
     def __init__(self, user_record=None):
         super(MainFormHandler, self).__init__()
         self.user_record = user_record
@@ -126,7 +125,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
         print("MainFormHandler initialized.")
     
     def add_background_settings_menu(self):
-    # Get the already existing File menu (assume you have one)
+        # Get the already existing File menu (assume you have one)
         menubar = self.menuBar()
         file_menu = None
         for action in menubar.actions():
@@ -174,6 +173,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
         # Instantiate and show the Alarm Settings dialog.
         dialog = AlarmSettingsFormHandler(self)
         dialog.exec_()
+
     def new_cycle_start(self):
         self.workOrderForm = WorkOrderFormHandler()
         self.workOrderForm.show()
@@ -233,19 +233,48 @@ class MainFormHandler(QtWidgets.QMainWindow):
         container.show()
 
     def update_bool_status(self):
-        # Ensure dataReader is started.
-        if not getattr(dataReader, 'connected', False):
-            dataReader.start()
-        # Read the 6 boolean coil addresses starting at the first configured address.
-        result = dataReader.read_bool_addresses(1, config.bool_addresses[0], count=6)
-        if result is None:
-            status_str = "PLC not responding"
-            for label in self.boolStatusLabels:
-                label.setText(status_str)
-        else:
-            for i, state in enumerate(result):
-                self.boolStatusLabels[i].setText(f"Bool Addr {config.bool_addresses[i]}: {state}")
+        """
+        Update the Boolean status labels with data from the database and real-time PLC status.
+        Each label will show text like:
+        "Bool Address 1: <Address> - <Label> - <Status>"
+        where the <Address> and <Label> are formatted with the fixed color code #832116,
+        and <Status> is the dynamic PLC value in green if True or red if False.
+        """
+        from RaspPiReader.libs.database import Database
+        from RaspPiReader.libs.communication import dataReader
 
+        db = Database("sqlite:///local_database.db")
+        boolean_entries = db.session.query(BooleanAddress).all()
+        fixed_color = "#832116"
+
+        # Loop through each status widget (assumed to be stored in self.boolStatusLabels)
+        for i, label in enumerate(self.boolStatusLabels):
+            if i < len(boolean_entries):
+                entry = boolean_entries[i]
+                # Attempt to read dynamic bool status from the PLC for this address.
+                try:
+                    plc_status = dataReader.read_bool_address(entry.address, dev=1)  # Expected to return True or False
+                except Exception as ex:
+                    plc_status = None
+
+                if plc_status is None:
+                    status_text = "N/A"
+                    status_color = "black"
+                elif plc_status:
+                    status_text = "True"
+                    status_color = "green"
+                else:
+                    status_text = "False"
+                    status_color = "red"
+
+                display_text = (
+                    f"Bool Address {i+1}: "
+                    f"<span style='color:{fixed_color};'>{entry.address} - {entry.label}</span> - "
+                    f"<span style='color:{status_color};'>{status_text}</span>"
+                )
+                label.setText(display_text)
+            else:
+                label.setText("N/A")
     def setup_plot_data_display(self):
         # Create container first
         self.plotWidgetContainer = QtWidgets.QWidget()
@@ -257,13 +286,15 @@ class MainFormHandler(QtWidgets.QMainWindow):
         
         # Delay plot initialization to prevent UI freezes during startup
         QTimer.singleShot(100, self.initialize_plot_widget)
+
     def initialize_plot_widget(self):
-    # This method will be called after a short delay
+        # This method will be called after a short delay
         self.plotWidget = InitiatePlotWidget(
             active_channels=[], 
             parent_layout=self.plotWidgetContainer.layout(), 
             headers=["Time", "Value", ""]
         )
+
     def add_one_drive_menu(self):
         one_drive_action = QAction("OneDrive Settings", self)
         one_drive_action.triggered.connect(self.show_onedrive_settings)
