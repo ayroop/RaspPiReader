@@ -1,5 +1,3 @@
-import os
-import csv
 from datetime import datetime, timedelta
 from threading import Thread, Lock
 from time import sleep
@@ -121,7 +119,7 @@ class StartCycleFormHandler(QMainWindow):
             print('Failed to connect to device.')
             return
         self.run_test_read_thread()
-        self.initiate_gdrive_update_thread()
+        self.initiate_onedrive_update_thread()
         super().show()
 
     def close(self):
@@ -155,11 +153,6 @@ class StartCycleFormHandler(QMainWindow):
         )
         self.test_read_thread.daemon = True
         self.test_read_thread.start()
-
-    def initiate_gdrive_update_thread(self):
-        self.gdrive_update_thread = Thread(target=self.gdrive_upload_loop)
-        self.gdrive_update_thread.daemon = True
-        self.gdrive_update_thread.start()
 
     def initiate_reader_thread(self):
         dt = pool.config('time_interval', float, 1.0)
@@ -223,7 +216,6 @@ class StartCycleFormHandler(QMainWindow):
         self.running = True
         self.hide()
         self.initiate_reader_thread()
-        self.initiate_gdrive_update_thread()
         if self.read_thread:
             self.read_thread.start()
         self.initiate_onedrive_update_thread()

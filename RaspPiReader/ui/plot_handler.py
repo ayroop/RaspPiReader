@@ -136,3 +136,8 @@ class InitiatePlotWidget:
         exporter = pg.exporters.ImageExporter(self.left_plot.scene())
         exporter.parameters()['width'] = 2500
         exporter.export(full_export_path)
+    
+    def cleanup(self):
+        # Implement the logic to clean up the plot
+        self.left_plot.clear()
+        self.right_plot.clear()
