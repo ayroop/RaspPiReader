@@ -42,18 +42,32 @@ class Database:
     def get_cycle_data(self):
         return self.session.query(CycleData).all()
 
+    def search_serial_number(self, sn):
+        """
+        Search for a serial number in the database.
+        Returns the cycle data record containing the serial number if found, None otherwise.
+        """
+        try:
+            cycles = self.session.query(CycleData).all()
+            for cycle in cycles:
+                if cycle.serial_numbers and sn in cycle.serial_numbers.split(','):
+                    return cycle
+        except Exception as e:
+            logger.error(f"Error searching for serial number: {e}")
+        return None
+
     def check_duplicate_serial(self, sn):
         """
         Check if the provided serial number 'sn' already exists
-        in any CycleData record. Assumes CycleData.serial_numbers is
-        a comma-separated string.
+        in any CycleData record.
         """
-        cycles = self.session.query(CycleData).all()
-        for cycle in cycles:
-            if cycle.serial_numbers:
-                serials = [s.strip() for s in cycle.serial_numbers.split(',')]
-                if sn in serials:
+        try:
+            cycles = self.session.query(CycleData).all()
+            for cycle in cycles:
+                if cycle.serial_numbers and sn in cycle.serial_numbers.split(','):
                     return True
+        except Exception as e:
+            logger.error(f"Error checking for duplicate serial: {e}")
         return False
 
     def sync_to_azure(self, azure_db_url):

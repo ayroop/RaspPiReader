@@ -17,7 +17,7 @@ from RaspPiReader.ui.startCycleForm import Ui_CycleStart
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import CycleData, Alarm, DefaultProgram
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
-
+from RaspPiReader.ui.serial_number_management_form_handler import SerialNumberManagementFormHandler
 # Mapping from widget object names in the UI to model field names.
 cycle_settings = {
     "orderNumberLineEdit": "order_number",  # Updated name
@@ -91,10 +91,13 @@ class StartCycleFormHandler(QMainWindow):
         else:
             QMessageBox.warning(self, "Warning", f"No default values found for Program {program_index}")
 
-    def initiate_onedrive_update_thread(self):
-        self.onedrive_thread = Thread(target=self.onedrive_upload_loop)
-        self.onedrive_thread.daemon = True
-        self.onedrive_thread.start()
+    def open_serial_management(self):
+        dialog = SerialNumberManagementFormHandler(self)
+        dialog.exec_()
+        def initiate_onedrive_update_thread(self):
+            self.onedrive_thread = Thread(target=self.onedrive_upload_loop)
+            self.onedrive_thread.daemon = True
+            self.onedrive_thread.start()
 
     def onedrive_upload_loop(self):
         while True:

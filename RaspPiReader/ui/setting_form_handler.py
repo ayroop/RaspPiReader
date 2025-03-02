@@ -11,7 +11,6 @@ from PyQt5.QtWidgets import (
     QCheckBox,
     QMessageBox,
     QErrorMessage,
-    QTableWidgetItem
 )
 from PyQt5 import QtWidgets
 from RaspPiReader import pool
@@ -314,23 +313,6 @@ class SettingFormHandler(QMainWindow):
                         widget_name = f"{prefix}{ch}"
                         if hasattr(self.form_obj, widget_name):
                             self.set_val(widget_name, getattr(channel_settings, attribute))
-            # Load Boolean Address settings from the database.
-            boolean_entries = self.db.session.query(BooleanAddress).all()
-            if boolean_entries:
-                self.boolTable.setRowCount(len(boolean_entries))
-                for i, entry in enumerate(boolean_entries):
-                    addr_item = QtWidgets.QTableWidgetItem(str(entry.address))
-                    label_item = QtWidgets.QTableWidgetItem(entry.label)
-                    self.boolTable.setItem(i, 0, addr_item)
-                    self.boolTable.setItem(i, 1, label_item)
-            else:
-                from RaspPiReader.libs.configuration import config
-                self.boolTable.setRowCount(len(config.bool_addresses))
-                for i, addr in enumerate(config.bool_addresses):
-                    addr_item = QtWidgets.QTableWidgetItem(str(addr))
-                    label_item = QtWidgets.QTableWidgetItem(f"Bool Addr {addr}")
-                    self.boolTable.setItem(i, 0, addr_item)
-                    self.boolTable.setItem(i, 1, label_item)
         except Exception as e:
             logging.error(f"Error loading settings: {e}")
 
@@ -382,7 +364,6 @@ class SettingFormHandler(QMainWindow):
         except Exception as e:
             logging.error(f"Error getting value for {name}: {e}")
             return ""
-
     def set_val(self, name, value):
         """Set a value in a UI widget with proper type conversion"""
         widget = self.findChild(QtWidgets.QWidget, name)
@@ -401,9 +382,9 @@ class SettingFormHandler(QMainWindow):
                 elif isinstance(widget, QtWidgets.QCheckBox):
                     widget.setChecked(bool(value))
             except Exception as e:
-                logging.error(f"Error setting {name}: {e}")
+                logger.error(f"Error setting {name}: {e}")
         else:
-            logging.warning(f"Widget {name} not found in UI")
+            logger.warning(f"Widget {name} not found in UI")
 
     def write_to_device(self):
         from RaspPiReader.libs.communication import dataReader
