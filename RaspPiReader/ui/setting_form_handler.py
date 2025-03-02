@@ -1,5 +1,3 @@
-import logging
-import serial
 from PyQt5.QtCore import QSettings, Qt
 from PyQt5.QtWidgets import (
     QMainWindow,
@@ -13,11 +11,15 @@ from PyQt5.QtWidgets import (
     QErrorMessage,
 )
 from PyQt5 import QtWidgets
+from PyQt5.QtGui import QFont
+import logging
 from RaspPiReader import pool
 from .color_label import ColorLabel
 from .settingForm import Ui_SettingForm as SettingForm
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import GeneralConfigSettings, ChannelConfigSettings, BooleanAddress
+from RaspPiReader.libs.configuration import config
+from RaspPiReader.ui.serial_number_management_form_handler import SerialNumberManagementFormHandler
 
 CHANNEL_COUNT = 14
 READ_INPUT_REGISTERS = "Read Input Registers"
@@ -36,13 +38,47 @@ class SettingFormHandler(QMainWindow):
         self.close_prompt = True
         self.setWindowModality(Qt.ApplicationModal)
         self.showMaximized()
-        # Add new tab for Boolean addresses settings
+        
+        # Add both tabs
         self.add_boolean_addresses_tab()
+        self.add_serial_number_management_tab()
+        
         self.show()
 
+    def add_serial_number_management_tab(self):
+        """Add a tab for Serial Number Management"""
+        # Create a new tab
+        serial_number_tab = QtWidgets.QWidget()
+        serial_number_tab.setObjectName("tabSerialNumbers")
+        
+        # Create layout for the tab
+        layout = QtWidgets.QVBoxLayout(serial_number_tab)
+        
+        # Create a label for instructions
+        instructions_label = QtWidgets.QLabel("Manage Serial Numbers in the database:")
+        instructions_label.setFont(QFont("Segoe UI", 10))
+        layout.addWidget(instructions_label)
+        
+        # Create a button to open the Serial Number Management form
+        manage_button = QtWidgets.QPushButton("Open Serial Number Management")
+        manage_button.clicked.connect(self.open_serial_number_management)
+        layout.addWidget(manage_button)
+        
+        # Add a spacer to push everything to the top
+        spacer = QtWidgets.QSpacerItem(20, 40, 
+                                    QtWidgets.QSizePolicy.Minimum, 
+                                    QtWidgets.QSizePolicy.Expanding)
+        layout.addItem(spacer)
+        
+        # Add the tab to the tab widget
+        self.form_obj.tabWidget.addTab(serial_number_tab, "Serial Numbers")
+
+    def open_serial_number_management(self):
+        """Open the Serial Number Management form"""
+        serial_form = SerialNumberManagementFormHandler(self)
+        serial_form.exec_()
+
     def add_boolean_addresses_tab(self):
-        # Import configuration
-        from RaspPiReader.libs.configuration import config
         boolean_tab = self.create_boolean_tab(config)
         self.form_obj.tabWidget.addTab(boolean_tab, "Boolean Addresses")
 
@@ -85,6 +121,10 @@ class SettingFormHandler(QMainWindow):
             self.form_obj.buttonSave.clicked.connect(self.save_and_close)
         if hasattr(self.form_obj, "buttonCancel"):
             self.form_obj.buttonCancel.clicked.connect(self.close)
+        
+        # Add connection for serial number management
+        if hasattr(self.form_obj, "serialNumbersButton"):
+            self.form_obj.serialNumbersButton.clicked.connect(self.open_serial_number_management)
 
     def save_settings(self):
         try:

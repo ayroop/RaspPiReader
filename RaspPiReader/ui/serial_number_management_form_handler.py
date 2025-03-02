@@ -1,10 +1,9 @@
+import logging
 from PyQt5 import QtWidgets
 from RaspPiReader.ui.serial_number_management import Ui_SerialNumberManagementDialog
 from RaspPiReader.libs.database import Database
-import logging
 import pandas as pd
 import csv
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +21,27 @@ class SerialNumberManagementFormHandler(QtWidgets.QDialog):
         self.ui.searchButton.clicked.connect(self.search_serial)
 
     def load_serials(self):
-        # Example: load serials from the first cycle data record
+        # Get all cycle data records from the database
         cycle_data = self.db.get_cycle_data()
         serials = []
-        if cycle_data and len(cycle_data) > 0 and cycle_data[0].serial_numbers:
-            serials = cycle_data[0].serial_numbers.split(",")
-        self.populate_table(serials)
+        
+        # Extract all serial numbers from all cycle records
+        for record in cycle_data:
+            if record and record.serial_numbers:
+                serials.extend(record.serial_numbers.split(","))
+        
+        # Display unique serial numbers
+        unique_serials = list(set(serials))
+        
+        # Limit to max_serials
+        if len(unique_serials) > self.max_serials:
+            unique_serials = unique_serials[:self.max_serials]
+            QtWidgets.QMessageBox.information(
+                self, "Info", 
+                f"Only showing the first {self.max_serials} unique serial numbers."
+            )
+            
+        self.populate_table(unique_serials)
 
     def populate_table(self, serials):
         table = self.ui.serialTableWidget
@@ -36,6 +50,7 @@ class SerialNumberManagementFormHandler(QtWidgets.QDialog):
             row = table.rowCount()
             table.insertRow(row)
             table.setItem(row, 0, QtWidgets.QTableWidgetItem(sn))
+        table.resizeColumnsToContents()
     
     def add_serial(self):
         table = self.ui.serialTableWidget
