@@ -3975,25 +3975,41 @@
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4010,25 +4026,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4045,30 +4077,40 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
                 </property>
                 <property name="iconSize">
                  <size>
-                  <width>12</width>
-                  <height>12</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="checked">
@@ -4086,25 +4128,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4121,25 +4179,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4156,25 +4230,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4191,25 +4281,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4226,25 +4332,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4261,25 +4383,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4296,25 +4434,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4331,25 +4485,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4366,25 +4536,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4401,25 +4587,41 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
+                </property>
+                <property name="sizeIncrement">
+                 <size>
+                  <width>16</width>
+                  <height>16</height>
+                 </size>
+                </property>
+                <property name="tabletTracking">
+                 <bool>true</bool>
                 </property>
                 <property name="layoutDirection">
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
@@ -4436,13 +4638,13 @@ margin-right:7%;</string>
                 </property>
                 <property name="minimumSize">
                  <size>
-                  <width>0</width>
-                  <height>19</height>
+                  <width>25</width>
+                  <height>25</height>
                  </size>
                 </property>
                 <property name="maximumSize">
                  <size>
-                  <width>25</width>
+                  <width>35</width>
                   <height>16777215</height>
                  </size>
                 </property>
@@ -4450,11 +4652,18 @@ margin-right:7%;</string>
                  <enum>Qt::LeftToRight</enum>
                 </property>
                 <property name="styleSheet">
-                 <string notr="true">margin-left:7%;
-margin-right:7%;</string>
+                 <string notr="true">margin-left: 7px;  
+margin-right: 7px;  
+</string>
                 </property>
                 <property name="text">
                  <string/>
+                </property>
+                <property name="iconSize">
+                 <size>
+                  <width>25</width>
+                  <height>25</height>
+                 </size>
                 </property>
                 <property name="checked">
                  <bool>true</bool>
