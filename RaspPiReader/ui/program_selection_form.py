@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\DEV\Python\PLC Integration\src1-main\src1-main\RaspPiReader-master\RaspPiReader\qt\program_selection_form.ui'
+# Form implementation generated from reading ui file 'RaspPiReader/qt\program_selection_form.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -62,13 +62,3 @@ class Ui_ProgramSelectionForm(object):
         self.programInfoLabel.setText(_translate("ProgramSelectionForm", "Program information will be displayed here."))
         self.startCycleButton.setText(_translate("ProgramSelectionForm", "Start Cycle"))
         self.cancelButton.setText(_translate("ProgramSelectionForm", "Cancel"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    ProgramSelectionForm = QtWidgets.QWidget()
-    ui = Ui_ProgramSelectionForm()
-    ui.setupUi(ProgramSelectionForm)
-    ProgramSelectionForm.show()
-    sys.exit(app.exec_())

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'boolean_status.ui'
+# Form implementation generated from reading ui file 'RaspPiReader/qt\boolean_status.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #

@@ -202,7 +202,8 @@ class SettingFormHandler(QMainWindow):
                 self.db.session.add(settings)
             self.db.session.commit()
 
-            # Dynamic channel settings mapping
+            # Dynamic channel settings mapping, including ColorLabel
+            
             channel_fields = {
                 "editAd": ("address", 0),
                 "editLabel": ("label", ""),
@@ -212,10 +213,10 @@ class SettingFormHandler(QMainWindow):
                 "editLimitLow": ("limit_low", 0),
                 "editLimitHigh": ("limit_high", 0),
                 "editDecPoint": ("decimal_point", 0),
-                "checkScale": ("scale", False),   # Checkbox: convert int to bool
+                "checkScale": ("scale", False),
                 "comboAxis": ("axis_direction", ""),
-                "labelColor": ("color", "#FFFFFF"),
-                "active": ("active", False),      # Ensure 'active' field is set
+                "labelColor": ("color", "#FFFFFF"),  # Use ColorLabel widget for color
+                "active": ("active", False),
                 "min_scale_range": ("min_scale_range", 0),
                 "max_scale_range": ("max_scale_range", 0)
             }
@@ -235,9 +236,9 @@ class SettingFormHandler(QMainWindow):
                                 value = default_val
                     else:
                         value = default_val
-                    setattr(channel_settings, attribute, value)
+                    setattr(channel_settings, attribute, value)  # Save updated value, including color from ColorLabel
             self.db.session.commit()
-
+            
             # Save Boolean Address settings to the database.
             numRows = self.boolTable.rowCount()
             # Remove existing BooleanAddress entries.
@@ -330,6 +331,7 @@ class SettingFormHandler(QMainWindow):
                     self.set_val("panelTimeIntervalLineEdit", 1.0)
                 if hasattr(self.form_obj, "accurateDataTimeLineEdit"):
                     self.set_val("accurateDataTimeLineEdit", 1.0)
+    
             # Load dynamic channel settings.
             for ch in range(1, CHANNEL_COUNT + 1):
                 channel_settings = self.db.session.query(ChannelConfigSettings).filter_by(id=ch).first()
@@ -382,31 +384,31 @@ class SettingFormHandler(QMainWindow):
         if not hasattr(self.form_obj, name):
             logging.warning(f"{name} widget not found in form.")
             return ""
-        obj = getattr(self.form_obj, name)
+        widget = getattr(self.form_obj, name)
         try:
-            if isinstance(obj, QSpinBox):
-                return obj.value()
-            elif isinstance(obj, QDoubleSpinBox):
-                return obj.value()
-            elif isinstance(obj, QLineEdit):
-                return obj.text()
-            elif isinstance(obj, QComboBox):
-                return obj.currentText()
-            elif isinstance(obj, QLabel):
-                return obj.text()
-            elif isinstance(obj, QCheckBox):
-                return int(obj.isChecked())
-            elif isinstance(obj, ColorLabel):
-                return obj.value()
+            if isinstance(widget, QSpinBox):
+                return widget.value()
+            elif isinstance(widget, QDoubleSpinBox):
+                return widget.value()
+            elif isinstance(widget, QLineEdit):
+                return widget.text()
+            elif isinstance(widget, QComboBox):
+                return widget.currentText()
+            elif isinstance(widget, QCheckBox):
+                return 1 if widget.isChecked() else 0
+            elif isinstance(widget, ColorLabel):
+                # Return the selected color string.
+                return widget.value()
             else:
-                logging.warning(f"No get method defined for widget {name} of type {type(obj)}")
+                logging.warning(f"No getter defined for {name} of type {type(widget)}")
                 return ""
         except Exception as e:
             logging.error(f"Error getting value for {name}: {e}")
             return ""
     def set_val(self, name, value):
         """Set a value in a UI widget with proper type conversion"""
-        widget = self.findChild(QtWidgets.QWidget, name)
+        # Retrieve the widget from the form_obj rather than self.
+        widget = getattr(self.form_obj, name, None)
         if widget:
             try:
                 if isinstance(widget, QtWidgets.QSpinBox):
@@ -421,11 +423,14 @@ class SettingFormHandler(QMainWindow):
                         widget.setCurrentIndex(index)
                 elif isinstance(widget, QtWidgets.QCheckBox):
                     widget.setChecked(bool(value))
+                elif isinstance(widget, ColorLabel):
+                    widget.setValue(str(value))
+                else:
+                    logging.warning(f"No set method defined for widget {name} of type {type(widget)}")
             except Exception as e:
-                logger.error(f"Error setting {name}: {e}")
+                logging.error(f"Error setting {name}: {e}")
         else:
-            logger.warning(f"Widget {name} not found in UI")
-
+            logging.warning(f"Widget {name} not found in form_obj")
     def write_to_device(self):
         from RaspPiReader.libs.communication import dataReader
         try:

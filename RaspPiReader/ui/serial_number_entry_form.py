@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\DEV\Python\PLC Integration\src1-main\src1-main\RaspPiReader-master\RaspPiReader\qt\serial_number_entry_form.ui'
+# Form implementation generated from reading ui file 'RaspPiReader/qt\serial_number_entry_form.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -56,13 +56,3 @@ class Ui_SerialNumberEntryForm(object):
         self.importExcelButton.setText(_translate("SerialNumberEntryForm", "Import from Excel"))
         self.nextButton.setText(_translate("SerialNumberEntryForm", "Next"))
         self.cancelButton.setText(_translate("SerialNumberEntryForm", "Cancel"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    SerialNumberEntryForm = QtWidgets.QWidget()
-    ui = Ui_SerialNumberEntryForm()
-    ui.setupUi(SerialNumberEntryForm)
-    SerialNumberEntryForm.show()
-    sys.exit(app.exec_())

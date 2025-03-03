@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\DEV\Python\PLC Integration\src1-main\src1-main\RaspPiReader-master\RaspPiReader\qt\work_order_form.ui'
+# Form implementation generated from reading ui file 'RaspPiReader/qt\work_order_form.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -53,13 +53,3 @@ class Ui_WorkOrderForm(object):
         self.quantityLabel.setText(_translate("WorkOrderForm", "Product Quantity:"))
         self.nextButton.setText(_translate("WorkOrderForm", "Next"))
         self.cancelButton.setText(_translate("WorkOrderForm", "Cancel"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    WorkOrderForm = QtWidgets.QWidget()
-    ui = Ui_WorkOrderForm()
-    ui.setupUi(WorkOrderForm)
-    WorkOrderForm.show()
-    sys.exit(app.exec_())
