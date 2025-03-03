@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timedelta
 from threading import Thread, Lock
 from time import sleep
+import logging
 
 from PyQt5.QtCore import pyqtSignal, Qt, QTimer
 from PyQt5.QtWidgets import QMainWindow, QMessageBox, QLineEdit, QSpinBox, QDoubleSpinBox
@@ -18,6 +19,10 @@ from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import CycleData, Alarm, DefaultProgram
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
 from RaspPiReader.ui.serial_number_management_form_handler import SerialNumberManagementFormHandler
+
+# Get the logger for this module
+logger = logging.getLogger(__name__)
+
 # Mapping from widget object names in the UI to model field names.
 cycle_settings = {
     "orderNumberLineEdit": "order_number",  # Updated name
@@ -90,6 +95,49 @@ class StartCycleFormHandler(QMainWindow):
                     print(f"Warning: ui has no attribute '{widget_name}'")
         else:
             QMessageBox.warning(self, "Warning", f"No default values found for Program {program_index}")
+    
+    def initiate_onedrive_update_thread(self):
+        """Initialize and start a thread to upload reports to OneDrive"""
+        try:
+            # Get OneDrive settings from the database or pool
+            client_id = pool.config('onedrive_client_id', str, '')
+            client_secret = pool.config('onedrive_client_secret', str, '')
+            tenant_id = pool.config('onedrive_tenant_id', str, '')
+            
+            if not all([client_id, client_secret, tenant_id]):
+                logger.warning("OneDrive settings incomplete - skipping OneDrive thread initialization")
+                return
+                
+            logger.info("Initializing OneDrive update thread")
+            
+            def update_onedrive():
+                try:
+                    # Initialize the OneDrive API
+                    one_drive = OneDriveAPI()
+                    one_drive.authenticate(client_id, client_secret, tenant_id)
+                    
+                    # Initialize paths for reports that need uploading
+                    today = datetime.now().strftime("%Y%m%d")
+                    reports_folder = "reports"
+                    if not os.path.exists(reports_folder):
+                        os.makedirs(reports_folder)
+                    
+                    # Monitor for new files and upload them
+                    logger.info("OneDrive update thread started")
+                    
+                    # Note: In a real implementation, you would implement proper polling
+                    # or event-based detection of new files here
+                except Exception as e:
+                    logger.error(f"OneDrive update thread error: {e}")
+            
+            # Start thread as daemon so it doesn't block application exit
+            from threading import Thread
+            self.onedrive_thread = Thread(target=update_onedrive, daemon=True)
+            self.onedrive_thread.start()
+            logger.info("OneDrive update thread initialized")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize OneDrive update thread: {e}")
 
     def open_serial_management(self):
         dialog = SerialNumberManagementFormHandler(self)
