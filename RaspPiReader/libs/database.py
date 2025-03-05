@@ -70,6 +70,10 @@ class Database:
             logger.error(f"Error checking for duplicate serial: {e}")
         return False
 
+    def get_managed_serials(self):
+        """Get the special cycle data record that stores managed serials"""
+        return self.session.query(CycleData).filter_by(order_id="MANAGED_SERIALS").first()
+        
     def sync_to_azure(self, azure_db_url):
         azure_engine = create_engine(azure_db_url)
         AzureSession = sessionmaker(bind=azure_engine)

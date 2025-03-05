@@ -161,7 +161,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             # No background style by default
             style = ""
         self.setStyleSheet(style)
-
+    
     def add_alarm_settings_menu(self):
         # Create a new menu called "Alarms" if not already present.
         menubar = self.menuBar()

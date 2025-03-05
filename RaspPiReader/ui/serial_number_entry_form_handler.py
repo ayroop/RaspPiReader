@@ -30,7 +30,7 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
         # Set placeholder text for search line edit
         self.ui.searchLineEdit.setPlaceholderText("Enter serial number to search...")
         
-        # Set button text if not in the UI
+        # Set button text if not already set in the UI
         self.ui.importExcelButton.setText("Import From Excel")
         self.ui.searchButton.setText("Search")
         self.ui.nextButton.setText("Next")
@@ -63,7 +63,7 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
                         self.ui.serialTableWidget.setItem(i, 0, QtWidgets.QTableWidgetItem(serial_val))
                 elif file_name.lower().endswith('.csv'):
                     import csv
-                    with open(file_name, 'r') as f:
+                    with open(file_name, 'r', newline='') as f:
                         csv_reader = csv.reader(f)
                         rows = list(csv_reader)
                         if len(rows) != self.quantity:
@@ -98,20 +98,19 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "Warning", "Please enter a serial number to search.")
             return
         
-        # Search for the serial number in the database
+        # Search for the serial number in the database.
         result = self.db.search_serial_number(sn)
         
         if result:
-            # Format the date nicely
+            # Format the creation date (if available)
             created_date = result.created_at.strftime("%Y-%m-%d %H:%M:%S") if hasattr(result, 'created_at') and result.created_at else "Unknown date"
-            
             # Show detailed information about the found serial
             QtWidgets.QMessageBox.information(
                 self, "Serial Number Found",
-                f"Serial number {sn} was found in:\n\n" +
-                f"Work Order: {result.order_id}\n" +
-                f"Cycle ID: {result.cycle_id}\n" +
-                f"Created: {created_date}\n" +
+                f"Serial number {sn} was found in:\n\n"
+                f"Work Order: {result.order_id}\n"
+                f"Cycle ID: {result.cycle_id}\n"
+                f"Created: {created_date}\n"
                 f"Quantity: {result.quantity if hasattr(result, 'quantity') else 'Unknown'}"
             )
         else:
@@ -153,7 +152,7 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
                 duplicate_serials.append(sn)
         
         if duplicate_serials:
-            # Show duplicate password dialog for authorization
+            # Show duplicate-password dialog for authorization
             dialog = DuplicatePasswordDialog(duplicate_serials, self)
             if dialog.exec_() != QtWidgets.QDialog.Accepted:
                 return  # User cancelled or authorization failed
