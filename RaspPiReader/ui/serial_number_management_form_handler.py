@@ -3,6 +3,7 @@ from PyQt5 import QtWidgets
 from RaspPiReader.ui.serial_number_management import Ui_SerialNumberManagementDialog
 from RaspPiReader.libs.database import Database
 import pandas as pd
+from PyQt5.QtCore import Qt
 import csv
 from datetime import datetime
 from RaspPiReader.libs.models import CycleData
@@ -16,6 +17,8 @@ class SerialNumberManagementFormHandler(QtWidgets.QDialog):
         self.db = Database("sqlite:///local_database.db")
         self.max_serials = 250
         self.load_serials()
+        
+        # Connect button signals
         self.ui.addButton.clicked.connect(self.add_serial)
         self.ui.removeButton.clicked.connect(self.remove_serial)
         self.ui.importButton.clicked.connect(self.import_serials)
@@ -30,135 +33,139 @@ class SerialNumberManagementFormHandler(QtWidgets.QDialog):
         self.accepted.connect(self.save_serials)
 
     def load_serials(self):
-    # First check for the special "managed serials" record
+        """Load managed serial numbers from the database."""
+        # First check for the special "managed serials" record
         managed_serials = self.db.get_managed_serials()
         if managed_serials and managed_serials.serial_numbers:
-            # If we have a managed serials record, use it
-            serials = [sn.strip() for sn in managed_serials.serial_numbers.split(",") if sn.strip()]
-            logger.info(f"Loaded {len(serials)} managed serial numbers")
+            serials = managed_serials.serial_numbers.split(',')
             self.populate_table(serials)
+            logger.info(f"Loaded {len(serials)} managed serial numbers")
             return
             
         # Fallback: Get all cycle data records from the database
-        logger.info("No managed serials found, loading from all cycle data")
-        cycle_data = self.db.get_cycle_data()
-        serials = []
-        # Extract all serial numbers from all cycle records
-        for record in cycle_data:
-            if record and record.serial_numbers:
-                serials.extend(record.serial_numbers.split(","))
-        # Display unique serial numbers (trim whitespace)
-        unique_serials = list(set([sn.strip() for sn in serials if sn.strip()]))
-        # Enforce max_serials limit
-        if len(unique_serials) > self.max_serials:
-            unique_serials = unique_serials[:self.max_serials]
-            QtWidgets.QMessageBox.information(
-                self, "Info",
-                f"Only showing the first {self.max_serials} unique serial numbers."
-            )
-        self.populate_table(unique_serials)
+        all_serials = []
+        cycles = self.db.get_cycle_data()
+        for cycle in cycles:
+            if cycle.serial_numbers:
+                all_serials.extend(cycle.serial_numbers.split(','))
+        
+        # Remove duplicates and sort
+        all_serials = sorted(list(set(all_serials)))
+        self.populate_table(all_serials)
+        logger.info(f"Loaded {len(all_serials)} unique serial numbers from all cycle data")
 
-    
     def populate_table(self, serials):
-        table = self.ui.serialTableWidget
-        table.setRowCount(0)
-        for sn in serials:
-            row = table.rowCount()
-            table.insertRow(row)
-            table.setItem(row, 0, QtWidgets.QTableWidgetItem(sn))
-        table.resizeColumnsToContents()
+        """Populate the table with serial numbers."""
+        self.ui.serialTableWidget.setRowCount(len(serials))
+        for row, serial in enumerate(serials):
+            item = QtWidgets.QTableWidgetItem(serial)
+            self.ui.serialTableWidget.setItem(row, 0, item)
+        self.ui.serialTableWidget.resizeColumnsToContents()
 
     def add_serial(self):
-        table = self.ui.serialTableWidget
-        if table.rowCount() >= self.max_serials:
-            QtWidgets.QMessageBox.warning(self, "Limit Reached", "Maximum serial numbers reached.")
+        """Add a new serial number."""
+        current_count = self.ui.serialTableWidget.rowCount()
+        
+        if current_count >= self.max_serials:
+            QtWidgets.QMessageBox.warning(
+                self, "Warning", 
+                f"Maximum number of serial numbers ({self.max_serials}) reached."
+            )
             return
-        new_sn, ok = QtWidgets.QInputDialog.getText(self, "Add Serial", "Enter new serial number:")
-        if ok and new_sn.strip():
-            new_sn = new_sn.strip()
+            
+        serial, ok = QtWidgets.QInputDialog.getText(
+            self, "Add Serial Number", 
+            "Enter new serial number:"
+        )
+        
+        if ok and serial:
             # Check if serial already exists in the table
-            for row in range(table.rowCount()):
-                if table.item(row, 0).text() == new_sn:
-                    QtWidgets.QMessageBox.warning(self, "Duplicate", "This serial number already exists.")
+            for row in range(self.ui.serialTableWidget.rowCount()):
+                if self.ui.serialTableWidget.item(row, 0).text() == serial:
+                    QtWidgets.QMessageBox.warning(
+                        self, "Duplicate", 
+                        f"Serial number {serial} already exists in the list."
+                    )
                     return
-            # Check if serial exists in the database
-            if self.db.check_duplicate_serial(new_sn):
-                response = QtWidgets.QMessageBox.question(
-                    self, "Duplicate Found",
-                    "This serial number exists in the database. Add anyway?",
-                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
-                )
-                if response == QtWidgets.QMessageBox.No:
-                    return
-            # Add new serial number to table
-            row = table.rowCount()
-            table.insertRow(row)
-            table.setItem(row, 0, QtWidgets.QTableWidgetItem(new_sn))
-            logger.info(f"Added serial number: {new_sn}")
+                    
+            # Add the new serial
+            self.ui.serialTableWidget.setRowCount(current_count + 1)
+            item = QtWidgets.QTableWidgetItem(serial)
+            self.ui.serialTableWidget.setItem(current_count, 0, item)
+            logger.info(f"Added serial number: {serial}")
 
     def remove_serial(self):
-        table = self.ui.serialTableWidget
-        selected = table.selectedItems()
-        if selected:
-            row = selected[0].row()
-            sn = table.item(row, 0).text()
-            response = QtWidgets.QMessageBox.question(
-                self, "Confirm Removal",
-                f"Remove serial number {sn}?",
-                QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        """Remove selected serial number(s)."""
+        selected_rows = set()
+        for item in self.ui.serialTableWidget.selectedItems():
+            selected_rows.add(item.row())
+            
+        if not selected_rows:
+            QtWidgets.QMessageBox.warning(
+                self, "Selection Required", 
+                "Please select one or more serial numbers to remove."
             )
-            if response == QtWidgets.QMessageBox.Yes:
-                table.removeRow(row)
-                logger.info(f"Removed serial number: {sn}")
-        else:
-            QtWidgets.QMessageBox.warning(self, "No Selection", "Please select a serial number to remove.")
+            return
+            
+        # Confirm deletion
+        confirm = QtWidgets.QMessageBox.question(
+            self, "Confirm Removal", 
+            f"Are you sure you want to remove {len(selected_rows)} serial numbers?",
+            QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+        )
+        
+        if confirm == QtWidgets.QMessageBox.Yes:
+            # Remove rows in reverse order to avoid index shifting problems
+            for row in sorted(selected_rows, reverse=True):
+                serial = self.ui.serialTableWidget.item(row, 0).text()
+                self.ui.serialTableWidget.removeRow(row)
+                logger.info(f"Removed serial number: {serial}")
 
     def import_serials(self):
+        """Import serial numbers from Excel or CSV file."""
         file_name, _ = QtWidgets.QFileDialog.getOpenFileName(
-            self, "Import Serials", "",
-            "CSV Files (*.csv);;Excel Files (*.xlsx *.xls);;All Files (*)"
+            self, "Import Serial Numbers", "", 
+            "Excel Files (*.xlsx *.xls);;CSV Files (*.csv);;All Files (*)"
         )
+        
         if not file_name:
             return
+            
         try:
-            serials = []
-            # Handle Excel files
+            # Determine file type and read
             if file_name.lower().endswith(('.xlsx', '.xls')):
                 df = pd.read_excel(file_name, header=None)
-                serials = [str(row[0]).strip() for _, row in df.iterrows() if str(row[0]).strip()]
             elif file_name.lower().endswith('.csv'):
-                with open(file_name, 'r', newline='') as f:
-                    csv_reader = csv.reader(f)
-                    serials = [row[0].strip() for row in csv_reader if row and row[0].strip()]
-            # Validate maximum allowed serial numbers
-            if len(serials) > self.max_serials:
-                QtWidgets.QMessageBox.warning(
-                    self, "Too Many Serials",
-                    f"Found {len(serials)} serial numbers. Maximum allowed is {self.max_serials}."
+                df = pd.read_csv(file_name, header=None)
+            else:
+                QtWidgets.QMessageBox.critical(
+                    self, "Error", 
+                    "Unsupported file format. Please use Excel or CSV."
                 )
                 return
-            # Check for duplicate serials in the database
-            duplicates = [sn for sn in serials if self.db.check_duplicate_serial(sn)]
-            if duplicates:
-                response = QtWidgets.QMessageBox.question(
-                    self, "Duplicates Found",
-                    f"Found {len(duplicates)} duplicate serial numbers in the database. Import anyway?",
-                    QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No
+                
+            # Check if data exceeds maximum
+            if len(df) > self.max_serials:
+                QtWidgets.QMessageBox.warning(
+                    self, "Warning", 
+                    f"File contains {len(df)} serial numbers, but maximum allowed is {self.max_serials}. "
+                    "Only the first {self.max_serials} will be imported."
                 )
-                if response == QtWidgets.QMessageBox.No:
-                    return
-            # Populate table with imported serials
-            self.populate_table(serials)
-            QtWidgets.QMessageBox.information(
-                self, "Import Complete",
-                f"Successfully imported {len(serials)} serial numbers."
-            )
-            logger.info(f"Imported {len(serials)} serial numbers from {file_name}")
+                df = df.iloc[:self.max_serials]
+                
+            # Extract serial numbers from first column
+            imported_serials = [str(x).strip() for x in df.iloc[:, 0].tolist()]
+            
+            # Update table
+            self.ui.serialTableWidget.setRowCount(0)
+            self.populate_table(imported_serials)
+            logger.info(f"Imported {len(imported_serials)} serial numbers from {file_name}")
+            
         except Exception as e:
-            logger.error(f"Error importing serial numbers: {e}")
+            logger.error(f"Error importing file: {e}")
             QtWidgets.QMessageBox.critical(
-                self, "Import Error",
-                f"An error occurred while importing: {str(e)}"
+                self, "Import Error", 
+                f"Failed to import data: {str(e)}"
             )
 
     def search_serial(self):

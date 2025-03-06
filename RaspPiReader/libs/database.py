@@ -1,10 +1,14 @@
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.exc import SQLAlchemyError
 from RaspPiReader.libs.models import (
     Base, User, PLCCommSettings, DatabaseSettings, OneDriveSettings,
     GeneralConfigSettings, ChannelConfigSettings, CycleData, DemoData,
     BooleanStatus, PlotData, DefaultProgram, Alarm
 )
+
+logger = logging.getLogger(__name__)
 
 class Database:
     def __init__(self, database_url):
@@ -26,17 +30,19 @@ class Database:
         return self.session.query(User).all()
 
     def add_cycle_data(self, cycle_data):
+        """Add cycle data to the database with proper error handling."""
         try:
             self.session.add(cycle_data)
             self.session.commit()
+            logger.info(f"Added cycle data for order {cycle_data.order_id}")
             return True
         except RecursionError:
+            logger.error("RecursionError when adding cycle data - possible circular reference")
             self.session.rollback()
-            logging.error("RecursionError in database operation - check model definitions")
             return False
         except Exception as e:
+            logger.error(f"Error adding cycle data: {e}")
             self.session.rollback()
-            logging.error(f"Error adding cycle data: {e}")
             return False
 
     def get_cycle_data(self):
@@ -63,6 +69,7 @@ class Database:
         """
         try:
             cycles = self.session.query(CycleData).all()
+            # For each cycle, check if the serial number exists in the comma-separated list
             for cycle in cycles:
                 if cycle.serial_numbers and sn in cycle.serial_numbers.split(','):
                     return True
@@ -73,7 +80,7 @@ class Database:
     def get_managed_serials(self):
         """Get the special cycle data record that stores managed serials"""
         return self.session.query(CycleData).filter_by(order_id="MANAGED_SERIALS").first()
-        
+    
     def sync_to_azure(self, azure_db_url):
         azure_engine = create_engine(azure_db_url)
         AzureSession = sessionmaker(bind=azure_engine)

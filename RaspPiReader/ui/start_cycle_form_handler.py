@@ -273,12 +273,17 @@ class StartCycleFormHandler(QMainWindow):
         self.initiate_onedrive_update_thread()
 
     def stop_cycle(self):
+        """
+        Handle stopping the cycle: mark stop time,
+        finalize the cycle (generate reports), and save cycle data.
+        """
         stop_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.cycle_data["stop_time"] = stop_time
-        # Now get values from the database instead of dummy values
-        serial_numbers = self.get_serial_numbers()
-        supervisor_username = self.get_supervisor_override()
-        alarm_values = self.read_alarms()  # Now Alarm is defined after the import
+
+        # Gather iterables; if any method returns None, default is provided.
+        serial_numbers = self.get_serial_numbers() or []
+        supervisor_username = self.get_supervisor_override() or ""
+        alarm_values = self.read_alarms() or {}
 
         try:
             pdf_file, csv_file = finalize_cycle(
@@ -290,27 +295,34 @@ class StartCycleFormHandler(QMainWindow):
                 template_file="RaspPiReader/ui/result_template.html"
             )
         except Exception as e:
+            logger.error(f"Error finalizing cycle: {e}")
             QMessageBox.critical(self, "Report Generation Error", f"Error finalizing cycle: {e}")
             return
 
         db = Database("sqlite:///local_database.db")
-        new_cycle = CycleData(
-            order_id=self.cycle_data.get("order_id"),
-            cycle_id=self.cycle_data.get("program"),
-            quantity=str(len(serial_numbers)),
-            serial_numbers=",".join(serial_numbers),
-            created_at=datetime.now()
-        )
+        # Use a default order_id if none is present (to avoid NOT NULL constraint errors)
+        order_id = self.cycle_data.get("order_id") or "unknown"
+        if order_id == "unknown":
+            logger.warning("No order_id found in cycle data; using default 'unknown'.")
+
         try:
+            new_cycle = CycleData(
+                order_id=order_id,
+                quantity=str(len(serial_numbers)),
+                serial_numbers=",".join(serial_numbers)
+            )
             db.session.add(new_cycle)
             db.session.commit()
+            logger.info(f"Cycle data saved with order_id: {order_id}")
         except Exception as e:
             db.session.rollback()
+            logger.error(f"Database error: {e}")
             QMessageBox.critical(self, "Database Error", f"Could not save cycle data: {e}")
             return
 
         QMessageBox.information(
-            self, "Cycle Stopped",
+            self,
+            "Cycle Stopped",
             f"Cycle stopped successfully!\nPDF Report: {pdf_file}\nCSV Report: {csv_file}"
         )
         self.close()
@@ -318,16 +330,21 @@ class StartCycleFormHandler(QMainWindow):
     def get_serial_numbers(self):
         """
         Retrieve serial numbers from the current cycle saved in the database.
-        Assumes that the CycleData table contains a comma‑separated string.
+        This method must always return a list—even if empty.
         """
-        db = Database("sqlite:///local_database.db")
-        latest_cycle = db.session.query(CycleData)\
-                               .order_by(CycleData.created_at.desc())\
-                               .first()
-        if latest_cycle and latest_cycle.serial_numbers:
-            return latest_cycle.serial_numbers.split(',')
-        else:
-            # Return an empty list if no cycle exists or no numbers stored.
+        try:
+            # Query the latest CycleData record and split
+            db = Database("sqlite:///local_database.db")
+            latest_cycle = db.session.query(CycleData)\
+                                .order_by(CycleData.id.desc())\
+                                .first()
+            if latest_cycle and latest_cycle.serial_numbers:
+                # Ensure the result is a list
+                return latest_cycle.serial_numbers.split(',')
+            else:
+                return []  # Return empty list if nothing found
+        except Exception as e:
+            logger.error(f"Error retrieving serial numbers: {e}")
             return []
 
     def get_supervisor_override(self):

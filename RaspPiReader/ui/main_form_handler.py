@@ -7,7 +7,7 @@ from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction
 from colorama import Fore
-
+import logging
 from RaspPiReader import pool
 from .mainForm import MainForm
 from .plot_handler import InitiatePlotWidget
@@ -39,6 +39,12 @@ from RaspPiReader.ui.alarm_settings_form_handler import AlarmSettingsFormHandler
 from RaspPiReader.ui.background_settings_form import BackgroundSettingsForm
 # Add PLC connection status
 from RaspPiReader.libs import plc_communication
+
+from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
+
+
+
+logger = logging.getLogger(__name__)
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
     m, s = divmod(rem, 60)
@@ -429,14 +435,58 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.start_cycle_form.show()
 
     def _stop(self):
-        self.start_cycle_form.stop_cycle()
-        self.actionStart.setEnabled(True)
-        self.actionStop.setEnabled(False)
-        self.actionPrint_results.setEnabled(True)
-        self.show_plot_preview()
-        QTimer.singleShot(1000, self.close_csv_file)
+        """
+        Stop the current cycle by delegating to the start cycle form,
+        update UI actions, and preview the plot.
+        """
+        try:
+            if hasattr(self, 'start_cycle_form') and self.start_cycle_form is not None:
+                logger.info("Using existing start_cycle_form to stop cycle")
+                self.start_cycle_form.stop_cycle()
+            else:
+                logger.warning("No active start_cycle_form found; creating temporary form")
+                self.start_cycle_form = StartCycleFormHandler()
+                self.start_cycle_form.cycle_data = {
+                    "order_id": "unknown",
+                    "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "stop_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                }
+                self.start_cycle_form.stop_cycle()
+
+            # Update UI actions (assume these actions exist in your MainFormHandler)
+            if hasattr(self, 'actionStart'):
+                self.actionStart.setEnabled(True)
+            if hasattr(self, 'actionStop'):
+                self.actionStop.setEnabled(False)
+            if hasattr(self, 'actionPrint_results'):
+                self.actionPrint_results.setEnabled(True)
+            # Show plot preview if applicable.
+            if hasattr(self, 'show_plot_preview'):
+                self.show_plot_preview()
+            # Close the CSV file after a short delay (if the method is defined)
+            if hasattr(self, 'close_csv_file'):
+                QTimer.singleShot(1000, self.close_csv_file)
+
+            logger.info("Cycle stopping completed successfully")
+        except Exception as e:
+            logger.error(f"Error stopping cycle: {str(e)}")
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to stop cycle: {str(e)}"
+            )
 
     def show_plot_preview(self):
+        # Ensure headers is initialized
+        if not hasattr(self, 'headers') or not self.headers:
+            self.headers = ["Default Header 1", "Default Header 2"]
+            # Initialize headers with defaults if not already set.
+            self.headers = []
+            self.headers.append(pool.config('h_label'))
+            self.headers.append(pool.config('left_v_label'))
+            self.headers.append(pool.config('right_v_label'))
+            for i in range(1, CHANNEL_COUNT + 1):
+                self.headers.append(pool.config('label' + str(i)))
         self.plot_preview_form = pool.set('plot_preview_form', PlotPreviewFormHandler())
         self.plot_preview_form.initiate_plot(self.headers)
 

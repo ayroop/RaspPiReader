@@ -2,6 +2,12 @@ from PyQt5 import QtWidgets
 from RaspPiReader import pool
 from RaspPiReader.ui.new_cycle import Ui_NewCycle
 from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler
+from datetime import datetime  
+from RaspPiReader.libs.database import Database
+from RaspPiReader.libs.models import CycleData
+from RaspPiReader.libs.cycle_finalization import finalize_cycle
+from PyQt5.QtWidgets import QMessageBox
+
 import logging
 
 logger = logging.getLogger(__name__)
@@ -21,14 +27,24 @@ class NewCycleHandler(QtWidgets.QWidget):
         self.work_order_form.show()
 
     def stop_cycle(self):
+        """Handle stopping the cycle and generating reports"""
         logger.info("Stop Cycle button clicked")
-        # Get the main form instance from the pool 
-        main_form = pool.get('main_form')
-        if main_form and hasattr(main_form, '_stop'):
-            main_form._stop()  # call the shared stop cycle method
-        else:
-            logger.error("Main form not found, or stop method not available. Cannot stop cycle.")
+        
+        try:
+            main_form = pool.get('main_form')
+            if main_form:
+                # Delegate to the main form's stop method
+                main_form._stop()  # This will handle all the cycle stopping logic
+                logger.info("Cycle stop delegated to main form")
+            else:
+                logger.error("Main form not found in pool")
+                QtWidgets.QMessageBox.warning(
+                    self, "Warning", 
+                    "Could not stop cycle - main form not found."
+                )
+        except Exception as e:
+            logger.error(f"Error stopping cycle: {str(e)}")
             QtWidgets.QMessageBox.critical(
                 self, "Error", 
-                "Unable to stop the cycle. The main form is not available."
+                f"Failed to stop cycle: {str(e)}"
             )
