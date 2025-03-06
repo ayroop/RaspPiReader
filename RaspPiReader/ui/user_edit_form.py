@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'RaspPiReader/qt/user_edit.ui'
+# Form implementation generated from reading ui file 'C:\DEV\Python\PLC Integration\src1-main\src1-main\RaspPiReader-master\RaspPiReader\qt\user_edit.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -14,6 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_UserEditDialog(object):
     def setupUi(self, UserEditDialog):
         UserEditDialog.setObjectName("UserEditDialog")
+        UserEditDialog.resize(400, 250)
         self.verticalLayout = QtWidgets.QVBoxLayout(UserEditDialog)
         self.verticalLayout.setObjectName("verticalLayout")
         self.formLayout = QtWidgets.QFormLayout()
@@ -31,16 +32,13 @@ class Ui_UserEditDialog(object):
         self.passwordLineEdit.setEchoMode(QtWidgets.QLineEdit.Password)
         self.passwordLineEdit.setObjectName("passwordLineEdit")
         self.formLayout.setWidget(1, QtWidgets.QFormLayout.FieldRole, self.passwordLineEdit)
+        self.roleLabel = QtWidgets.QLabel(UserEditDialog)
+        self.roleLabel.setObjectName("roleLabel")
+        self.formLayout.setWidget(2, QtWidgets.QFormLayout.LabelRole, self.roleLabel)
+        self.roleLineEdit = QtWidgets.QLineEdit(UserEditDialog)
+        self.roleLineEdit.setObjectName("roleLineEdit")
+        self.formLayout.setWidget(2, QtWidgets.QFormLayout.FieldRole, self.roleLineEdit)
         self.verticalLayout.addLayout(self.formLayout)
-        self.accessGrid = QtWidgets.QGridLayout()
-        self.accessGrid.setObjectName("accessGrid")
-        self.settingsCheckBox = QtWidgets.QCheckBox(UserEditDialog)
-        self.settingsCheckBox.setObjectName("settingsCheckBox")
-        self.accessGrid.addWidget(self.settingsCheckBox, 0, 0, 1, 1)
-        self.searchCheckBox = QtWidgets.QCheckBox(UserEditDialog)
-        self.searchCheckBox.setObjectName("searchCheckBox")
-        self.accessGrid.addWidget(self.searchCheckBox, 0, 1, 1, 1)
-        self.verticalLayout.addLayout(self.accessGrid)
         self.buttonLayout = QtWidgets.QHBoxLayout()
         self.buttonLayout.setObjectName("buttonLayout")
         self.okPushButton = QtWidgets.QPushButton(UserEditDialog)
@@ -59,7 +57,16 @@ class Ui_UserEditDialog(object):
         UserEditDialog.setWindowTitle(_translate("UserEditDialog", "User Editor"))
         self.usernameLabel.setText(_translate("UserEditDialog", "Username:"))
         self.passwordLabel.setText(_translate("UserEditDialog", "Password:"))
-        self.settingsCheckBox.setText(_translate("UserEditDialog", "Settings"))
-        self.searchCheckBox.setText(_translate("UserEditDialog", "Search"))
+        self.roleLabel.setText(_translate("UserEditDialog", "Role:"))
         self.okPushButton.setText(_translate("UserEditDialog", "OK"))
         self.cancelPushButton.setText(_translate("UserEditDialog", "Cancel"))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    UserEditDialog = QtWidgets.QDialog()
+    ui = Ui_UserEditDialog()
+    ui.setupUi(UserEditDialog)
+    UserEditDialog.show()
+    sys.exit(app.exec_())

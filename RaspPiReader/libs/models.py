@@ -12,6 +12,7 @@ class User(Base):
     settings = Column(Boolean, default=False)
     search = Column(Boolean, default=False)
     user_mgmt_page = Column(Boolean, default=False)
+    role = Column(String, default="Operator")  # New field: "Supervisor" if set
 
 class PLCCommSettings(Base):
     __tablename__ = 'plc_comm_settings'
@@ -108,7 +109,7 @@ class CycleData(Base):
     temp_ramp = Column(Float, nullable=True)
     size = Column(String, nullable=True)
     cycle_location = Column(String, nullable=True)
-    
+
 class DemoData(Base):
     __tablename__ = 'demo_data'
     id = Column(Integer, primary_key=True)

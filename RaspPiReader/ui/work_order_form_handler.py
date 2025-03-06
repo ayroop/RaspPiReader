@@ -8,9 +8,9 @@ logger = logging.getLogger(__name__)
 class WorkOrderFormHandler(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super(WorkOrderFormHandler, self).__init__(parent)
-        self.ui = Ui_WorkOrderForm()
+        self.ui = Ui_WorkOrderForm()  # Make sure your UI file no longer pre-populates order/quantity
         self.ui.setupUi(self)
-        # Ensure that the quantitySpinBox maximum is set to 250 (set in your .ui design)
+        # Ensure the quantitySpinBox maximum is still set if needed
         self.ui.quantitySpinBox.setMaximum(250)
         self.ui.nextButton.clicked.connect(self.next)
         self.ui.cancelButton.clicked.connect(self.close)
@@ -20,15 +20,14 @@ class WorkOrderFormHandler(QtWidgets.QWidget):
         quantity = self.ui.quantitySpinBox.value()
         
         if not work_order:
-            QtWidgets.QMessageBox.warning(self, "Warning", "Please enter a work order number.")
+            QtWidgets.QMessageBox.warning(self, "Input Required", "Please enter a valid work order.")
             return
-            
         if quantity <= 0:
-            QtWidgets.QMessageBox.warning(self, "Warning", "Please enter a product quantity greater than zero.")
+            QtWidgets.QMessageBox.warning(self, "Input Required", "Please enter a quantity greater than zero.")
             return
         
-        # Launch Serial Number Entry form, passing the work order and quantity
         logger.info(f"Starting serial number entry for work order {work_order} with quantity {quantity}")
+        # Launch Serial Number Entry form, passing the user-provided work order and quantity
         self.serial_form = SerialNumberEntryFormHandler(work_order, quantity)
         self.serial_form.show()
         self.close()

@@ -25,14 +25,14 @@ class UserManagementFormHandler(QtWidgets.QDialog):
         table = self.ui.userTableWidget
         table.clearContents()
         table.setRowCount(len(self.users))
-        table.setColumnCount(5)
-        table.setHorizontalHeaderLabels(['Username', 'Password', 'Settings', 'Search', 'User Mgmt Page'])
-        for row_index, user in enumerate(self.users):
-            table.setItem(row_index, 0, QtWidgets.QTableWidgetItem(user.username))
-            table.setItem(row_index, 1, QtWidgets.QTableWidgetItem(user.password))
-            table.setItem(row_index, 2, QtWidgets.QTableWidgetItem(str(user.settings)))
-            table.setItem(row_index, 3, QtWidgets.QTableWidgetItem(str(user.search)))
-            table.setItem(row_index, 4, QtWidgets.QTableWidgetItem(str(user.user_mgmt_page)))
+        table.setColumnCount(5)  # Added one more column for Role
+        table.setHorizontalHeaderLabels(['Username', 'Password', 'Settings', 'Search', 'Role'])
+        for row, user in enumerate(self.users):
+            table.setItem(row, 0, QtWidgets.QTableWidgetItem(user.username))
+            table.setItem(row, 1, QtWidgets.QTableWidgetItem(user.password))
+            table.setItem(row, 2, QtWidgets.QTableWidgetItem(str(user.settings)))
+            table.setItem(row, 3, QtWidgets.QTableWidgetItem(str(user.search)))
+            table.setItem(row, 4, QtWidgets.QTableWidgetItem(user.role))
         table.resizeColumnsToContents()
 
     def add_user(self):
