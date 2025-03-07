@@ -1,5 +1,6 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime
+from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
 
 Base = declarative_base()
@@ -12,7 +13,7 @@ class User(Base):
     settings = Column(Boolean, default=False)
     search = Column(Boolean, default=False)
     user_mgmt_page = Column(Boolean, default=False)
-    role = Column(String, default="Operator")  # New field: "Supervisor" if set
+    role = Column(String, default="Operator")
 
 class PLCCommSettings(Base):
     __tablename__ = 'plc_comm_settings'
@@ -94,8 +95,8 @@ class CycleData(Base):
     cycle_end = Column(DateTime, nullable=True)
     serial_numbers = Column(String, nullable=True)
     program_id = Column(String, nullable=True)
-    operator = Column(String, nullable=True)
-    supervisor = Column(String, nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)  # Foreign key defined here
+    user = relationship("User", backref="cycle_data")
     quantity = Column(Integer, nullable=True)
     status = Column(String, nullable=True)
     notes = Column(String, nullable=True)

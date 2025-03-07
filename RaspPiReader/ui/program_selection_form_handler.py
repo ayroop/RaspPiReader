@@ -2,7 +2,7 @@ from PyQt5 import QtWidgets
 from datetime import datetime
 from RaspPiReader.ui.program_selection_form import Ui_ProgramSelectionForm
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import CycleData, DefaultProgram
+from RaspPiReader.libs.models import CycleData, DefaultProgram, User
 from RaspPiReader import pool
 import logging
 
@@ -76,6 +76,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
     def start_cycle(self):
         program_index = self.ui.programComboBox.currentIndex() + 1
         current_user = pool.get("current_user")
+        # Query DefaultProgram using current username and selected program index
         default_program = self.db.session.query(DefaultProgram).filter_by(
             username=current_user, program_number=program_index
         ).first()
@@ -87,29 +88,34 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             )
             return
         
-        # Create new cycle data record
+        # Query User record for the current logged-in user
+        user = self.db.session.query(User).filter_by(username=current_user).first()
+        if not user:
+            QtWidgets.QMessageBox.critical(self, "Database Error", "Logged-in user not found.")
+            return
+
         try:
             new_cycle = CycleData(
                 order_id=self.work_order,
-                cycle_id=str(program_index),
-                quantity=str(len(self.serial_numbers)),
+                quantity=len(self.serial_numbers),
                 serial_numbers=','.join(self.serial_numbers),
-                # Add other program parameters from default_program
                 core_temp_setpoint=default_program.core_temp_setpoint,
                 cool_down_temp=default_program.cool_down_temp,
                 temp_ramp=default_program.temp_ramp,
                 set_pressure=default_program.set_pressure,
                 maintain_vacuum=default_program.maintain_vacuum,
                 initial_set_cure_temp=default_program.initial_set_cure_temp,
-                final_set_cure_temp=default_program.final_set_cure_temp,
-                created_at=datetime.now()
+                final_set_cure_temp=default_program.final_set_cure_temp
             )
+            # Set the relationship field to reference the User object
+            new_cycle.user = user
+
             self.db.session.add(new_cycle)
             self.db.session.commit()
             
             logger.info(f"New cycle created: Order {self.work_order}, Program {program_index}, {len(self.serial_numbers)} serial numbers")
-            
         except Exception as e:
+            self.db.session.rollback()
             logger.error(f"Database error creating cycle: {e}")
             QtWidgets.QMessageBox.critical(
                 self, "Database Error", 

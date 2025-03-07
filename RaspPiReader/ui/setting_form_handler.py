@@ -46,7 +46,7 @@ class SettingFormHandler(QMainWindow):
         self.show()
 
     def add_serial_number_management_tab(self):
-        """Add a tab for Serial Number Management"""
+        """Add a tab for Serial Number Management with embedded serial number functionality"""
         # Create a new tab
         serial_number_tab = QtWidgets.QWidget()
         serial_number_tab.setObjectName("tabSerialNumbers")
@@ -54,30 +54,47 @@ class SettingFormHandler(QMainWindow):
         # Create layout for the tab
         layout = QtWidgets.QVBoxLayout(serial_number_tab)
         
-        # Create a label for instructions
-        instructions_label = QtWidgets.QLabel("Manage Serial Numbers in the database:")
-        instructions_label.setFont(QFont("Segoe UI", 10))
-        layout.addWidget(instructions_label)
+        # Create a header label
+        header_label = QtWidgets.QLabel("Serial Number Management")
+        header_label.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        layout.addWidget(header_label)
         
-        # Create a button to open the Serial Number Management form
-        manage_button = QtWidgets.QPushButton("Open Serial Number Management")
-        manage_button.clicked.connect(self.open_serial_number_management)
-        layout.addWidget(manage_button)
+        # Create description label
+        description_label = QtWidgets.QLabel("View and manage serial numbers from all completed cycles.")
+        description_label.setFont(QFont("Segoe UI", 10))
+        layout.addWidget(description_label)
         
-        # Add a spacer to push everything to the top
-        spacer = QtWidgets.QSpacerItem(20, 40, 
-                                    QtWidgets.QSizePolicy.Minimum, 
-                                    QtWidgets.QSizePolicy.Expanding)
-        layout.addItem(spacer)
+        # Create the serial management widget directly embedded in this tab
+        # We'll use a Frame to contain it and give it a slight border
+        container = QtWidgets.QFrame()
+        container.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        container.setFrameShadow(QtWidgets.QFrame.Sunken)
+        container_layout = QtWidgets.QVBoxLayout(container)
+        
+        # Create the serial number management handler
+        self.serial_manager = SerialNumberManagementFormHandler(parent=serial_number_tab)
+        
+        # Set the parent widget to our container instead of showing as dialog
+        self.serial_manager.setParent(container)
+        
+        # Add to the container layout and make it expand to fill space
+        container_layout.addWidget(self.serial_manager)
+        layout.addWidget(container, 1)  # The 1 makes it expand to fill available space
         
         # Add the tab to the tab widget
         self.form_obj.tabWidget.addTab(serial_number_tab, "Serial Numbers")
+        
+        # Connect tab change signal to ensure data loads when tab is selected
+        self.form_obj.tabWidget.currentChanged.connect(self._handle_tab_changed)
 
-    def open_serial_number_management(self):
-        """Open the Serial Number Management form"""
-        serial_form = SerialNumberManagementFormHandler(self)
-        serial_form.exec_()
-
+    def _handle_tab_changed(self, index):
+        """Handle tab selection changes to ensure data is loaded"""
+        current_tab = self.form_obj.tabWidget.widget(index)
+        if current_tab and current_tab.objectName() == "tabSerialNumbers":
+            # If we're switching to the serial numbers tab, make sure data is loaded
+            if hasattr(self, 'serial_manager'):
+                # Force a reload of the data
+                self.serial_manager.load_all_serials()
     def add_boolean_addresses_tab(self):
         boolean_tab = self.create_boolean_tab(config)
         self.form_obj.tabWidget.addTab(boolean_tab, "Boolean Addresses")

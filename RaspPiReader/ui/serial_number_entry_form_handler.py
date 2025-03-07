@@ -175,13 +175,40 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
                 return
         
         try:
-            # Create a cycle data record with the work order and serial numbers
+            # Get the current user FIRST
+            current_username = pool.get("current_user")
+            if not current_username:
+                # Try to get username from main_form as fallback
+                main_form = pool.get('main_form')
+                if main_form and hasattr(main_form, 'user'):
+                    current_username = main_form.user.username
+                else:
+                    QtWidgets.QMessageBox.critical(
+                        self, "Error", 
+                        "No current user set in session. Please log in again."
+                    )
+                    return
+                    
+            # Get the User object from database
+            user = self.db.get_user(current_username)
+            if not user:
+                QtWidgets.QMessageBox.critical(
+                    self, "Database Error", 
+                    f"User '{current_username}' not found in database."
+                )
+                return
+                
+            # Create the cycle data record with the work order and serial numbers
             cycle_data = CycleData(
-                order_id=self.work_order,  # Use order_id, not work_order
+                order_id=self.work_order,
                 serial_numbers=",".join(serials)
             )
             
-            # Save to database
+            # Set the user relationship - this maps to user_id
+            cycle_data.user = user
+            logger.info(f"Setting user_id to {user.id} for cycle data")
+            
+            # Now save to database
             success = self.db.add_cycle_data(cycle_data)
             if not success:
                 QtWidgets.QMessageBox.critical(

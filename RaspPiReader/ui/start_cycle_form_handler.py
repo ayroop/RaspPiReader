@@ -10,20 +10,16 @@ from PyQt5.QtWidgets import QMainWindow, QMessageBox, QLineEdit, QSpinBox, QDoub
 from RaspPiReader import pool
 from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.demo_data_reader import data as demo_data
-# CHANNEL_COUNT and SettingFormHandler are imported for legacy support;
-# however, we now access our own UI directly.
 from RaspPiReader.ui.setting_form_handler import CHANNEL_COUNT, SettingFormHandler
 from RaspPiReader.ui.startCycleForm import Ui_CycleStart  
 
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import CycleData, Alarm, DefaultProgram
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
 from RaspPiReader.ui.serial_number_management_form_handler import SerialNumberManagementFormHandler
+from RaspPiReader.libs.models import CycleData, User, Alarm, DefaultProgram
 
-# Get the logger for this module
 logger = logging.getLogger(__name__)
 
-# Mapping from widget object names in the UI to model field names.
 cycle_settings = {
     "orderNumberLineEdit": "order_number",  # Updated name
     "cycleIDLineEdit": "cycle_id",
@@ -59,7 +55,7 @@ class StartCycleFormHandler(QMainWindow):
         self.load_cycle_data()
         self.data_reader_lock = Lock()
         self.running = False
-        self.cycle_start_time = None
+        self.cycle_start_time = datetime.now()
         self.read_thread = None
 
     def set_connections(self):
@@ -73,7 +69,6 @@ class StartCycleFormHandler(QMainWindow):
         self.ui.programComboBox.currentIndexChanged.connect(self.apply_default_values)
 
     def apply_default_values(self):
-        # When the programComboBox changes, update UI values from the default program.
         program_index = self.ui.programComboBox.currentIndex() + 1
         default_program = self.db.session.query(DefaultProgram).filter_by(
             username=pool.get("current_user"), program_number=program_index
@@ -86,7 +81,7 @@ class StartCycleFormHandler(QMainWindow):
                     if value is not None:
                         if isinstance(widget, QLineEdit):
                             widget.setText(str(value))
-                        elif isinstance(widget, QSpinBox) or isinstance(widget, QDoubleSpinBox):
+                        elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
                             try:
                                 widget.setValue(float(value))
                             except Exception as e:
@@ -95,57 +90,38 @@ class StartCycleFormHandler(QMainWindow):
                     print(f"Warning: ui has no attribute '{widget_name}'")
         else:
             QMessageBox.warning(self, "Warning", f"No default values found for Program {program_index}")
-    
+
     def initiate_onedrive_update_thread(self):
-        """Initialize and start a thread to upload reports to OneDrive"""
         try:
-            # Get OneDrive settings from the database or pool
+            from RaspPiReader.libs.onedrive_api import OneDriveAPI
             client_id = pool.config('onedrive_client_id', str, '')
             client_secret = pool.config('onedrive_client_secret', str, '')
             tenant_id = pool.config('onedrive_tenant_id', str, '')
-            
             if not all([client_id, client_secret, tenant_id]):
                 logger.warning("OneDrive settings incomplete - skipping OneDrive thread initialization")
                 return
-                
             logger.info("Initializing OneDrive update thread")
-            
             def update_onedrive():
                 try:
-                    # Initialize the OneDrive API
                     one_drive = OneDriveAPI()
                     one_drive.authenticate(client_id, client_secret, tenant_id)
-                    
-                    # Initialize paths for reports that need uploading
                     today = datetime.now().strftime("%Y%m%d")
                     reports_folder = "reports"
                     if not os.path.exists(reports_folder):
                         os.makedirs(reports_folder)
-                    
-                    # Monitor for new files and upload them
                     logger.info("OneDrive update thread started")
-                    
-                    # Note: In a real implementation, you would implement proper polling
-                    # or event-based detection of new files here
                 except Exception as e:
                     logger.error(f"OneDrive update thread error: {e}")
-            
-            # Start thread as daemon so it doesn't block application exit
             from threading import Thread
             self.onedrive_thread = Thread(target=update_onedrive, daemon=True)
             self.onedrive_thread.start()
             logger.info("OneDrive update thread initialized")
-            
         except Exception as e:
             logger.error(f"Failed to initialize OneDrive update thread: {e}")
 
     def open_serial_management(self):
         dialog = SerialNumberManagementFormHandler(self)
         dialog.exec_()
-        def initiate_onedrive_update_thread(self):
-            self.onedrive_thread = Thread(target=self.onedrive_upload_loop)
-            self.onedrive_thread.daemon = True
-            self.onedrive_thread.start()
 
     def onedrive_upload_loop(self):
         while True:
@@ -179,14 +155,13 @@ class StartCycleFormHandler(QMainWindow):
         super().close()
 
     def load_cycle_data(self):
-        # Pre-populate UI values from persistent config (using pool config)
         for widget_name, key_name in cycle_settings.items():
             value = pool.config(key_name)
             if value is not None and hasattr(self.ui, widget_name):
                 widget = getattr(self.ui, widget_name)
                 if isinstance(widget, QLineEdit):
                     widget.setText(str(value))
-                elif isinstance(widget, QSpinBox) or isinstance(widget, QDoubleSpinBox):
+                elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
                     try:
                         widget.setValue(float(value))
                     except Exception as e:
@@ -215,15 +190,10 @@ class StartCycleFormHandler(QMainWindow):
         self.read_thread.daemon = True
 
     def save_cycle_data(self):
-        # Save the cycle form settings into persistent configuration.
         for widget_name, key_name in cycle_settings.items():
             if hasattr(self.ui, widget_name):
                 widget = getattr(self.ui, widget_name)
-                value = None
-                if isinstance(widget, QLineEdit):
-                    value = widget.text()
-                elif isinstance(widget, QSpinBox) or isinstance(widget, QDoubleSpinBox):
-                    value = widget.value()
+                value = widget.text() if isinstance(widget, QLineEdit) else widget.value()
                 pool.set_config(key_name, value)
         order_id = pool.config("order_id", str, "DEFAULT_ORDER")
         self.file_name = order_id + self.cycle_start_time.strftime(" %Y.%m.%d %H.%M.%S")
@@ -233,9 +203,31 @@ class StartCycleFormHandler(QMainWindow):
         csv_file_path = pool.config('csv_file_path', str, os.path.join(os.getcwd(), "reports"))
         self.folder_path = os.path.join(csv_file_path, self.file_name)
         os.makedirs(self.folder_path, exist_ok=True)
+        
+        # Retrieve current user using pool.get("current_user") with fallback to main_form.user.
+        current_username = pool.get("current_user")
+        if current_username:
+            user = self.db.get_user(current_username)
+            if not user:
+                QMessageBox.critical(self, "Database Error", "Logged-in user not found.")
+                return
+            cycle_data.user = user  # sets the user_id via relationship mapping
+        else:
+            main_form = pool.get('main_form')
+            if main_form and hasattr(main_form, 'user'):
+                current_username = main_form.user.username
+                user = self.db.get_user(current_username)
+                if not user:
+                    QMessageBox.critical(self, "Database Error", "Logged-in user not found.")
+                    return
+                cycle_data.user = user
+            else:
+                QMessageBox.critical(self, "Error", "No current user set in session.")
+                return
+        logger.info(f"Current username determined: {current_username}")
+
         cycle_data = CycleData(
             order_id = pool.config("order_id", str, "DEFAULT_ORDER"),
-            cycle_id = pool.config("cycle_id", str, ""),
             quantity = pool.config("quantity", str, ""),
             size = pool.config("size", str, ""),
             cycle_location = pool.config("cycle_location", str, ""),
@@ -248,13 +240,17 @@ class StartCycleFormHandler(QMainWindow):
             initial_set_cure_temp = pool.config("initial_set_cure_temp", float, None),
             final_set_cure_temp = pool.config("final_set_cure_temp", float, None)
         )
+        cycle_data.user = user
+        logger.info(f"CycleData before insert: order_id={cycle_data.order_id}, user_id={cycle_data.user_id}")
         try:
-            db = Database("sqlite:///local_database.db")
-            db.add_cycle_data(cycle_data)
+            if not db.add_cycle_data(cycle_data):
+                QMessageBox.critical(self, "Database Error", "Could not save cycle data.")
+                return
         except Exception as e:
             QMessageBox.critical(self, "Database Error", f"Could not save cycle data: {e}")
             return
 
+        logger.info(f"Cycle data saved for order {cycle_data.order_id}")
     def start_cycle(self):
         self.cycle_start_time = datetime.now()
         self.save_cycle_data()
@@ -273,18 +269,11 @@ class StartCycleFormHandler(QMainWindow):
         self.initiate_onedrive_update_thread()
 
     def stop_cycle(self):
-        """
-        Handle stopping the cycle: mark stop time,
-        finalize the cycle (generate reports), and save cycle data.
-        """
         stop_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.cycle_data["stop_time"] = stop_time
-
-        # Gather iterables; if any method returns None, default is provided.
         serial_numbers = self.get_serial_numbers() or []
         supervisor_username = self.get_supervisor_override() or ""
         alarm_values = self.read_alarms() or {}
-
         try:
             pdf_file, csv_file = finalize_cycle(
                 cycle_data=self.cycle_data,
@@ -298,19 +287,22 @@ class StartCycleFormHandler(QMainWindow):
             logger.error(f"Error finalizing cycle: {e}")
             QMessageBox.critical(self, "Report Generation Error", f"Error finalizing cycle: {e}")
             return
-
         db = Database("sqlite:///local_database.db")
-        # Use a default order_id if none is present (to avoid NOT NULL constraint errors)
         order_id = self.cycle_data.get("order_id") or "unknown"
         if order_id == "unknown":
             logger.warning("No order_id found in cycle data; using default 'unknown'.")
-
         try:
             new_cycle = CycleData(
                 order_id=order_id,
                 quantity=str(len(serial_numbers)),
                 serial_numbers=",".join(serial_numbers)
             )
+            current_username = pool.get("current_user")
+            user = db.session.query(User).filter_by(username=current_username).first()
+            if not user:
+                QMessageBox.critical(self, "Database Error", "Logged-in user not found for finalizing cycle.")
+                return
+            new_cycle.user = user
             db.session.add(new_cycle)
             db.session.commit()
             logger.info(f"Cycle data saved with order_id: {order_id}")
@@ -319,7 +311,6 @@ class StartCycleFormHandler(QMainWindow):
             logger.error(f"Database error: {e}")
             QMessageBox.critical(self, "Database Error", f"Could not save cycle data: {e}")
             return
-
         QMessageBox.information(
             self,
             "Cycle Stopped",
@@ -328,42 +319,28 @@ class StartCycleFormHandler(QMainWindow):
         self.close()
 
     def get_serial_numbers(self):
-        """
-        Retrieve serial numbers from the current cycle saved in the database.
-        This method must always return a list—even if empty.
-        """
         try:
-            # Query the latest CycleData record and split
             db = Database("sqlite:///local_database.db")
             latest_cycle = db.session.query(CycleData)\
                                 .order_by(CycleData.id.desc())\
                                 .first()
             if latest_cycle and latest_cycle.serial_numbers:
-                # Ensure the result is a list
                 return latest_cycle.serial_numbers.split(',')
             else:
-                return []  # Return empty list if nothing found
+                return []
         except Exception as e:
             logger.error(f"Error retrieving serial numbers: {e}")
             return []
 
     def get_supervisor_override(self):
-        """
-        Retrieve the supervisor username from the database.
-        Assumes a User with username 'supervisor' has been created by an admin.
-        """
         db = Database("sqlite:///local_database.db")
         supervisor_user = db.get_user("supervisor")
         if supervisor_user:
             return supervisor_user.username
         else:
-            return "supervisor"  # Fallback if not found
+            return "supervisor"
 
     def read_alarms(self):
-        """
-        Retrieve alarm values from the database.
-        Uses 'alarm_text' (defined in the Alarm model) for the alarm message.
-        """
         db = Database("sqlite:///local_database.db")
         alarms = db.session.query(Alarm).all()
         alarm_dict = {}
@@ -488,22 +465,13 @@ class StartCycleFormHandler(QMainWindow):
             print('unable to stop data reader')
 
     def _start(self):
-        """Start reading data"""
-        # First make sure communication is properly set up
         if not plc_communication.is_connected():
-            # Try to initialize PLC communication
             success = plc_communication.initialize_plc_communication()
             if not success:
                 QMessageBox.critical(self, "Connection Error",
                                     "Failed to connect to PLC. Please check your connection settings.")
                 return
-
-        # Start the data reader
         dataReader.start()
-        
-        # Update the UI to reflect the current connection type
         self.update_connection_status_display()
-        
-        # Start the data reading timer
         self.timer.start(1000)
         self.running = True
