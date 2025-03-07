@@ -1,6 +1,7 @@
 import sys
 import os
 import argparse
+import time
 import logging
 from PyQt5 import QtWidgets
 
@@ -11,6 +12,7 @@ from RaspPiReader.libs.sync import SyncThread
 from RaspPiReader.libs.demo_data_reader import data as demo_data
 from RaspPiReader.libs.plc_communication import initialize_plc_communication
 from RaspPiReader.libs.logging_config import setup_logging
+from RaspPiReader.ui.splash_screen import SplashScreen
 
 def Main():
     """Main application entry point"""
@@ -19,7 +21,7 @@ def Main():
     logger = logging.getLogger(__name__)
     logger.info("Starting RaspPiReader application")
     
-    # Process command line arguments
+    # Process command line arguments (set earlier in __main__)
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
         logger.debug("Debug mode enabled")
@@ -56,9 +58,21 @@ def Main():
         sync_thread.start()
         logger.info("Database sync thread started")
         
-        # Launch login form
+        # --- Splash Screen Preloader ---
+        logger.info("Launching splash screen...")
+        splash = SplashScreen()  # Your SplashScreen should create and show a progress bar
+        splash.show()
+        
+        # Simulate preloading steps (adjust sleep time as needed)
+        for i in range(101):
+            QtWidgets.QApplication.processEvents()  # Keep UI responsive
+            splash.progress_bar.setValue(i)
+            time.sleep(0.02)
+        
+        # After preloading, launch login form
         logger.info("Launching login form...")
         login_form = LoginFormHandler()
+        splash.finish(login_form)
         login_form.show()
         
         # Execute application

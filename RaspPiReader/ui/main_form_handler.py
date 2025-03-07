@@ -58,6 +58,12 @@ class MainFormHandler(QtWidgets.QMainWindow):
         super(MainFormHandler, self).__init__()
         self.user_record = user_record
         print(f"Initializing MainFormHandler with user_record: {self.user_record}")
+        # Get reference to the background window
+        self.background_window = pool.get('background_window')
+        if self.background_window:
+            # Let the background window position this form
+            self.background_window.center_widget(self)
+            self.background_window.set_active_form(self)
         self.form_obj = MainForm()
         self.form_obj.setupUi(self)
         
