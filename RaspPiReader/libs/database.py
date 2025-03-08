@@ -5,9 +5,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from RaspPiReader.libs.models import (
     Base, User, PLCCommSettings, DatabaseSettings, OneDriveSettings,
     GeneralConfigSettings, ChannelConfigSettings, CycleData, DemoData,
-    BooleanStatus, PlotData, DefaultProgram, Alarm
+    BooleanStatus, PlotData, DefaultProgram, Alarm, CycleSerialNumber
 )
-
 logger = logging.getLogger(__name__)
 
 class Database:
@@ -50,29 +49,29 @@ class Database:
 
     def search_serial_number(self, sn):
         """
-        Search for a serial number in the database.
-        Returns the cycle data record containing the serial number if found, None otherwise.
+        Search for a serial number in the normalized table.
+        Returns the parent CycleData record if found, else None.
         """
         try:
-            cycles = self.session.query(CycleData).all()
-            for cycle in cycles:
-                if cycle.serial_numbers and sn in cycle.serial_numbers.split(','):
-                    return cycle
+            result = self.session.query(CycleSerialNumber)\
+                        .filter(CycleSerialNumber.serial_number == sn.strip())\
+                        .first()
+            if result:
+                return result.cycle  # Return the associated cycle
         except Exception as e:
-            logger.error(f"Error searching for serial number: {e}")
+            logger.error(f"Error searching for serial number {sn}: {e}")
         return None
 
     def check_duplicate_serial(self, sn):
         """
         Check if the provided serial number 'sn' already exists
-        in any CycleData record.
+        in the CycleSerialNumber table.
         """
         try:
-            cycles = self.session.query(CycleData).all()
-            # For each cycle, check if the serial number exists in the comma-separated list
-            for cycle in cycles:
-                if cycle.serial_numbers and sn in cycle.serial_numbers.split(','):
-                    return True
+            duplicate = self.session.query(CycleSerialNumber)\
+                .filter_by(serial_number=sn.strip())\
+                .first()
+            return duplicate is not None
         except Exception as e:
             logger.error(f"Error checking for duplicate serial: {e}")
         return False

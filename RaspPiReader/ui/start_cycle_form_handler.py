@@ -16,7 +16,7 @@ from RaspPiReader.ui.startCycleForm import Ui_CycleStart
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
 from RaspPiReader.ui.serial_number_management_form_handler import SerialNumberManagementFormHandler
-from RaspPiReader.libs.models import CycleData, User, Alarm, DefaultProgram
+from RaspPiReader.libs.models import CycleData, User, Alarm, DefaultProgram, CycleSerialNumber
 
 logger = logging.getLogger(__name__)
 
@@ -269,14 +269,29 @@ class StartCycleFormHandler(QMainWindow):
         self.initiate_onedrive_update_thread()
 
     def stop_cycle(self):
-        stop_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.cycle_data["stop_time"] = stop_time
-        serial_numbers = self.get_serial_numbers() or []
+        # Ensure that the active cycle record exists
+        if not hasattr(self, "cycle_record") or self.cycle_record is None:
+            QMessageBox.critical(self, "Error", "No active cycle record found.")
+            return
+
+        # Update the cycle record's stop time
+        self.cycle_record.stop_time = datetime.now()
+
+        # Retrieve serial numbers (ensure your get_serial_numbers method returns a list)
+        try:
+            serial_numbers = self.get_serial_numbers() or []
+        except Exception as e:
+            logger.error(f"Error retrieving serial numbers: {e}")
+            QMessageBox.critical(self, "Error", f"Error retrieving serial numbers: {e}")
+            return
+
         supervisor_username = self.get_supervisor_override() or ""
         alarm_values = self.read_alarms() or {}
+
         try:
+            # Pass the actual CycleData record (not a dict) to finalize_cycle
             pdf_file, csv_file = finalize_cycle(
-                cycle_data=self.cycle_data,
+                cycle_data=self.cycle_record,
                 serial_numbers=serial_numbers,
                 supervisor_username=supervisor_username,
                 alarm_values=alarm_values,
@@ -287,35 +302,44 @@ class StartCycleFormHandler(QMainWindow):
             logger.error(f"Error finalizing cycle: {e}")
             QMessageBox.critical(self, "Report Generation Error", f"Error finalizing cycle: {e}")
             return
+
         db = Database("sqlite:///local_database.db")
-        order_id = self.cycle_data.get("order_id") or "unknown"
+        order_id = getattr(self.cycle_record, "order_id", "unknown")
         if order_id == "unknown":
-            logger.warning("No order_id found in cycle data; using default 'unknown'.")
+            logger.warning("No order_id found in cycle record; using default 'unknown'.")
+
         try:
-            new_cycle = CycleData(
-                order_id=order_id,
-                quantity=str(len(serial_numbers)),
-                serial_numbers=",".join(serial_numbers)
-            )
             current_username = pool.get("current_user")
             user = db.session.query(User).filter_by(username=current_username).first()
             if not user:
                 QMessageBox.critical(self, "Database Error", "Logged-in user not found for finalizing cycle.")
                 return
-            new_cycle.user = user
-            db.session.add(new_cycle)
+
+            # Update the cycle record with report file paths
+            self.cycle_record.pdf_report_path = pdf_file
+            self.cycle_record.html_report_path = csv_file  # or whichever field is appropriate
             db.session.commit()
-            logger.info(f"Cycle data saved with order_id: {order_id}")
+            logger.info(f"Cycle record updated for order_id: {order_id}")
+
         except Exception as e:
             db.session.rollback()
-            logger.error(f"Database error: {e}")
-            QMessageBox.critical(self, "Database Error", f"Could not save cycle data: {e}")
+            logger.error(f"Database error updating cycle record: {e}")
+            QMessageBox.critical(self, "Database Error", f"Could not update cycle record: {e}")
             return
+
         QMessageBox.information(
             self,
             "Cycle Stopped",
             f"Cycle stopped successfully!\nPDF Report: {pdf_file}\nCSV Report: {csv_file}"
         )
+
+        # If MainFormHandler is supposed to have a csv_file attribute, ensure it’s set (or check before closing)
+        if hasattr(self, "csv_file"):
+            try:
+                self.csv_file.close()
+            except Exception:
+                pass
+
         self.close()
 
     def get_serial_numbers(self):

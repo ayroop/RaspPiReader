@@ -91,11 +91,10 @@ class CycleData(Base):
     __tablename__ = 'cycle_data'
     id = Column(Integer, primary_key=True)
     order_id = Column(String, nullable=False)
-    cycle_start = Column(DateTime, default=datetime.utcnow)
-    cycle_end = Column(DateTime, nullable=True)
-    serial_numbers = Column(String, nullable=True)
-    program_id = Column(String, nullable=True)
-    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)  # Foreign key defined here
+    cycle_id = Column(String, nullable=True)
+    start_time = Column(DateTime, default=datetime.utcnow)
+    stop_time = Column(DateTime, nullable=True)
+    user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     user = relationship("User", backref="cycle_data")
     quantity = Column(Integer, nullable=True)
     status = Column(String, nullable=True)
@@ -104,12 +103,18 @@ class CycleData(Base):
     cool_down_temp = Column(Float, nullable=True)
     dwell_time = Column(String, nullable=True)
     set_pressure = Column(Float, nullable=True)
-    maintain_vacuum = Column(Float, nullable=True)
+    maintain_vacuum = Column(Boolean, nullable=True)
     initial_set_cure_temp = Column(Float, nullable=True)
     final_set_cure_temp = Column(Float, nullable=True)
-    temp_ramp = Column(Float, nullable=True)
-    size = Column(String, nullable=True)
-    cycle_location = Column(String, nullable=True)
+    pdf_report_path = Column(String, nullable=True)
+    html_report_path = Column(String, nullable=True)
+
+class CycleSerialNumber(Base):
+    __tablename__ = 'cycle_serial_numbers'
+    id = Column(Integer, primary_key=True)
+    cycle_id = Column(Integer, ForeignKey('cycle_data.id'), nullable=False)
+    serial_number = Column(String, nullable=False)
+    cycle = relationship("CycleData", backref="serials")
 
 class DemoData(Base):
     __tablename__ = 'demo_data'

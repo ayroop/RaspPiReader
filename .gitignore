@@ -35,10 +35,12 @@ logs
 # Local configuration files
 config.json
 
-# ZIP files and Backup Folder
+# ZIP, EXE files and Backup Folder
 RaspPiReader-backup/
 .qodo
 __pycache__
 scripts
 local_database.db.bak
 reports
+wkhtmltopdf.exe
+wkhtmltopdf.zip
