@@ -6,8 +6,9 @@
    <rect>
     <x>0</x>
     <y>0</y>
+    <!-- You might need a taller height to accommodate the extra rows -->
     <width>941</width>
-    <height>251</height>
+    <height>350</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -21,7 +22,7 @@
       <!-- Left: Cycle details form -->
       <item>
        <layout class="QFormLayout" name="formLayout">
-        <!-- Add the dropdown menu for selecting programs -->
+        <!-- Row 0: Program Selection -->
         <item row="0" column="0">
          <widget class="QLabel" name="programLabel">
           <property name="text">
@@ -53,6 +54,7 @@
           </item>
          </widget>
         </item>
+        <!-- Row 1: Order Number -->
         <item row="1" column="0">
          <widget class="QLabel" name="orderNumberLabel">
           <property name="text">
@@ -70,6 +72,7 @@
           </property>
          </widget>
         </item>
+        <!-- Row 2: Cycle ID -->
         <item row="2" column="0">
          <widget class="QLabel" name="cycleIDLabel">
           <property name="text">
@@ -87,6 +90,7 @@
           </property>
          </widget>
         </item>
+        <!-- Row 3: Quantity -->
         <item row="3" column="0">
          <widget class="QLabel" name="quantityLabel">
           <property name="text">
@@ -97,6 +101,7 @@
         <item row="3" column="1">
          <widget class="QLineEdit" name="quantityLineEdit"/>
         </item>
+        <!-- Row 4: Size -->
         <item row="4" column="0">
          <widget class="QLabel" name="sizeLabel">
           <property name="text">
@@ -114,6 +119,7 @@
           </property>
          </widget>
         </item>
+        <!-- Row 5: Cycle Location -->
         <item row="5" column="0">
          <widget class="QLabel" name="cycleLocationLabel">
           <property name="text">
@@ -131,6 +137,7 @@
           </property>
          </widget>
         </item>
+        <!-- Row 6: Dwell Time -->
         <item row="6" column="0">
          <widget class="QLabel" name="dwellTimeLabel">
           <property name="text">
@@ -173,6 +180,7 @@
         <property name="fieldGrowthPolicy">
          <enum>QFormLayout::AllNonFixedFieldsGrow</enum>
         </property>
+        <!-- Row 0: Set Core Temp -->
         <item row="0" column="0">
          <widget class="QLabel" name="tempSetpointLabel">
           <property name="text">
@@ -181,7 +189,8 @@
          </widget>
         </item>
         <item row="0" column="1">
-         <widget class="QSpinBox" name="tempSetpointSpinBox">
+         <!-- Updated QSpinBox to QDoubleSpinBox -->
+         <widget class="QDoubleSpinBox" name="tempSetpointSpinBox">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
             <horstretch>0</horstretch>
@@ -196,6 +205,7 @@
           </property>
          </widget>
         </item>
+        <!-- Row 1: Cooldown Temp -->
         <item row="1" column="0">
          <widget class="QLabel" name="cooldownTempLabel">
           <property name="text">
@@ -204,7 +214,7 @@
          </widget>
         </item>
         <item row="1" column="1">
-         <widget class="QSpinBox" name="cooldownTempSpinBox">
+         <widget class="QDoubleSpinBox" name="cooldownTempSpinBox">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
             <horstretch>0</horstretch>
@@ -219,6 +229,7 @@
           </property>
          </widget>
         </item>
+        <!-- Row 2: Set Temp Ramp -->
         <item row="2" column="0">
          <widget class="QLabel" name="setTempRampLabel">
           <property name="text">
@@ -245,6 +256,7 @@
           </property>
          </widget>
         </item>
+        <!-- Row 3: Set Pressure -->
         <item row="3" column="0">
          <widget class="QLabel" name="setPressureLabel">
           <property name="text">
@@ -268,6 +280,7 @@
           </property>
          </widget>
         </item>
+        <!-- Row 4: Maintain Vacuum -->
         <item row="4" column="0">
          <widget class="QLabel" name="maintainVacuumLabel">
           <property name="text">
@@ -276,7 +289,7 @@
          </widget>
         </item>
         <item row="4" column="1">
-         <widget class="QSpinBox" name="maintainVacuumSpinBox">
+         <widget class="QDoubleSpinBox" name="maintainVacuumSpinBox">
           <property name="sizePolicy">
            <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
             <horstretch>0</horstretch>
@@ -288,6 +301,36 @@
           </property>
           <property name="maximum">
            <number>100</number>
+          </property>
+         </widget>
+        </item>
+        <!-- Row 5: Initial Set Cure Temp -->
+        <item row="5" column="0">
+         <widget class="QLabel" name="initialSetCureTempLabel">
+          <property name="text">
+           <string>Initial Set Cure Temp (°C):</string>
+          </property>
+         </widget>
+        </item>
+        <item row="5" column="1">
+         <widget class="QDoubleSpinBox" name="initialSetCureTempSpinBox">
+          <property name="maximum">
+           <number>10000</number>
+          </property>
+         </widget>
+        </item>
+        <!-- Row 6: Final Set Cure Temp -->
+        <item row="6" column="0">
+         <widget class="QLabel" name="finalSetCureTempLabel">
+          <property name="text">
+           <string>Final Set Cure Temp (°C):</string>
+          </property>
+         </widget>
+        </item>
+        <item row="6" column="1">
+         <widget class="QDoubleSpinBox" name="finalSetCureTempSpinBox">
+          <property name="maximum">
+           <number>10000</number>
           </property>
          </widget>
         </item>

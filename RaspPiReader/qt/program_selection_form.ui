@@ -7,91 +7,190 @@
     <x>0</x>
     <y>0</y>
     <width>500</width>
-    <height>300</height>
+    <height>500</height>
    </rect>
   </property>
   <property name="windowTitle">
    <string>Select Program</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
-    <!-- Program Selection -->
-    <item>
-     <layout class="QFormLayout" name="formLayout">
-      <item row="0" column="0">
-       <widget class="QLabel" name="programLabel">
+   <item>
+    <layout class="QFormLayout" name="formLayout">
+     <!-- Row 0: Program Selection -->
+     <item row="0" column="0">
+      <widget class="QLabel" name="programLabel">
+       <property name="text">
+        <string>Select Program:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QComboBox" name="programComboBox">
+       <item>
         <property name="text">
-         <string>Select Program:</string>
+         <string>Program 1</string>
         </property>
-       </widget>
-      </item>
-      <item row="0" column="1">
-       <widget class="QComboBox" name="programComboBox">
-        <item>
-         <property name="text">
-          <string>Program 1</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>Program 2</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>Program 3</string>
-         </property>
-        </item>
-        <item>
-         <property name="text">
-          <string>Program 4</string>
-         </property>
-        </item>
-       </widget>
-      </item>
-      <!-- Program Info Display -->
-      <item row="1" column="0" colspan="2">
-       <widget class="QLabel" name="programInfoLabel">
+       </item>
+       <item>
         <property name="text">
-         <string>Program information will be displayed here.</string>
+         <string>Program 2</string>
         </property>
-        <property name="alignment">
-         <set>Qt::AlignLeft|Qt::AlignTop</set>
-        </property>
-        <property name="wordWrap">
-         <bool>true</bool>
-        </property>
-        <property name="styleSheet">
-         <string notr="true">font-size: 12pt; color: #333333; border: 1px solid #CCCCCC; padding: 5px; background-color: #F9F9F9;</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </item>
-    <!-- Buttons -->
-    <item>
-     <layout class="QHBoxLayout" name="buttonLayout">
-      <item>
-       <widget class="QPushButton" name="startCycleButton">
+       </item>
+       <item>
         <property name="text">
-         <string>Start Cycle</string>
+         <string>Program 3</string>
         </property>
-        <property name="styleSheet">
-         <string notr="true">background-color: #28a745; color: white; padding: 10px; border: none; border-radius: 4px;</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <widget class="QPushButton" name="cancelButton">
+       </item>
+       <item>
         <property name="text">
-         <string>Cancel</string>
+         <string>Program 4</string>
         </property>
-        <property name="styleSheet">
-         <string notr="true">background-color: #dc3545; color: white; padding: 10px; border: none; border-radius: 4px;</string>
-        </property>
-       </widget>
-      </item>
-     </layout>
-    </item>
+       </item>
+      </widget>
+     </item>
+     <!-- Row 1: Program Info -->
+     <item row="1" column="0" colspan="2">
+      <widget class="QLabel" name="programInfoLabel">
+       <property name="text">
+        <string>Program information will be displayed here.</string>
+       </property>
+       <property name="wordWrap">
+        <bool>true</bool>
+       </property>
+       <property name="alignment">
+        <set>Qt::AlignLeft|Qt::AlignTop</set>
+       </property>
+      </widget>
+     </item>
+     <!-- Row 2: Dwell Time -->
+     <item row="2" column="0">
+      <widget class="QLabel" name="dwellTimeLabel">
+       <property name="text">
+        <string>Dwell Time (Min):</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1">
+      <widget class="QDoubleSpinBox" name="dwellTimeSpinBox">
+       <property name="maximum">
+        <number>10000</number>
+       </property>
+      </widget>
+     </item>
+     <!-- Row 3: Set Core Temp -->
+     <item row="3" column="0">
+      <widget class="QLabel" name="coreTempLabel">
+       <property name="text">
+        <string>Set Core Temp (°C):</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="1">
+      <widget class="QDoubleSpinBox" name="coreTempSpinBox">
+       <property name="maximum">
+        <number>10000</number>
+       </property>
+      </widget>
+     </item>
+     <!-- Row 4: Cool Down Temp -->
+     <item row="4" column="0">
+      <widget class="QLabel" name="coolDownTempLabel">
+       <property name="text">
+        <string>Cool Down Temp (°C):</string>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="1">
+      <widget class="QDoubleSpinBox" name="coolDownTempSpinBox">
+       <property name="maximum">
+        <number>10000</number>
+       </property>
+      </widget>
+     </item>
+     <!-- Row 5: Set Temp Ramp -->
+     <item row="5" column="0">
+      <widget class="QLabel" name="setTempRampLabel">
+       <property name="text">
+        <string>Set Temp Ramp (°C/Min):</string>
+       </property>
+      </widget>
+     </item>
+     <item row="5" column="1">
+      <widget class="QDoubleSpinBox" name="setTempRampSpinBox">
+       <property name="minimum">
+        <double>-100.0</double>
+       </property>
+       <property name="maximum">
+        <double>1000.0</double>
+       </property>
+      </widget>
+     </item>
+     <!-- Row 6: Set Pressure -->
+     <item row="6" column="0">
+      <widget class="QLabel" name="setPressureLabel">
+       <property name="text">
+        <string>Set Pressure (KPa):</string>
+       </property>
+      </widget>
+     </item>
+     <item row="6" column="1">
+      <widget class="QDoubleSpinBox" name="setPressureSpinBox">
+       <property name="maximum">
+        <double>1000000.0</double>
+       </property>
+      </widget>
+     </item>
+     <!-- Row 7: Initial Set Cure Temp -->
+     <item row="7" column="0">
+      <widget class="QLabel" name="initialSetCureTempLabel">
+       <property name="text">
+        <string>Initial Set Cure Temp (°C):</string>
+       </property>
+      </widget>
+     </item>
+     <item row="7" column="1">
+      <widget class="QDoubleSpinBox" name="initialSetCureTempSpinBox">
+       <property name="maximum">
+        <number>10000</number>
+       </property>
+      </widget>
+     </item>
+     <!-- Row 8: Final Set Cure Temp -->
+     <item row="8" column="0">
+      <widget class="QLabel" name="finalSetCureTempLabel">
+       <property name="text">
+        <string>Final Set Cure Temp (°C):</string>
+       </property>
+      </widget>
+     </item>
+     <item row="8" column="1">
+      <widget class="QDoubleSpinBox" name="finalSetCureTempSpinBox">
+       <property name="maximum">
+        <number>10000</number>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <!-- Button Layout -->
+   <item>
+    <layout class="QHBoxLayout" name="buttonLayout">
+     <item>
+      <widget class="QPushButton" name="startCycleButton">
+       <property name="text">
+        <string>Start Cycle</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="cancelButton">
+       <property name="text">
+        <string>Cancel</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
   </layout>
  </widget>
  <resources/>

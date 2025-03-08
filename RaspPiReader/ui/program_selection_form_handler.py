@@ -65,7 +65,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                 f"Cool Down Temperature: {default_program.cool_down_temp}°C<br>"
                 f"Temperature Ramp: {default_program.temp_ramp}°C/min<br>"
                 f"Set Pressure: {default_program.set_pressure} kPa<br>"
-                f"Maintain Vacuum: {default_program.maintain_vacuum} min"
+                f"Maintain Vacuum: {default_program.maintain_vacuum} %<br>"
             )
         else:
             info_text = f"<b>Program {program_index}</b><br>No default settings found for this program."

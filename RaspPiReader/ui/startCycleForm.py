@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\DEV\Python\PLC Integration\src1-main\src1-main\RaspPiReader-master\RaspPiReader\qt\startCycle.ui'
+# Form implementation generated from reading ui file 'c:\DEV\Python\PLC Integration\src1-main\src1-main\RaspPiReader-master\RaspPiReader\qt\startCycle.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -14,7 +14,7 @@ from PyQt5 import QtCore, QtGui, QtWidgets
 class Ui_CycleStart(object):
     def setupUi(self, CycleStart):
         CycleStart.setObjectName("CycleStart")
-        CycleStart.resize(941, 251)
+        CycleStart.resize(941, 350)
         self.centralwidget = QtWidgets.QWidget(CycleStart)
         self.centralwidget.setObjectName("centralwidget")
         self.gridLayout = QtWidgets.QGridLayout(self.centralwidget)
@@ -103,7 +103,7 @@ class Ui_CycleStart(object):
         self.tempSetpointLabel = QtWidgets.QLabel(self.centralwidget)
         self.tempSetpointLabel.setObjectName("tempSetpointLabel")
         self.formLayout_2.setWidget(0, QtWidgets.QFormLayout.LabelRole, self.tempSetpointLabel)
-        self.tempSetpointSpinBox = QtWidgets.QSpinBox(self.centralwidget)
+        self.tempSetpointSpinBox = QtWidgets.QDoubleSpinBox(self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -116,7 +116,7 @@ class Ui_CycleStart(object):
         self.cooldownTempLabel = QtWidgets.QLabel(self.centralwidget)
         self.cooldownTempLabel.setObjectName("cooldownTempLabel")
         self.formLayout_2.setWidget(1, QtWidgets.QFormLayout.LabelRole, self.cooldownTempLabel)
-        self.cooldownTempSpinBox = QtWidgets.QSpinBox(self.centralwidget)
+        self.cooldownTempSpinBox = QtWidgets.QDoubleSpinBox(self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -156,7 +156,7 @@ class Ui_CycleStart(object):
         self.maintainVacuumLabel = QtWidgets.QLabel(self.centralwidget)
         self.maintainVacuumLabel.setObjectName("maintainVacuumLabel")
         self.formLayout_2.setWidget(4, QtWidgets.QFormLayout.LabelRole, self.maintainVacuumLabel)
-        self.maintainVacuumSpinBox = QtWidgets.QSpinBox(self.centralwidget)
+        self.maintainVacuumSpinBox = QtWidgets.QDoubleSpinBox(self.centralwidget)
         sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Preferred)
         sizePolicy.setHorizontalStretch(0)
         sizePolicy.setVerticalStretch(0)
@@ -166,6 +166,20 @@ class Ui_CycleStart(object):
         self.maintainVacuumSpinBox.setMaximum(100)
         self.maintainVacuumSpinBox.setObjectName("maintainVacuumSpinBox")
         self.formLayout_2.setWidget(4, QtWidgets.QFormLayout.FieldRole, self.maintainVacuumSpinBox)
+        self.initialSetCureTempLabel = QtWidgets.QLabel(self.centralwidget)
+        self.initialSetCureTempLabel.setObjectName("initialSetCureTempLabel")
+        self.formLayout_2.setWidget(5, QtWidgets.QFormLayout.LabelRole, self.initialSetCureTempLabel)
+        self.initialSetCureTempSpinBox = QtWidgets.QDoubleSpinBox(self.centralwidget)
+        self.initialSetCureTempSpinBox.setMaximum(10000)
+        self.initialSetCureTempSpinBox.setObjectName("initialSetCureTempSpinBox")
+        self.formLayout_2.setWidget(5, QtWidgets.QFormLayout.FieldRole, self.initialSetCureTempSpinBox)
+        self.finalSetCureTempLabel = QtWidgets.QLabel(self.centralwidget)
+        self.finalSetCureTempLabel.setObjectName("finalSetCureTempLabel")
+        self.formLayout_2.setWidget(6, QtWidgets.QFormLayout.LabelRole, self.finalSetCureTempLabel)
+        self.finalSetCureTempSpinBox = QtWidgets.QDoubleSpinBox(self.centralwidget)
+        self.finalSetCureTempSpinBox.setMaximum(10000)
+        self.finalSetCureTempSpinBox.setObjectName("finalSetCureTempSpinBox")
+        self.formLayout_2.setWidget(6, QtWidgets.QFormLayout.FieldRole, self.finalSetCureTempSpinBox)
         self.horizontalLayout_2.addLayout(self.formLayout_2)
         self.gridLayout.addLayout(self.horizontalLayout_2, 0, 0, 1, 1)
         spacerItem1 = QtWidgets.QSpacerItem(20, 123, QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Expanding)
@@ -205,5 +219,7 @@ class Ui_CycleStart(object):
         self.setTempRampLabel.setText(_translate("CycleStart", "Set Temp Ramp (°C/Min):"))
         self.setPressureLabel.setText(_translate("CycleStart", "Set Pressure (KPa):"))
         self.maintainVacuumLabel.setText(_translate("CycleStart", "Maintain Vacuum (%):"))
+        self.initialSetCureTempLabel.setText(_translate("CycleStart", "Initial Set Cure Temp (°C):"))
+        self.finalSetCureTempLabel.setText(_translate("CycleStart", "Final Set Cure Temp (°C):"))
         self.cancelPushButton.setText(_translate("CycleStart", "Cancel"))
         self.startPushButton.setText(_translate("CycleStart", "Start Cycle"))
