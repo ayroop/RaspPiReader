@@ -229,6 +229,34 @@ PRESSURE RELEASED:</string>
                 </property>
                </widget>
               </item>
+              <item>
+               <widget class="QLabel" name="cH1Label_16">
+                <property name="font">
+                 <font>
+                  <pointsize>8</pointsize>
+                  <weight>50</weight>
+                  <bold>false</bold>
+                 </font>
+                </property>
+                <property name="text">
+                 <string>INITIAL SET CURE TEMP:</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="cH1Label_17">
+                <property name="font">
+                 <font>
+                  <pointsize>8</pointsize>
+                  <weight>50</weight>
+                  <bold>false</bold>
+                 </font>
+                </property>
+                <property name="text">
+                 <string>FINAL SET CURE TEMP:</string>
+                </property>
+               </widget>
+              </item>
              </layout>
             </item>
             <item>
@@ -291,6 +319,34 @@ PRESSURE RELEASED:</string>
               </item>
               <item>
                <widget class="QLabel" name="p5">
+                <property name="font">
+                 <font>
+                  <pointsize>8</pointsize>
+                  <weight>50</weight>
+                  <bold>false</bold>
+                 </font>
+                </property>
+                <property name="text">
+                 <string>N/A</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="p6">
+                <property name="font">
+                 <font>
+                  <pointsize>8</pointsize>
+                  <weight>50</weight>
+                  <bold>false</bold>
+                 </font>
+                </property>
+                <property name="text">
+                 <string>N/A</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="p7">
                 <property name="font">
                  <font>
                   <pointsize>8</pointsize>

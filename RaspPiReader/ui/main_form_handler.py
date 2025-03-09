@@ -944,5 +944,3 @@ class MainFormHandler(QtWidgets.QMainWindow):
             except Exception as e:
                 self.statusbar.showMessage(f"Error checking connection: {str(e)}", 0)
                 self.statusbar.setStyleSheet("background-color: #FADBD8; color: #943126;")
-        
-    
