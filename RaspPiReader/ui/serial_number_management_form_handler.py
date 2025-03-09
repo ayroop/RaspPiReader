@@ -4,7 +4,6 @@ from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt, QTimer
 from RaspPiReader.ui.serial_number_management import Ui_SerialNumberManagementDialog
 from RaspPiReader.libs.database import Database
-# Instead of CycleData use the normalized model
 from RaspPiReader.libs.models import CycleSerialNumber, User  
 from RaspPiReader import pool
 
@@ -83,57 +82,30 @@ class SerialNumberManagementFormHandler(QtWidgets.QDialog):
         self.load_all_serials()
     
     def load_all_serials(self):
-        """Load all serial numbers from the normalized table in the database."""
         try:
-            logger.info("Loading serial numbers from normalized table...")
             table = self.ui.serialTableWidget
-            table.setRowCount(1)
-            table.setItem(0, 0, QtWidgets.QTableWidgetItem("Loading..."))
+            # Ensure the table has 2 columns
+            table.setColumnCount(2)
+            table.setHorizontalHeaderLabels(["Serial Number", "Added By"])
             
-            # Query all CycleSerialNumber records
-            results = self.db.session.query(CycleSerialNumber).all()
+            records = self.db.session.query(CycleSerialNumber).all()
             self.all_serials = []
-            for record in results:
-                # Get the serial number from the normalized table.
-                serial = record.serial_number.strip() if record.serial_number else ""
-                # Get the added_by field via the related cycle record (if available)
-                if record.cycle and hasattr(record.cycle, "added_by"):
-                    username = record.cycle.added_by.strip() if record.cycle.added_by else ""
-                    if not username:
-                        logger.warning(f"Cycle ID {record.cycle.id} is missing added_by. Skipping record.")
-                        continue
-                    # Verify that user exists in the database
-                    user = self.db.session.query(User).filter(User.username == username).first()
-                    if not user:
-                        logger.warning(f"Cycle ID {record.cycle.id} has an invalid added_by value ('{username}'). Skipping record.")
-                        continue
-                    # Keep tuple (serial, valid username)
-                    if serial:
-                        self.all_serials.append((serial, user.username))
-                else:
-                    logger.warning("Record missing related cycle or added_by field. Skipping.")
-            
-            # Sort the list alphanumerically by serial number
-            self.all_serials.sort(key=lambda x: x[0])
-            self.filtered_serials = self.all_serials.copy()
-            
-            # Update pagination settings and display current page
-            self.update_pagination()
-            self.display_current_page()
-            
-            logger.info(f"Loaded {len(self.all_serials)} unique serial numbers")
-            if not self.all_serials:
-                table.setRowCount(1)
-                table.setItem(0, 0, QtWidgets.QTableWidgetItem("No serial numbers found"))
-                table.setItem(0, 1, QtWidgets.QTableWidgetItem(""))
-                        
+            for record in records:
+                if record.serial_number and record.serial_number.strip() != "":
+                    # Retrieve added_by username if available (modify according to your model)
+                    added_by = "Unknown"
+                    if hasattr(record, "cycle") and record.cycle and hasattr(record.cycle, "user") and record.cycle.user:
+                        added_by = record.cycle.user.username
+                    self.all_serials.append((record.serial_number.strip(), added_by))
+            table.setRowCount(len(self.all_serials))
+            for idx, (sn, user) in enumerate(self.all_serials):
+                table.setItem(idx, 0, QtWidgets.QTableWidgetItem(sn))
+                table.setItem(idx, 1, QtWidgets.QTableWidgetItem(user))
+            table.resizeColumnsToContents()
+            logger.info(f"Loaded {len(self.all_serials)} serial numbers")
         except Exception as e:
-            logger.error(f"Error loading serial numbers: {e}")
-            QtWidgets.QMessageBox.warning(
-                self,
-                "Error Loading Serial Numbers",
-                f"Failed to load serial numbers: {str(e)}"
-            )
+            logger.error(f"Failed to load serial numbers: {e}")
+            QtWidgets.QMessageBox.critical(self, "Error", f"Failed to load serial numbers: {e}")
     
     def filter_serials(self):
         """Filter serial numbers based on the search text."""

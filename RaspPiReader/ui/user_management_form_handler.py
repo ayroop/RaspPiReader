@@ -36,35 +36,39 @@ class UserManagementFormHandler(QtWidgets.QDialog):
         table.resizeColumnsToContents()
 
     def add_user(self):
-        dlg = UserEditFormHandler(parent=self)
-        if dlg.exec_() == QtWidgets.QDialog.Accepted:
-            user_data = dlg.get_data()
+    # Open the user edit dialog. (using for UserEditFormHandler.)
+        dialog = UserEditFormHandler(parent=self)
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            data = dialog.get_data()
             new_user = User(
-                username=user_data['username'],
-                password=user_data['password'],
-                settings=user_data['settings'],
-                search=user_data['search'],
-                user_mgmt_page=user_data['user_mgmt_page']
+                username=data["username"],
+                password=data["password"],
+                role=data["role"],       # assign the role as entered
+                settings=data["settings"],
+                search=data["search"]
             )
             self.db.add_user(new_user)
-            self.users.append(new_user)
+            self.users = self.load_users()  # Reload the users from the database
             self.refresh_table()
 
     def edit_user(self):
         table = self.ui.userTableWidget
         current_row = table.currentRow()
-        if current_row < 0 or current_row >= len(self.users):
+        if current_row < 0:
+            QtWidgets.QMessageBox.warning(self, "Edit User", "Please select a user to edit.")
             return
         user = self.users[current_row]
-        dlg = UserEditFormHandler(user_data=user, parent=self)
-        if dlg.exec_() == QtWidgets.QDialog.Accepted:
-            updated_user = dlg.get_data()
-            user.username = updated_user['username']
-            user.password = updated_user['password']
-            user.settings = updated_user['settings']
-            user.search = updated_user['search']
-            user.user_mgmt_page = updated_user['user_mgmt_page']
-            self.db.add_user(user)  # Update user in the database
+        dialog = UserEditFormHandler(user_data=user, parent=self)
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            updated_data = dialog.get_data()
+            user.username = updated_data["username"]
+            user.password = updated_data["password"]
+            user.role = updated_data["role"]         # update the role from the dialog
+            user.settings = updated_data["settings"]
+            user.search = updated_data["search"]
+            user.user_mgmt_page = updated_data["user_mgmt_page"]
+            self.db.session.commit()  # commit to save changes
+            self.users = self.load_users()  # reload the users
             self.refresh_table()
 
     def remove_user(self):

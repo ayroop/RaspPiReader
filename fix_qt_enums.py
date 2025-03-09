@@ -43,7 +43,7 @@ def fix_qt_ui_file(file_path):
     os.system(cmd)
 
 if __name__ == "__main__":
-    fix_qt_ui_file("RaspPiReader/qt/settings.ui")
+    fix_qt_ui_file("RaspPiReader/qt/main.ui")
     
     # Uncomment to fix all UI files:
     # ui_files = [f for f in os.listdir("RaspPiReader/qt") if f.endswith(".ui")]

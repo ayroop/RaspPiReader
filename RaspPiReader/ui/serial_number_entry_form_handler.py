@@ -45,8 +45,8 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
 
     def import_from_excel(self):
         """
-        Import serial numbers from an Excel file.
-        Excel file should have one column with serial numbers.
+        Import serial numbers from an Excel or CSV file.
+        The file should have serial numbers in the first column.
         """
         file_name, _ = QtWidgets.QFileDialog.getOpenFileName(
             self, "Import Serial Numbers", "", 
@@ -132,147 +132,131 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
     
     def next(self):
         """
-        Process the entered serial numbers and proceed to the next step.
-        Check for duplicates and handle them appropriately.
+        Process the entered serial numbers, checking for duplicates.
+        When a duplicate is found (i.e. already in the DB), supervisor credentials are requested.
+        If authenticated, the duplicate serial is processed so that only one original and one override (with appended 'R')
+        are saved, regardless of how many times it is entered.
         """
-        # Gather serial numbers from the serialTableWidget
-        serials = []
-        duplicate_serials = []
-        
+        # Gather serial numbers from the table
+        entered_serials = []
         for row in range(self.ui.serialTableWidget.rowCount()):
             item = self.ui.serialTableWidget.item(row, 0)
             if item:
                 sn = item.text().strip()
-                if sn:  # only process non-empty strings
-                    serials.append(sn)
-                    if self.db.check_duplicate_serial(sn):
-                        duplicate_serials.append(sn)
-        
-        if not serials:
+                if sn:  # Only process non-empty strings
+                    entered_serials.append(sn)
+
+        if not entered_serials:
             QtWidgets.QMessageBox.warning(
-                self, "Warning", 
-                "Please enter at least one serial number."
+                self, "Warning", "Please enter at least one serial number."
             )
             return
-        
+
+        # Determine which unique serials already exist in the database (duplicates)
+        unique_serials = set(entered_serials)
+        duplicate_set = set(sn for sn in unique_serials if self.db.check_duplicate_serial(sn))
+
         # If duplicates exist, require supervisor authorization
-        if duplicate_serials:
-            dialog = DuplicatePasswordDialog(duplicate_serials, self)
+        if duplicate_set:
+            # (Sort for consistent display)
+            dialog = DuplicatePasswordDialog(sorted(list(duplicate_set)), self)
             if dialog.exec_() == QtWidgets.QDialog.Accepted:
-                user_pwd, sup_pwd = dialog.get_passwords()
-                if not self.authenticate_supervisor(user_pwd, sup_pwd):
+                sup_username, sup_password = dialog.get_credentials()
+                if not self.authenticate_supervisor(sup_username, sup_password):
                     QtWidgets.QMessageBox.critical(
-                        self, "Error", 
-                        "Invalid credentials for duplicate serial override."
+                        self,
+                        "Error",
+                        "Invalid supervisor credentials for duplicate serial override."
                     )
-                    return  # Stop without saving
-                
-                # Append 'R' to all duplicate serials before saving
-                serials = [sn + "R" if sn in duplicate_serials else sn for sn in serials]
-                logger.info(f"Serial numbers after overriding duplicates: {serials}")
+                    return  # Abort without saving
             else:
                 # User canceled duplicate override
-                logger.info("User canceled duplicate serial override")
                 return
-        
+
+        # Finalize the list of serials to save:
+        # For duplicate serials, only one instance and one override are kept.
+        final_serials = []
+        for sn in unique_serials:
+            if sn in duplicate_set:
+                final_serials.append(sn)         # original
+                final_serials.append(sn + "R")     # override
+            else:
+                final_serials.append(sn)  # non-duplicate serial added as-is
+
+        logger.info(f"Final serial numbers to be saved: {final_serials}")
+
         try:
-            # Get the current user FIRST
+            # Get the current username from the pool (with fallback)
             current_username = pool.get("current_user")
             if not current_username:
-                # Try to get username from main_form as fallback
-                main_form = pool.get('main_form')
-                if main_form and hasattr(main_form, 'user'):
+                main_form = pool.get("main_form")
+                if main_form and hasattr(main_form, "user"):
                     current_username = main_form.user.username
                 else:
                     QtWidgets.QMessageBox.critical(
-                        self, "Error", 
-                        "No current user set in session. Please log in again."
+                        self, "Error", "No current user set in session. Please log in again."
                     )
                     return
-                    
-            # Get the User object from database
+
             user = self.db.get_user(current_username)
             if not user:
                 QtWidgets.QMessageBox.critical(
-                    self, "Database Error", 
-                    f"User '{current_username}' not found in database."
+                    self, "Database Error", f"User '{current_username}' not found in database."
                 )
                 return
-                
-            # Create the cycle data record without using the old serial_numbers field.
-            # Instead, set order_id and quantity.
+
+            # Create a new cycle data record using the number of unique final serials
             cycle_data = CycleData(
                 order_id=self.work_order,
-                quantity=len(serials)
+                quantity=len(final_serials)
             )
             cycle_data.user = user
             logger.info(f"Setting user_id to {user.id} for cycle data")
-            
-            # Save cycle_data to database (this commits and sets cycle_data.id)
+
             success = self.db.add_cycle_data(cycle_data)
             if not success:
                 QtWidgets.QMessageBox.critical(
-                    self, "Database Error", 
-                    "Failed to save cycle data to the database."
+                    self, "Database Error", "Failed to save cycle data to the database."
                 )
                 return
-            
-            # Now save each serial number into the normalized table
-            for sn in serials:
+
+            # Save each serial number into the normalized table
+            for sn in final_serials:
                 record = CycleSerialNumber(cycle_id=cycle_data.id, serial_number=sn)
                 self.db.session.add(record)
             self.db.session.commit()
             logger.info("Cycle serial numbers stored successfully.")
-            
-            # Log transition to program selection
-            logger.info(f"Transitioning to program selection with work order {self.work_order} and {len(serials)} serial numbers")
-            
-            # Prevent garbage collection by storing a reference to program_form
-            self.program_form = ProgramSelectionFormHandler(self.work_order, serials, parent=None)
-            
-            # Show program selection form
+
+            # Transition to program selection
+            logger.info(f"Transitioning to program selection with work order {self.work_order} and {len(final_serials)} serial numbers")
+            self.program_form = ProgramSelectionFormHandler(self.work_order, final_serials, parent=None)
             self.program_form.setMinimumSize(500, 300)
             self.program_form.show()
-            self.program_form.raise_()  # Bring window to front
-            self.program_form.activateWindow()  # Give window focus
-            self.hide()  # Hide current form without closing immediately
-            
+            self.program_form.raise_()
+            self.program_form.activateWindow()
+            self.hide()
+
         except Exception as e:
             logger.error(f"Error transitioning to program selection: {str(e)}")
             QtWidgets.QMessageBox.critical(
-                self, "Error", 
-                f"Failed to proceed to program selection: {str(e)}"
+                self, "Error", f"Failed to proceed to program selection: {str(e)}"
             )
-
-    def authenticate_supervisor(self, user_password, supervisor_password):
+    def authenticate_supervisor(self, supervisor_username, supervisor_password):
         """
-        Verify the user password and supervisor password for duplicate serial override.
-        Returns True if authentication is successful, otherwise False.
+        Verify the supervisor credentials. Returns True if a user with the given username exists,
+        has a role of 'Supervisor' (case-insensitive) and the password matches.
         """
         try:
-            # First verify the user's password
-            current_user = pool.get('current_user')
-            if not current_user:
-                logger.error("No current user found in pool")
-                return False
-                
-            user = self.db.get_user(current_user)
-            if not user or user.password != user_password:
-                logger.warning(f"Invalid user password for {current_user}")
-                return False
-            
-            # Then verify the supervisor password by checking users with management privileges
-            supervisors = self.db.session.query(User).filter_by(user_mgmt_page=True).all()
-            for supervisor in supervisors:
-                if supervisor.password == supervisor_password:
-                    logger.info(f"Supervisor {supervisor.username} authorized duplicate override")
-                    return True
-                    
-            logger.warning("No supervisor with matching password found")
+            sup = self.db.get_user(supervisor_username)
+            if sup and sup.role.lower() == "supervisor" and sup.password == supervisor_password:
+                logger.info(f"Supervisor {sup.username} authorized duplicate override")
+                return True
+            logger.warning("Supervisor authentication failed")
             return False
         except Exception as e:
             logger.error(f"Authentication error: {e}")
             return False
+
 
 class SerialNumberSearchFormHandler(QtWidgets.QWidget):
     def __init__(self, parent=None):
@@ -280,7 +264,7 @@ class SerialNumberSearchFormHandler(QtWidgets.QWidget):
         self.ui = Ui_SerialNumberEntryForm()
         self.ui.setupUi(self)
         
-        # Hide the table and next button since we only need search functionality
+        # Hide the table and next button for search functionality only
         self.ui.serialTableWidget.hide()
         self.ui.nextButton.hide()
         self.ui.importExcelButton.hide()
@@ -292,10 +276,8 @@ class SerialNumberSearchFormHandler(QtWidgets.QWidget):
         self.ui.cancelButton.clicked.connect(self.close)
         self.db = Database("sqlite:///local_database.db")
         
-        # Set placeholder text for search line edit
+        # Set placeholder text and button text
         self.ui.searchLineEdit.setPlaceholderText("Enter serial number to search...")
-        
-        # Set button text
         self.ui.searchButton.setText("Search")
         self.ui.cancelButton.setText("Close")
     
@@ -308,7 +290,6 @@ class SerialNumberSearchFormHandler(QtWidgets.QWidget):
             QtWidgets.QMessageBox.warning(self, "Warning", "Please enter a serial number to search.")
             return
         
-        # Search in the database using the normalized serial number table
         result = self.db.search_serial_number(search_text)
         if result:
             QtWidgets.QMessageBox.information(

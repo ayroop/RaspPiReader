@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'C:\DEV\Python\PLC Integration\src1-main\src1-main\RaspPiReader-master\RaspPiReader\qt\duplicate_password_dialog.ui'
+# Form implementation generated from reading ui file 'c:\DEV\Python\PLC Integration\src1-main\src1-main\RaspPiReader-master\RaspPiReader\qt\duplicate_password_dialog.ui'
 #
 # Created by: PyQt5 UI code generator 5.15.11
 #
@@ -11,7 +11,7 @@
 from PyQt5 import QtCore, QtGui, QtWidgets
 
 
-class DuplicatePasswordDialog(object):
+class Ui_DuplicatePasswordDialog(object):
     def setupUi(self, DuplicatePasswordDialog):
         DuplicatePasswordDialog.setObjectName("DuplicatePasswordDialog")
         self.verticalLayout = QtWidgets.QVBoxLayout(DuplicatePasswordDialog)
@@ -24,16 +24,15 @@ class DuplicatePasswordDialog(object):
         self.verticalLayout.addWidget(self.duplicateList)
         self.formLayout = QtWidgets.QFormLayout()
         self.formLayout.setObjectName("formLayout")
-        self.userLabel = QtWidgets.QLabel(DuplicatePasswordDialog)
-        self.userLabel.setObjectName("userLabel")
-        self.formLayout.setWidget(0, QtWidgets.QFormLayout.LabelRole, self.userLabel)
-        self.userPasswordLineEdit = QtWidgets.QLineEdit(DuplicatePasswordDialog)
-        self.userPasswordLineEdit.setEchoMode(QtWidgets.QLineEdit.Password)
-        self.userPasswordLineEdit.setObjectName("userPasswordLineEdit")
-        self.formLayout.setWidget(0, QtWidgets.QFormLayout.FieldRole, self.userPasswordLineEdit)
-        self.supervisorLabel = QtWidgets.QLabel(DuplicatePasswordDialog)
-        self.supervisorLabel.setObjectName("supervisorLabel")
-        self.formLayout.setWidget(1, QtWidgets.QFormLayout.LabelRole, self.supervisorLabel)
+        self.supervisorUsernameLabel = QtWidgets.QLabel(DuplicatePasswordDialog)
+        self.supervisorUsernameLabel.setObjectName("supervisorUsernameLabel")
+        self.formLayout.setWidget(0, QtWidgets.QFormLayout.LabelRole, self.supervisorUsernameLabel)
+        self.supervisorUsernameLineEdit = QtWidgets.QLineEdit(DuplicatePasswordDialog)
+        self.supervisorUsernameLineEdit.setObjectName("supervisorUsernameLineEdit")
+        self.formLayout.setWidget(0, QtWidgets.QFormLayout.FieldRole, self.supervisorUsernameLineEdit)
+        self.supervisorPasswordLabel = QtWidgets.QLabel(DuplicatePasswordDialog)
+        self.supervisorPasswordLabel.setObjectName("supervisorPasswordLabel")
+        self.formLayout.setWidget(1, QtWidgets.QFormLayout.LabelRole, self.supervisorPasswordLabel)
         self.supervisorPasswordLineEdit = QtWidgets.QLineEdit(DuplicatePasswordDialog)
         self.supervisorPasswordLineEdit.setEchoMode(QtWidgets.QLineEdit.Password)
         self.supervisorPasswordLineEdit.setObjectName("supervisorPasswordLineEdit")
@@ -56,17 +55,7 @@ class DuplicatePasswordDialog(object):
         _translate = QtCore.QCoreApplication.translate
         DuplicatePasswordDialog.setWindowTitle(_translate("DuplicatePasswordDialog", "Duplicate Serial Authorization"))
         self.instructionLabel.setText(_translate("DuplicatePasswordDialog", "The following serial numbers already exist in the system:"))
-        self.userLabel.setText(_translate("DuplicatePasswordDialog", "User Password:"))
-        self.supervisorLabel.setText(_translate("DuplicatePasswordDialog", "Supervisor Password:"))
+        self.supervisorUsernameLabel.setText(_translate("DuplicatePasswordDialog", "Supervisor Username:"))
+        self.supervisorPasswordLabel.setText(_translate("DuplicatePasswordDialog", "Supervisor Password:"))
         self.okButton.setText(_translate("DuplicatePasswordDialog", "OK"))
         self.cancelButton.setText(_translate("DuplicatePasswordDialog", "Cancel"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    DuplicatePasswordDialog = QtWidgets.QDialog()
-    ui = Ui_DuplicatePasswordDialog()
-    ui.setupUi(DuplicatePasswordDialog)
-    DuplicatePasswordDialog.show()
-    sys.exit(app.exec_())

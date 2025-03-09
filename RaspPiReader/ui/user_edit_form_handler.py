@@ -44,12 +44,18 @@ class UserEditFormHandler(QtWidgets.QDialog):
                 self.ui.roleLineEdit.setText(user_data.role)
 
     def get_data(self):
-        data = {
-            'username': self.ui.usernameLineEdit.text().strip() if hasattr(self.ui, "usernameLineEdit") else "",
-            'password': self.ui.passwordLineEdit.text().strip() if hasattr(self.ui, "passwordLineEdit") else "",
-            'settings': self.ui.settingsCheckBox.isChecked() if hasattr(self.ui, "settingsCheckBox") else False,
-            'search': self.ui.searchCheckBox.isChecked() if hasattr(self.ui, "searchCheckBox") else False,
-            'user_mgmt_page': False,  # Default value
-            'role': self.ui.roleLineEdit.text().strip() or "Operator" if hasattr(self.ui, "roleLineEdit") else "Operator"
+        username = self.ui.usernameLineEdit.text().strip()
+        password = self.ui.passwordLineEdit.text().strip()
+        role = self.ui.roleLineEdit.text().strip()  # new field for the role
+        settings = self.ui.settingsCheckBox.isChecked() if hasattr(self.ui, "settingsCheckBox") else False
+        search = self.ui.searchCheckBox.isChecked() if hasattr(self.ui, "searchCheckBox") else False
+        # Set user_mgmt_page True if role is "Supervisor" (case-insensitive), otherwise False
+        user_mgmt_page = True if role.lower() == "supervisor" else False
+        return {
+            "username": username,
+            "password": password,
+            "role": role,
+            "settings": settings,
+            "search": search,
+            "user_mgmt_page": user_mgmt_page
         }
-        return data
