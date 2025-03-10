@@ -2,12 +2,14 @@ import os
 import csv
 import pdfkit
 from datetime import datetime
+import logging
+from colorama import Fore
+
 from PyQt5 import QtWidgets, uic
 from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction
-from colorama import Fore
-import logging
+
 from RaspPiReader import pool
 from .mainForm import MainForm
 from .plot_handler import InitiatePlotWidget
@@ -20,10 +22,11 @@ from RaspPiReader.libs.onedrive_api import OneDriveAPI
 from .plc_comm_settings_form_handler import PLCCommSettingsFormHandler
 from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormHandler
 
+import pyqtgraph as pg
+
 # New import related with 6 bool addresses and new cycle widget
 from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.configuration import config
-from RaspPiReader.ui.mainForm import MainForm
 from .boolean_status import Ui_BooleanStatusWidget
 from RaspPiReader.libs.models import BooleanStatus, PlotData, BooleanAddress
 from RaspPiReader.libs.database import Database
@@ -39,10 +42,6 @@ from RaspPiReader.ui.alarm_settings_form_handler import AlarmSettingsFormHandler
 # Add PLC connection status
 from RaspPiReader.libs import plc_communication
 
-from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
-
-
-
 logger = logging.getLogger(__name__)
 def timedelta2str(td):
     h, rem = divmod(td.seconds, 3600)
@@ -51,64 +50,128 @@ def timedelta2str(td):
         return str(val) if val >= 10 else f"0{val}"
     return "{0}:{1}:{2}".format(zp(h), zp(m), zp(s))
 
-class MainFormHandler(QtWidgets.QMainWindow):
+class MainFormHandler(QMainWindow):
     update_status_bar_signal = pyqtSignal(str, int, str)
+
     def __init__(self, user_record=None):
         super(MainFormHandler, self).__init__()
         self.user_record = user_record
-        print(f"Initializing MainFormHandler with user_record: {self.user_record}")
         self.form_obj = MainForm()
         self.form_obj.setupUi(self)
         
+        # Retrieve or create StartCycleFormHandler and connect its data signal.
+        start_cycle_form = pool.get("start_cycle_form")
+        if not start_cycle_form:
+            start_cycle_form = StartCycleFormHandler()
+            pool.set("start_cycle_form", start_cycle_form)
+            logger.info("Created new StartCycleFormHandler and set in pool.")
+        start_cycle_form.data_updated_signal.connect(self.update_data)
+        logger.info("Connected data_updated_signal from StartCycleFormHandler")
+        
+        # Other file and plot connection variables
         self.file_name = None
         self.folder_name = None
         self.csv_path = None
         self.pdf_path = None
-        self.plot = None
+        self.plot = None   # Will be set by setup_plot_data_display
+        
         self.username = self.user_record.username if self.user_record else ''
         pool.set('main_form', self)
         self.cycle_timer = QTimer()
-        self.set_connections()
-        self.start_cycle_form = pool.set('cycle_start_form', StartCycleFormHandler())
-        self.display_username()
-        # (Optional) create data stacks
-        self.create_stack()
         
+        # Initialize connections, user display, and (optional) stacks
         self.set_connections()
+        self.display_username()
+        # (Optional) self.create_stack()
+        
+        # Setup additional menus
         self.setup_access_controls()
         self.connect_menu_actions()
-        # Add OneDrive Settings option to the menu
         self.add_one_drive_menu()
-        # Add PLC Setting to the menu
         self.add_plc_comm_menu()
-        # Add Database Setting to the menu
         self.add_database_menu()
         
-        # 6 Bool Addresses status
+        # Initialize Boolean status area and plot area
+        from RaspPiReader.libs.database import Database
         self.db = Database("sqlite:///local_database.db")
         self.setup_bool_status_display()
-        self.setup_plot_data_display()
-        
-        # Integrate new cycle widget next to the Boolean status widget
+        self.setup_plot_data_display()  # creates plot widget and calls initialize_plot_widget
         self.integrate_new_cycle_widget()
         
-        # Create a timer to update status every few seconds
+        # Start timers
         self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self.update_bool_status)
-        self.status_timer.start(5000)  # update every 5 seconds
-        # Setup main form for products serial numbers
+        self.status_timer.start(5000)
         self.add_default_program_menu()
-        # Alarm Settings Menu
         self.add_alarm_settings_menu()
-        # Add PLC connection status
-        self.connectionTimer = QTimer()
+        self.connectionTimer = QTimer(self)
         self.connectionTimer.timeout.connect(self.update_connection_status_display)
-        self.connectionTimer.start(5000)  # Update every 5 seconds
+        self.connectionTimer.start(5000)
         self.showMaximized()
-        print("MainFormHandler initialized.")
-    
+        logger.info("MainFormHandler initialized.")
+
+    def update_data(self, new_data):
+        """
+        Update UI elements based on the new_data dictionary.
+        Keys expected:
+         - temperature: float/int for temperature in °C
+         - pressure: float/int for cylinder pressure in KPa
+         - vacuum: dict with keys 'CH1'..'CH8' for vacuum gauge values (KPa)
+         - cycle_info: dict with keys 'maintain_vacuum','set_cure_temp','temp_ramp',
+                         'set_pressure','dwell_time','cool_down_temp','cycle_start_time','cycle_end_time'
+         - plot: list of (time, value) pairs for plotting
+        """
+        logger.info(f"MainForm received update: {new_data}")
+        try:
+            # Temperature and Pressure
+            temperature = new_data.get('temperature', 'N/A')
+            pressure = new_data.get('pressure', 'N/A')
+            self.form_obj.temperatureLabel.setText(f"Temperature: {temperature} °C")
+            self.form_obj.pressureLabel.setText(f"Pressure: {pressure} KPa")
+            
+            # Vacuum Gauge channels CH1 to CH8
+            vacuum_data = new_data.get('vacuum', {})
+            if vacuum_data:
+                self.form_obj.vacuumLabelCH1.setText(f"CH1: {vacuum_data.get('CH1', 0)} KPa")
+                self.form_obj.vacuumLabelCH2.setText(f"CH2: {vacuum_data.get('CH2', 0)} KPa")
+                self.form_obj.vacuumLabelCH3.setText(f"CH3: {vacuum_data.get('CH3', 0)} KPa")
+                self.form_obj.vacuumLabelCH4.setText(f"CH4: {vacuum_data.get('CH4', 0)} KPa")
+                self.form_obj.vacuumLabelCH5.setText(f"CH5: {vacuum_data.get('CH5', 0)} KPa")
+                self.form_obj.vacuumLabelCH6.setText(f"CH6: {vacuum_data.get('CH6', 0)} KPa")
+                self.form_obj.vacuumLabelCH7.setText(f"CH7: {vacuum_data.get('CH7', 0)} KPa")
+                self.form_obj.vacuumLabelCH8.setText(f"CH8: {vacuum_data.get('CH8', 0)} KPa")
+            
+            # Cycle Info fields
+            cycle_info = new_data.get('cycle_info', {})
+            if cycle_info:
+                self.form_obj.maintainVacuumLineEdit.setText(str(cycle_info.get('maintain_vacuum', '')))
+                self.form_obj.setCureTempLineEdit.setText(str(cycle_info.get('set_cure_temp', '')))
+                self.form_obj.tempRampLineEdit.setText(str(cycle_info.get('temp_ramp', '')))
+                self.form_obj.setPressureLineEdit.setText(str(cycle_info.get('set_pressure', '')))
+                self.form_obj.dwellTimeLineEdit.setText(str(cycle_info.get('dwell_time', 'N/A')))
+                self.form_obj.coolDownTempLineEdit.setText(str(cycle_info.get('cool_down_temp', '')))
+                self.form_obj.cycleStartTimeLabel.setText(cycle_info.get('cycle_start_time', 'N/A'))
+                self.form_obj.cycleEndTimeLabel.setText(cycle_info.get('cycle_end_time', 'N/A'))
+            
+            # Plot update (expects plot data as a list of tuples, where each tuple has format: (time, val1, val2, ...))
+            plot_data = new_data.get('plot', [])
+            if plot_data and self.plot:
+                self.plot.update_plot_data(plot_data)
+        except Exception as e:
+            logger.error(f"Error updating main form data: {e}")
+
+    def start_cycle_timer(self, cycle_start):
+        self.cycle_start = cycle_start
+        self.cycle_timer = QTimer(self)
+        self.cycle_timer.timeout.connect(self.update_cycle_timer)
+        self.cycle_timer.start(1000)
+
+    def update_cycle_timer(self):
+        elapsed = datetime.now() - self.cycle_start
+        self.form_obj.cycleDurationLabel.setText(str(elapsed).split('.')[0])  
+        
     def add_alarm_settings_menu(self):
-        # Create a new menu called "Alarms" if not already present.
+        # Create a new menu called "Alarms" and add the alarm settings action.
         menubar = self.menuBar()
         alarms_menu = menubar.addMenu("Alarms")
         alarm_settings_action = QAction("Manage Alarms", self)
@@ -136,7 +199,8 @@ class MainFormHandler(QtWidgets.QMainWindow):
         dlg.exec_()
     
     def setup_bool_status_display(self):
-        self.boolStatusWidgetContainer = QtWidgets.QWidget()
+        # Create the container widget for Boolean status display
+        self.boolStatusWidgetContainer = QtWidgets.QWidget(self)
         self.boolStatusWidget = Ui_BooleanStatusWidget()
         self.boolStatusWidget.setupUi(self.boolStatusWidgetContainer)
         self.boolStatusLabels = [
@@ -147,10 +211,11 @@ class MainFormHandler(QtWidgets.QMainWindow):
             self.boolStatusWidget.boolStatusLabel5,
             self.boolStatusWidget.boolStatusLabel6,
         ]
+        # Insert the Boolean status widget into the central widget's layout
         central_layout = self.centralWidget().layout()
         if central_layout is None:
             central_layout = QtWidgets.QVBoxLayout(self.centralWidget())
-        # Add the boolean status widget container to the layout (it will be reinserted with the new widget)
+            self.centralWidget().setLayout(central_layout)
         central_layout.addWidget(self.boolStatusWidgetContainer)
         
     def integrate_new_cycle_widget(self):
@@ -222,25 +287,76 @@ class MainFormHandler(QtWidgets.QMainWindow):
             else:
                 label.setText("N/A")
     def setup_plot_data_display(self):
-        # Create container first
-        self.plotWidgetContainer = QtWidgets.QWidget()
-        self.plotWidgetContainer.setLayout(QtWidgets.QVBoxLayout())
-        central_layout = self.centralWidget().layout()
+        """
+        Create a container for the plot widget, add it to the central widget layout,
+        and delay initialization by 100ms.
+        """
+        self.plotWidgetContainer = QtWidgets.QWidget(self)
+        container_layout = QtWidgets.QVBoxLayout()
+        self.plotWidgetContainer.setLayout(container_layout)
+        # Get (or create) the central widget's layout.
+        central_widget = self.centralWidget()
+        central_layout = central_widget.layout()
         if central_layout is None:
-            central_layout = QtWidgets.QVBoxLayout(self.centralWidget())
+            central_layout = QtWidgets.QVBoxLayout(central_widget)
+            central_widget.setLayout(central_layout)
         central_layout.addWidget(self.plotWidgetContainer)
-        
-        # Delay plot initialization to prevent UI freezes during startup
         QTimer.singleShot(100, self.initialize_plot_widget)
 
     def initialize_plot_widget(self):
-        # This method will be called after a short delay
-        self.plotWidget = InitiatePlotWidget(
-            active_channels=[], 
-            parent_layout=self.plotWidgetContainer.layout(), 
-            headers=["Time", "Value", ""]
+        """
+        Create the plot widget using the InitiatePlotWidget class.
+        """
+        parent_layout = self.plotWidgetContainer.layout()
+        self.plot = InitiatePlotWidget(
+            active_channels=["CH1", "CH2", "CH3", "CH4", "CH5", "CH6", "CH7", "CH8"],
+            parent_layout=parent_layout,
+            headers=["Time", "Value"]
         )
+        self.plot.update_plot()
 
+    def update_connection_status_display(self):
+        """
+        Update the status bar to show PLC connection status.
+        """
+        is_demo = pool.config('demo', bool, False)
+        is_simulation = pool.config('plc/simulation_mode', bool, False)
+        connection_type = pool.config('plc/connection_type', str, 'rtu')
+        
+        if not hasattr(self, 'connectionTypeLabel'):
+            self.connectionTypeLabel = QLabel(self)
+            self.statusbar.addPermanentWidget(self.connectionTypeLabel)
+        
+        if connection_type == 'tcp':
+            host = pool.config('plc/host', str, 'Not Set')
+            port = pool.config('plc/tcp_port', int, 502)
+            self.connectionTypeLabel.setText(f"TCP: {host}:{port}")
+            self.connectionTypeLabel.setStyleSheet("color: blue;")
+        else:
+            port = pool.config('plc/port', str, 'Not Set')
+            self.connectionTypeLabel.setText(f"RTU: {port}")
+            self.connectionTypeLabel.setStyleSheet("color: green;")
+        
+        if is_demo:
+            self.statusbar.showMessage("DEMO MODE - No real PLC connection", 0)
+            self.statusbar.setStyleSheet("background-color: #FFF2CC; color: #9C6500;")
+        elif is_simulation:
+            self.statusbar.showMessage("SIMULATION MODE - No real PLC connection", 0)
+            self.statusbar.setStyleSheet("background-color: #FFF2CC; color: #9C6500;")
+        else:
+            try:
+                from RaspPiReader.libs import plc_communication
+                is_connected = plc_communication.is_connected()
+                if is_connected:
+                    self.statusbar.showMessage("Connected to PLC", 5000)
+                    self.statusbar.setStyleSheet("background-color: #D5F5E3; color: #196F3D;")
+                else:
+                    self.statusbar.showMessage("Not connected to PLC - Check settings", 0)
+                    self.statusbar.setStyleSheet("background-color: #FADBD8; color: #943126;")
+            except Exception as e:
+                self.statusbar.showMessage(f"Error checking connection: {str(e)}", 0)
+                self.statusbar.setStyleSheet("background-color: #FADBD8; color: #943126;")
+    
     def add_one_drive_menu(self):
         one_drive_action = QAction("OneDrive Settings", self)
         one_drive_action.triggered.connect(self.show_onedrive_settings)
@@ -296,7 +412,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             self.form_obj.actionSetting.triggered.connect(self.handle_settings)
         else:
             print("Warning: 'actionSetting' not found in the MainForm UI.")
-
+            
     def handle_settings(self):
         print(f"Handling settings with user_record: {self.user_record}")
         if getattr(self.user_record, 'settings', False):
@@ -304,7 +420,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             self.settings_handler.show()
         else:
             QMessageBox.critical(self, "Access Denied", "You don't have permission to access Settings.")
-
+            
     def set_connections(self):
         self.actionExit.triggered.connect(self.close)
         self.actionCycle_Info.triggered.connect(self._show_cycle_info)
@@ -834,46 +950,4 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.statusbar.setStyleSheet("color: {}".format(color.lower()))
         self.statusBar().setFont(QFont('Times', 12))
     
-    def update_connection_status_display(self):
-        """Update the UI to show current connection status and type"""
-        # Check if we're in demo/simulation mode
-        is_demo = pool.config('demo', bool, False)
-        is_simulation = pool.config('plc/simulation_mode', bool, False)
-        connection_type = pool.config('plc/connection_type', str, 'rtu')
-        
-        # Create or update the connection type label in the status bar
-        if not hasattr(self, 'connectionTypeLabel'):
-            self.connectionTypeLabel = QLabel()
-            self.statusbar.addPermanentWidget(self.connectionTypeLabel)
-        
-        # Update the label with the current connection type
-        if connection_type == 'tcp':
-            host = pool.config('plc/host', str, 'Not Set')
-            port = pool.config('plc/tcp_port', int, 502)
-            self.connectionTypeLabel.setText(f"TCP: {host}:{port}")
-            self.connectionTypeLabel.setStyleSheet("color: blue;")
-        else:
-            port = pool.config('plc/port', str, 'Not Set')
-            self.connectionTypeLabel.setText(f"RTU: {port}")
-            self.connectionTypeLabel.setStyleSheet("color: green;")
-        
-        # Update status bar with enhanced information and colors
-        if is_demo:
-            self.statusbar.showMessage("DEMO MODE - No real PLC connection", 0)  # 0 = show permanently
-            self.statusbar.setStyleSheet("background-color: #FFF2CC; color: #9C6500;")
-        elif is_simulation:
-            self.statusbar.showMessage("SIMULATION MODE - No real PLC connection", 0)
-            self.statusbar.setStyleSheet("background-color: #FFF2CC; color: #9C6500;")
-        else:
-            # Only check real connection status if not in simulation mode
-            try:
-                is_connected = plc_communication.is_connected()
-                if is_connected:
-                    self.statusbar.showMessage("Connected to PLC", 5000)
-                    self.statusbar.setStyleSheet("background-color: #D5F5E3; color: #196F3D;")
-                else:
-                    self.statusbar.showMessage("Not connected to PLC - Check settings", 0)
-                    self.statusbar.setStyleSheet("background-color: #FADBD8; color: #943126;")
-            except Exception as e:
-                self.statusbar.showMessage(f"Error checking connection: {str(e)}", 0)
-                self.statusbar.setStyleSheet("background-color: #FADBD8; color: #943126;")
+    

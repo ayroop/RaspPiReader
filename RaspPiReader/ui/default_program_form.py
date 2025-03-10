@@ -22,7 +22,6 @@ class DefaultProgramForm(QtWidgets.QDialog):
         self.program_fields = {}  # Will hold QLineEdits for each program
 
         # Create tabs for Programs 1 to 4
-        # Removed "order_number", "quantity", and "cycle_id" fields
         fields_to_include = [
             "size", "cycle_location", "dwell_time", "cool_down_temp",
             "core_temp_setpoint", "temp_ramp", "set_pressure", "maintain_vacuum",

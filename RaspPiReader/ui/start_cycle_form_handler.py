@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta
+import threading
 from threading import Thread, Lock
 from time import sleep
 import logging
@@ -37,43 +38,126 @@ cycle_settings = {
 }
 
 class StartCycleFormHandler(QMainWindow):
-    data_updated_signal = pyqtSignal()
-    test_data_updated_signal = pyqtSignal()
+    data_updated_signal = pyqtSignal(dict)
+    test_data_updated_signal = pyqtSignal(dict)    # if you wish to pass a dict, otherwise change signature
     exit_with_error_signal = pyqtSignal(str)
 
     def __init__(self, parent=None):
         super(StartCycleFormHandler, self).__init__(parent)
         self.ui = Ui_CycleStart()
         self.ui.setupUi(self)
-        # Initialize cycle_data as an empty dictionary for later use
-        self.cycle_data = {}
-        self.db = Database("sqlite:///local_database.db")
-        self.set_connections()
+        # Use the correct widget name: startPushButton, not startCycleButton
+        self.ui.startPushButton.clicked.connect(self.on_start_cycle)
+        # self.ui.stopCycleButton.clicked.connect(self.on_stop_cycle)
+        # Store self only once in the pool; do not recreate later
         pool.set('start_cycle_form', self)
-        self.last_update_time = datetime.now()
-        self.setWindowModality(Qt.ApplicationModal)
-        self.load_cycle_data()
-        self.data_reader_lock = Lock()
+        self.db = Database("sqlite:///local_database.db")
+        self.cycle_data = None  # will be built when starting the cycle
+        self.default_program_applied = False
+        self.reading_thread_running = False
+        self.reading_thread = None
         self.running = False
-        self.cycle_start_time = datetime.now()
-        self.read_thread = None
+        self.data_reader_lock = Lock()
 
+    def on_start_cycle(self):
+        if pool.get('data_stack') is None:
+            pool.set('data_stack', [ [] for _ in range(CHANNEL_COUNT+2) ])
+        if pool.get('test_data_stack') is None:
+            pool.set('test_data_stack', [ [] for _ in range(CHANNEL_COUNT+2) ])
+
+        logger.info("Start Cycle button clicked")
+        # Create new cycle data and store it
+        self.cycle_data = CycleData(
+            order_id="Order123",  # Change as needed (use input from previous forms)
+            start_time=datetime.now()
+        )
+        pool.set('current_cycle', self.cycle_data)
+        # Apply default program values (only once per cycle)
+        if not self.default_program_applied:
+            self.apply_default_program_values()
+            self.default_program_applied = True
+        # Start data reading if not already running
+        if not self.reading_thread_running:
+            self.start_data_reading()
+
+    def on_stop_cycle(self):
+        logger.info("Stop Cycle button clicked")
+        self.stop_data_reading()
+        # At this point you might call finalize_cycle() to generate reports
+        QMessageBox.information(self, "Cycle Finished", "Cycle has been stopped and finalized.")
+
+    def start_data_reading(self):
+        self.reading_thread_running = True
+        self.reading_thread = threading.Thread(target=self.data_reading_loop, daemon=True)
+        self.reading_thread.start()
+        logger.info("Data reading thread started")
+
+    def stop_data_reading(self):
+        self.reading_thread_running = False
+        logger.info("Data reading thread stopping...")
+
+    def data_reading_loop(self):
+    # Simulate reading data from the PLC; include vacuum gauge and cycle info data.
+        while self.reading_thread_running:
+            new_data = {
+                'temperature': 25,          # Example temperature
+                'pressure': 101.3,          # Example pressure
+                'timestamp': datetime.now().strftime("%H:%M:%S"),
+                'vacuum': {
+                    'CH1': 12.3,
+                    'CH2': 12.5,
+                    'CH3': 12.1,
+                    'CH4': 12.4,
+                    'CH5': 11.9,
+                    'CH6': 12.0,
+                    'CH7': 12.2,
+                    'CH8': 12.6,
+                },
+                'cycle_info': {
+                    'maintain_vacuum': 5.0,
+                    'set_cure_temp': 180,
+                    'temp_ramp': 2.5,
+                    'set_pressure': 101.3,
+                    'dwell_time': "N/A",
+                    'cool_down_temp': 50,
+                    'cycle_start_time': datetime.now().strftime("%H:%M:%S"),
+                    'cycle_end_time': "N/A",
+                }
+            }
+            self.data_updated_signal.emit(new_data)
+            sleep(1)
+
+    def apply_default_program_values(self):
+        default_prog = self.db.session.query(DefaultProgram).first()
+        if default_prog and self.cycle_data:
+            self.cycle_data.temp_ramp = default_prog.temp_ramp
+            self.cycle_data.cool_down_temp = default_prog.cool_down_temp
+            self.cycle_data.initial_set_cure_temp = default_prog.core_temp_setpoint
+            self.cycle_data.final_set_cure_temp = default_prog.final_set_cure_temp
+            self.cycle_data.set_pressure = default_prog.set_pressure
+            logger.info("Default program values applied to cycle data")
+        else:
+            logger.info("No default program found or cycle data not initialized")
+              
     def set_connections(self):
+        main_form = pool.get('main_form')
         self.ui.startPushButton.clicked.connect(self.start_cycle)
-        if pool.get('main_form'):
-            self.ui.startPushButton.clicked.connect(pool.get('main_form').update_cycle_info_pannel)
+        if main_form:
+            self.ui.startPushButton.clicked.connect(main_form.update_cycle_info_pannel)
+            self.data_updated_signal.connect(main_form.update_data)
+            self.test_data_updated_signal.connect(main_form.update_immediate_test_values_panel)
+            self.exit_with_error_signal.connect(main_form.show_error_and_stop)
+     
         self.ui.cancelPushButton.clicked.connect(self.close)
-        self.data_updated_signal.connect(pool.get('main_form').update_data)
-        self.test_data_updated_signal.connect(pool.get('main_form').update_immediate_test_values_panel)
-        self.exit_with_error_signal.connect(pool.get('main_form').show_error_and_stop)
         self.ui.programComboBox.currentIndexChanged.connect(self.apply_default_values)
-
     def apply_default_values(self):
         program_index = self.ui.programComboBox.currentIndex() + 1
         default_program = self.db.session.query(DefaultProgram).filter_by(
-            username=pool.get("current_user"), program_number=program_index
+            username=pool.get("current_user"),
+            program_number=program_index
         ).first()
         if default_program:
+            # cycle_settings maps widget names to field names stored in DefaultProgram
             for widget_name, field_name in cycle_settings.items():
                 if hasattr(self.ui, widget_name):
                     widget = getattr(self.ui, widget_name)
@@ -87,10 +171,10 @@ class StartCycleFormHandler(QMainWindow):
                             except Exception as e:
                                 print(f"Error setting value for {widget_name}: {e}")
                 else:
-                    print(f"Warning: ui has no attribute '{widget_name}'")
+                    print(f"Warning: UI does not have attribute '{widget_name}'")
         else:
             QMessageBox.warning(self, "Warning", f"No default values found for Program {program_index}")
-
+            
     def initiate_onedrive_update_thread(self):
         try:
             from RaspPiReader.libs.onedrive_api import OneDriveAPI
@@ -399,17 +483,14 @@ class StartCycleFormHandler(QMainWindow):
                 for i in range(CHANNEL_COUNT):
                     data_stack[i + 1].append(temp_arr[i])
                 if process_data:
-                    data_stack[0].append(
-                        round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2)
-                    )
+                    data_stack[0].append(round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2))
                     data_stack[15].append(datetime.now())
                     if (not core_temp_above_setpoint_start_time and 
                         data_stack[core_temp_channel][-1] >= core_temp_setpoint):
                         core_temp_above_setpoint_start_time = datetime.now()
                     elif core_temp_above_setpoint_start_time and data_stack[core_temp_channel][-1] < core_temp_setpoint:
                         handler.core_temp_above_setpoint_time += round(
-                            (datetime.now() - core_temp_above_setpoint_start_time).total_seconds() / 60, 2
-                        )
+                            (datetime.now() - core_temp_above_setpoint_start_time).total_seconds() / 60, 2)
                         core_temp_above_setpoint_start_time = None
                     if len(data_stack[0]) > 1 and (data_stack[pressure_channel][-2] > data_stack[pressure_channel][-1]):
                         if not pressure_drop_flag:
@@ -417,7 +498,9 @@ class StartCycleFormHandler(QMainWindow):
                             pressure_drop_flag = True
                     else:
                         pressure_drop_flag = False
-                updated_signal.emit()
+                new_data = {"data_stack": data_stack, "timestamp": datetime.now()}
+                logger.info(f"Emitting new_data: {new_data}")
+                updated_signal.emit(new_data)
                 while (datetime.now() - iteration_start_time) < timedelta(seconds=dt):
                     sleep(0.001)
         else:
@@ -462,17 +545,14 @@ class StartCycleFormHandler(QMainWindow):
                 for i in range(CHANNEL_COUNT):
                     data_stack[i + 1].append(temp_arr[i])
                 if process_data:
-                    data_stack[0].append(
-                        round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2)
-                    )
+                    data_stack[0].append(round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2))
                     data_stack[15].append(datetime.now())
                     if (not core_temp_above_setpoint_start_time and
                         data_stack[core_temp_channel][-1] >= core_temp_setpoint):
                         core_temp_above_setpoint_start_time = datetime.now()
                     elif core_temp_above_setpoint_start_time and data_stack[core_temp_channel][-1] < core_temp_setpoint:
                         handler.core_temp_above_setpoint_time += round(
-                            (datetime.now() - core_temp_above_setpoint_start_time).total_seconds() / 60, 2
-                        )
+                            (datetime.now() - core_temp_above_setpoint_start_time).total_seconds() / 60, 2)
                         core_temp_above_setpoint_start_time = None
                     if len(data_stack[0]) > 1 and (data_stack[pressure_channel][-2] > data_stack[pressure_channel][-1]):
                         if not pressure_drop_flag:
@@ -480,7 +560,9 @@ class StartCycleFormHandler(QMainWindow):
                             pressure_drop_flag = True
                     else:
                         pressure_drop_flag = False
-                updated_signal.emit()
+                new_data = {"data_stack": data_stack, "timestamp": datetime.now()}
+                logger.info(f"Emitting new_data: {new_data}")
+                updated_signal.emit(new_data)
                 while (datetime.now() - iteration_start_time) < timedelta(seconds=dt):
                     sleep(0.001)
         try:
