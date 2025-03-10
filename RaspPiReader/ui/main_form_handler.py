@@ -35,8 +35,7 @@ from RaspPiReader.ui.default_program_form import DefaultProgramForm
 from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler
 # Add Alarm settings
 from RaspPiReader.ui.alarm_settings_form_handler import AlarmSettingsFormHandler
-# BackgroundSettingsForm
-from RaspPiReader.ui.background_settings_form import BackgroundSettingsForm
+
 # Add PLC connection status
 from RaspPiReader.libs import plc_communication
 
@@ -58,12 +57,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
         super(MainFormHandler, self).__init__()
         self.user_record = user_record
         print(f"Initializing MainFormHandler with user_record: {self.user_record}")
-        # Get reference to the background window
-        self.background_window = pool.get('background_window')
-        if self.background_window:
-            # Let the background window position this form
-            self.background_window.center_widget(self)
-            self.background_window.set_active_form(self)
         self.form_obj = MainForm()
         self.form_obj.setupUi(self)
         
@@ -107,72 +100,12 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.add_default_program_menu()
         # Alarm Settings Menu
         self.add_alarm_settings_menu()
-        # Fix menu hover styles with targeted CSS
-        menuStyle = """
-            /* Only target menu items, not other widgets */
-            QMenu::item:selected {
-                background-color: #0078d7;
-                color: white;
-                /* Fix text position shifting */
-                padding-left: 10px;
-                padding-top: 4px;
-                padding-bottom: 4px;
-            }
-            
-            QMenuBar::item:selected {
-                background-color: #0078d7;
-                color: white;
-            }
-        """
-        
-        # Apply this style only to the menubar and its menus
-        self.menubar.setStyleSheet(menuStyle)
-        # Add Background setting
-        self.add_background_settings_menu()
-        self.load_background()
         # Add PLC connection status
         self.connectionTimer = QTimer()
         self.connectionTimer.timeout.connect(self.update_connection_status_display)
         self.connectionTimer.start(5000)  # Update every 5 seconds
         self.showMaximized()
         print("MainFormHandler initialized.")
-    
-    def add_background_settings_menu(self):
-        # Get the already existing File menu (assume you have one)
-        menubar = self.menuBar()
-        file_menu = None
-        for action in menubar.actions():
-            if action.text() == "File":
-                file_menu = action.menu()
-                break
-        if file_menu is None:
-            # Create File menu if it doesn't exist
-            file_menu = menubar.addMenu("File")
-        # Add "Background Settings" action next to others
-        bg_action = QAction("Background Settings", self)
-        bg_action.triggered.connect(self.open_background_settings)
-        file_menu.addAction(bg_action)
-
-    def open_background_settings(self):
-        dialog = BackgroundSettingsForm(self)
-        if dialog.exec_():
-            self.load_background()
-
-    def load_background(self):
-        # Read saved settings and set the style for the main window.
-        settings = QSettings("RaspPiHandler", "RaspPiReader")
-        color = settings.value("background/color", "")
-        image = settings.value("background/image", "")
-        style = ""
-        if color:
-            style = f"background-color: {color};"
-        elif image and os.path.exists(image):
-            # Use the image as background without forcing scaling (CSS will handle repetition/position)
-            style = f"background-image: url({image}); background-repeat: no-repeat; background-position: center;"
-        else:
-            # No background style by default
-            style = ""
-        self.setStyleSheet(style)
     
     def add_alarm_settings_menu(self):
         # Create a new menu called "Alarms" if not already present.
