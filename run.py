@@ -33,10 +33,6 @@ def Main():
         # Check if we're in demo mode
         demo_mode = pool.config('demo', bool, False) or args.demo
         pool.set('demo', demo_mode)
-        
-        # Check simulation mode - DO NOT DEFAULT TO TRUE!
-        simulation_mode = pool.config('plc/simulation_mode', bool, False)
-        logger.info(f"Simulation mode: {simulation_mode}")
         logger.info(f"Demo mode: {demo_mode}")
         
         # Initialize database
@@ -60,7 +56,7 @@ def Main():
         
         # --- Splash Screen Preloader ---
         logger.info("Launching splash screen...")
-        splash = SplashScreen()  # Your SplashScreen should create and show a progress bar
+        splash = SplashScreen()  # SplashScreen creates and shows a progress bar
         splash.show()
         
         # Simulate preloading steps (adjust sleep time as needed)

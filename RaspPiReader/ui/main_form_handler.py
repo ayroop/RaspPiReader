@@ -8,7 +8,7 @@ from colorama import Fore
 from PyQt5 import QtWidgets, uic
 from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction
+from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction, QSizePolicy
 
 from RaspPiReader import pool
 from .mainForm import MainForm
@@ -44,11 +44,14 @@ from RaspPiReader.libs import plc_communication
 
 logger = logging.getLogger(__name__)
 def timedelta2str(td):
-    h, rem = divmod(td.seconds, 3600)
+    # Use total_seconds to account for days as well
+    total_seconds = int(td.total_seconds())
+    h, rem = divmod(total_seconds, 3600)
     m, s = divmod(rem, 60)
+    # Zero-pad each component to always have two digits
     def zp(val):
-        return str(val) if val >= 10 else f"0{val}"
-    return "{0}:{1}:{2}".format(zp(h), zp(m), zp(s))
+        return str(val).zfill(2)
+    return f"{zp(h)}:{zp(m)}:{zp(s)}"
 
 class MainFormHandler(QMainWindow):
     update_status_bar_signal = pyqtSignal(str, int, str)
@@ -315,48 +318,115 @@ class MainFormHandler(QMainWindow):
         )
         self.plot.update_plot()
 
+    def init_custom_status_bar(self):
+        """
+        Create a custom composite widget in the status bar that consists of
+        a fixed-size label (for connection info) and an expanding label for dynamic messages.
+        """
+        from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel, QSizePolicy
+        if not hasattr(self, 'customStatusWidget'):
+            self.customStatusWidget = QWidget()
+            layout = QHBoxLayout(self.customStatusWidget)
+            layout.setContentsMargins(0, 0, 0, 0)
+            # Fixed-size label for connection info (and optionally, username/admin info)
+            self.connectionInfoLabel = QLabel()
+            self.connectionInfoLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+            self.connectionInfoLabel.setMinimumWidth(150)
+            layout.addWidget(self.connectionInfoLabel)
+            # Expanding label for dynamic status messages
+            self.dynamicStatusLabel = QLabel()
+            self.dynamicStatusLabel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+            layout.addWidget(self.dynamicStatusLabel)
+            # Remove any previous permanent widgets if needed
+            self.statusbar.clearMessage()
+            self.statusbar.addPermanentWidget(self.customStatusWidget, stretch=1)
+    
     def update_connection_status_display(self):
         """
-        Update the status bar to show PLC connection status.
+        Update the custom status bar widget:
+          - The connectionInfoLabel shows connection type information.
+          - The dynamicStatusLabel displays a temporary status message with color coding.
+        
+        It checks for PLC connection as well as active alarms.
         """
-        is_demo = pool.config('demo', bool, False)
-        is_simulation = pool.config('plc/simulation_mode', bool, False)
+        # Make sure the custom status bar is initialized
+        if not hasattr(self, 'customStatusWidget'):
+            self.init_custom_status_bar()
+        
+        # Update the connection info (permanent) part.
         connection_type = pool.config('plc/connection_type', str, 'rtu')
-        
-        if not hasattr(self, 'connectionTypeLabel'):
-            self.connectionTypeLabel = QLabel(self)
-            self.statusbar.addPermanentWidget(self.connectionTypeLabel)
-        
         if connection_type == 'tcp':
             host = pool.config('plc/host', str, 'Not Set')
             port = pool.config('plc/tcp_port', int, 502)
-            self.connectionTypeLabel.setText(f"TCP: {host}:{port}")
-            self.connectionTypeLabel.setStyleSheet("color: blue;")
+            self.connectionInfoLabel.setText(f"TCP: {host}:{port}")
+            self.connectionInfoLabel.setStyleSheet("color: blue;")
         else:
             port = pool.config('plc/port', str, 'Not Set')
-            self.connectionTypeLabel.setText(f"RTU: {port}")
-            self.connectionTypeLabel.setStyleSheet("color: green;")
+            self.connectionInfoLabel.setText(f"RTU: {port}")
+            self.connectionInfoLabel.setStyleSheet("color: green;")
         
-        if is_demo:
-            self.statusbar.showMessage("DEMO MODE - No real PLC connection", 0)
-            self.statusbar.setStyleSheet("background-color: #FFF2CC; color: #9C6500;")
-        elif is_simulation:
-            self.statusbar.showMessage("SIMULATION MODE - No real PLC connection", 0)
-            self.statusbar.setStyleSheet("background-color: #FFF2CC; color: #9C6500;")
-        else:
-            try:
-                from RaspPiReader.libs import plc_communication
-                is_connected = plc_communication.is_connected()
-                if is_connected:
-                    self.statusbar.showMessage("Connected to PLC", 5000)
-                    self.statusbar.setStyleSheet("background-color: #D5F5E3; color: #196F3D;")
-                else:
-                    self.statusbar.showMessage("Not connected to PLC - Check settings", 0)
-                    self.statusbar.setStyleSheet("background-color: #FADBD8; color: #943126;")
-            except Exception as e:
-                self.statusbar.showMessage(f"Error checking connection: {str(e)}", 0)
-                self.statusbar.setStyleSheet("background-color: #FADBD8; color: #943126;")
+        # Now update dynamic status (temporary message) area.
+        try:
+            # Check connection status via PLC communication module.
+            is_connected = plc_communication.is_connected()
+            # Optional: Check alarms (if check_alarms method exists).
+            if hasattr(self, 'check_alarms'):
+                alarm_active, alarm_msg = self.check_alarms()
+            else:
+                alarm_active, alarm_msg = False, ""
+            
+            if alarm_active:
+                msg = alarm_msg
+                bgcolor = "#FADBD8"
+                fgcolor = "red"
+            elif is_connected:
+                msg = "Connected to PLC"
+                bgcolor = "#D5F5E3"
+                fgcolor = "#196F3D"
+            else:
+                msg = "Not connected to PLC - Check settings"
+                bgcolor = "#FADBD8"
+                fgcolor = "#943126"
+            
+            self.dynamicStatusLabel.setText(msg)
+            self.dynamicStatusLabel.setStyleSheet(f"background-color: {bgcolor}; color: {fgcolor};")
+        except Exception as e:
+            self.dynamicStatusLabel.setText(f"Error: {str(e)}")
+            self.dynamicStatusLabel.setStyleSheet("background-color: #FADBD8; color: #943126;")
     
+    def update_status_bar(self, msg, ms_timeout, color):
+        """
+        Update the dynamic portion of the custom status bar.
+        This method may be used by other parts of the code to temporarily override
+        the status message.
+        """
+        # Update dynamicStatusLabel; since this is our expanding label it will display
+        # the full message.
+        if not hasattr(self, 'dynamicStatusLabel'):
+            self.init_custom_status_bar()
+        self.dynamicStatusLabel.setText(msg)
+        self.dynamicStatusLabel.setStyleSheet(f"color: {color.lower()};")
+        # The ms_timeout parameter can be used if you later decide to clear the message after some time.
+        
+
+    def check_alarms(self):
+        """
+        Check if there are any active alarms.
+        Returns a tuple: (alarm_active: bool, alarm_message: str)
+        """
+        try:
+            from RaspPiReader.libs.database import Database
+            from RaspPiReader.libs.models import Alarm
+            db = Database("sqlite:///local_database.db")
+            # Example query: get alarms that are active (adjust field names as needed)
+            alarms = db.session.query(Alarm).filter_by(active=True).all()
+            if alarms:
+                alarm_msgs = ", ".join([alarm.text for alarm in alarms])
+                return True, f"ALARM: {alarm_msgs}"
+        except Exception as e:
+            # In case of query error, log but do not break
+            pass
+        return False, ""
     def add_one_drive_menu(self):
         one_drive_action = QAction("OneDrive Settings", self)
         one_drive_action.triggered.connect(self.show_onedrive_settings)
@@ -446,9 +516,14 @@ class MainFormHandler(QMainWindow):
             QtWidgets.QMessageBox.warning(self, "Error", "Access denied. Only admin can manage users.")
 
     def display_username(self):
-        self.username_label = QLabel(f"Logged in as: {self.username}")
-        self.statusBar().addPermanentWidget(self.username_label)
-        self.setWindowTitle(f"Main Form - {self.username}")
+        """
+        Instead of adding the username as a permanent widget in the status bar (which might
+        reduce space for the dynamic message), consider placing it elsewhere in your UI
+        (e.g. in a dedicated toolbar or a corner label). For this example, we include it
+        at the right edge of the main window title.
+        """
+        self.setWindowTitle(f"Main Form - Logged in as: {self.user_record.username if self.user_record else 'N/A'}")
+
     def create_stack(self):
         # initialize data stack: [[process_time(minutes)], [v1], [v2], ... , [V14], sampling_time,]
         data_stack = []

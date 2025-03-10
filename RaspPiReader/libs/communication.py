@@ -11,12 +11,30 @@ from RaspPiReader.ui.setting_form_handler import READ_HOLDING_REGISTERS, READ_IN
 logger = logging.getLogger(__name__)
 
 class ModbusCommunication:
-    def __init__(self):
-        self.client = None
-        self.connected = False
-        self.connection_type = None
-        self.last_error = None
-        self.simulation_mode = False
+    def write_bool_address(self, addr, value, dev=1):
+        """Write a boolean value to a coil"""
+        if not self.client:
+            self.last_error = "Modbus client not configured"
+            logger.error(self.last_error)
+            return False
+
+        if not self.connected:
+            logger.info("Not connected, attempting to connect...")
+            if not self.connect():
+                return False
+
+        try:
+            result = self.client.write_coil(addr, value, unit=dev)
+            if result and not result.isError():
+                return True
+            else:
+                self.last_error = f"Error writing coil: {result}"
+                logger.error(self.last_error)
+                return False
+        except Exception as e:
+            self.last_error = f"Exception during coil write: {str(e)}"
+            logger.error(self.last_error)
+            return False
     
     def configure(self, connection_type=None, **kwargs):
         """Configure the Modbus client with the specified parameters
@@ -26,16 +44,7 @@ class ModbusCommunication:
             **kwargs: Configuration parameters specific to the connection type
         """
         self.connection_type = connection_type
-        self.simulation_mode = kwargs.get('simulation_mode', False)
-        # Log whether simulation mode is enabled
-        if self.simulation_mode:
-            logger.warning("SIMULATION MODE ENABLED - No real PLC connection will be established")
-        
-        # Enable simulation mode if explicitly requested
-        if self.simulation_mode:
-            logger.info("PLC communication configured in SIMULATION mode")
-            self.connected = False
-            return True
+        # Remove simulation_mode parameter entirely; always use real connection
         
         # Validate required parameters
         if connection_type == 'rtu':
@@ -86,7 +95,6 @@ class ModbusCommunication:
                 retry_on_empty=True,
                 retries=3
             )
-        
         else:
             self.last_error = f"Invalid connection type: {connection_type}"
             logger.error(self.last_error)
@@ -96,11 +104,6 @@ class ModbusCommunication:
     
     def connect(self):
         """Connect to the Modbus device"""
-        if self.simulation_mode:
-            logger.info("SIMULATION MODE: Pretending to connect successfully")
-            self.connected = True
-            return True
-            
         if not self.client:
             self.last_error = "Modbus client not configured"
             logger.error(self.last_error)
@@ -166,11 +169,6 @@ class ModbusCommunication:
     
     def disconnect(self):
         """Disconnect from the Modbus device"""
-        if self.simulation_mode:
-            logger.info("SIMULATION MODE: Pretending to disconnect successfully")
-            self.connected = False
-            return True
-            
         if self.client:
             self.client.close()
             self.connected = False
@@ -180,11 +178,6 @@ class ModbusCommunication:
     
     def read_bool_addresses(self, addr, count=1, dev=1):
         """Read boolean values from coils"""
-        if self.simulation_mode:
-            logger.info(f"SIMULATION MODE: Returning simulated coil data for address {addr}")
-            import random
-            return [bool(random.getrandbits(1)) for _ in range(count)]
-            
         if not self.client:
             self.last_error = "Modbus client not configured"
             logger.error(self.last_error)
@@ -210,10 +203,6 @@ class ModbusCommunication:
     
     def write_bool_address(self, addr, value, dev=1):
         """Write a boolean value to a coil"""
-        if self.simulation_mode:
-            logger.info(f"SIMULATION MODE: Pretending to write {value} to coil {addr}")
-            return True
-            
         if not self.client:
             self.last_error = "Modbus client not configured"
             logger.error(self.last_error)
@@ -239,11 +228,6 @@ class ModbusCommunication:
     
     def read_registers(self, addr, count=1, dev=1, read_type='holding'):
         """Read registers (holding or input)"""
-        if self.simulation_mode:
-            logger.info(f"SIMULATION MODE: Returning simulated register data for address {addr}")
-            import random
-            return [random.randint(0, 100) for _ in range(count)]
-            
         if not self.client:
             self.last_error = "Modbus client not configured"
             logger.error(self.last_error)
@@ -277,10 +261,6 @@ class ModbusCommunication:
     
     def write_register(self, addr, value, dev=1):
         """Write a value to a holding register"""
-        if self.simulation_mode:
-            logger.info(f"SIMULATION MODE: Pretending to write {value} to register {addr}")
-            return True
-            
         if not self.client:
             self.last_error = "Modbus client not configured"
             logger.error(self.last_error)
@@ -341,24 +321,17 @@ class DataReader:
         
         if demo_mode:
             logger.info("DataReader reloading in DEMO mode")
-            # Use simulation mode for demo
-            self.modbus_comm.simulation_mode = True
+            # In demo mode we now do not use simulation; demo mode logic is handled externally.
             self.connected = True
             return
         
         # Get settings directly from QSettings for consistency
         settings = QSettings('RaspPiHandler', 'RaspPiModbusReader')
         
-        # Get the simulation_mode directly from QSettings to avoid cached values
-        simulation_mode = settings.value('plc/simulation_mode', False, type=bool)
-        
-        # Regular connection setup (not demo mode)
         connection_type = pool.config('plc/connection_type', str, 'rtu')
-        logger.info(f"DataReader reloading with connection type: {connection_type}, simulation mode: {simulation_mode}")
+        logger.info(f"DataReader reloading with connection type: {connection_type}")
         
-        config_params = {
-            'simulation_mode': simulation_mode
-        }
+        config_params = {}
         
         if connection_type == 'rtu':
             config_params.update({
@@ -372,11 +345,10 @@ class DataReader:
         else:  # TCP
             config_params.update({
                 'host': pool.config('plc/host', str, None),
-                'port': pool.config('plc/port', int, 502),
+                'port': pool.config('plc/tcp_port', int, 502),
                 'timeout': pool.config('plc/timeout', float, 1.0)
             })
         
-        # Configure and connect
         logger.info(f"Configuring with: {config_params}")
         self.modbus_comm.configure(connection_type, **config_params)
         self.connected = self.modbus_comm.connect()
