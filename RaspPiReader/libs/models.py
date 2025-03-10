@@ -113,9 +113,9 @@ class CycleSerialNumber(Base):
     __tablename__ = 'cycle_serial_numbers'
     id = Column(Integer, primary_key=True)
     cycle_id = Column(Integer, ForeignKey('cycle_data.id'), nullable=False)
-    serial_number = Column(String, nullable=False)
+    serial_number = Column(String, unique=True, nullable=False)
     cycle = relationship("CycleData", backref="serials")
-
+    
 class DemoData(Base):
     __tablename__ = 'demo_data'
     id = Column(Integer, primary_key=True)

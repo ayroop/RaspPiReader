@@ -130,13 +130,8 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
                 f"Serial number '{search_text}' not found."
             )
     
+   
     def next(self):
-        """
-        Process the entered serial numbers, checking for duplicates.
-        When a duplicate is found (i.e. already in the DB), supervisor credentials are requested.
-        If authenticated, the duplicate serial is processed so that only one original and one override (with appended 'R')
-        are saved, regardless of how many times it is entered.
-        """
         # Gather serial numbers from the table
         entered_serials = []
         for row in range(self.ui.serialTableWidget.rowCount()):
@@ -158,7 +153,6 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
 
         # If duplicates exist, require supervisor authorization
         if duplicate_set:
-            # (Sort for consistent display)
             dialog = DuplicatePasswordDialog(sorted(list(duplicate_set)), self)
             if dialog.exec_() == QtWidgets.QDialog.Accepted:
                 sup_username, sup_password = dialog.get_credentials()
@@ -170,11 +164,10 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
                     )
                     return  # Abort without saving
             else:
-                # User canceled duplicate override
                 return
 
-        # Finalize the list of serials to save:
-        # For duplicate serials, only one instance and one override are kept.
+        # Finalize the list of serials to be saved:
+        # For duplicate serials, we want one original and one override (only if not already in the DB)
         final_serials = []
         for sn in unique_serials:
             if sn in duplicate_set:
@@ -186,10 +179,10 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
         logger.info(f"Final serial numbers to be saved: {final_serials}")
 
         try:
-            # Get the current username from the pool (with fallback)
+            # Get current user from pool
             current_username = pool.get("current_user")
             if not current_username:
-                main_form = pool.get("main_form")
+                main_form = pool.get('main_form')
                 if main_form and hasattr(main_form, "user"):
                     current_username = main_form.user.username
                 else:
@@ -205,7 +198,7 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
                 )
                 return
 
-            # Create a new cycle data record using the number of unique final serials
+            # Create a new cycle data record
             cycle_data = CycleData(
                 order_id=self.work_order,
                 quantity=len(final_serials)
@@ -220,14 +213,17 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
                 )
                 return
 
-            # Save each serial number into the normalized table
+            # Save each serial number while enforcing uniqueness
             for sn in final_serials:
-                record = CycleSerialNumber(cycle_id=cycle_data.id, serial_number=sn)
-                self.db.session.add(record)
+                # Check if this serial already exists in the system:
+                existing = self.db.session.query(CycleSerialNumber).filter_by(serial_number=sn).first()
+                if not existing:
+                    record = CycleSerialNumber(cycle_id=cycle_data.id, serial_number=sn)
+                    self.db.session.add(record)
             self.db.session.commit()
             logger.info("Cycle serial numbers stored successfully.")
 
-            # Transition to program selection
+            # Transition to Program Selection
             logger.info(f"Transitioning to program selection with work order {self.work_order} and {len(final_serials)} serial numbers")
             self.program_form = ProgramSelectionFormHandler(self.work_order, final_serials, parent=None)
             self.program_form.setMinimumSize(500, 300)
@@ -241,6 +237,7 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
             QtWidgets.QMessageBox.critical(
                 self, "Error", f"Failed to proceed to program selection: {str(e)}"
             )
+
     def authenticate_supervisor(self, supervisor_username, supervisor_password):
         """
         Verify the supervisor credentials. Returns True if a user with the given username exists,
