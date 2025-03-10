@@ -79,7 +79,15 @@ class Database:
     def get_managed_serials(self):
         """Get the special cycle data record that stores managed serials"""
         return self.session.query(CycleData).filter_by(order_id="MANAGED_SERIALS").first()
-    
+    def save_report_template(self, template_content):
+        template = self.session.query(ReportTemplate).first()
+        if not template:
+            template = ReportTemplate(content=template_content)
+            self.session.add(template)
+        else:
+            template.content = template_content
+        self.session.commit()
+        
     def sync_to_azure(self, azure_db_url):
         azure_engine = create_engine(azure_db_url)
         AzureSession = sessionmaker(bind=azure_engine)

@@ -2,13 +2,13 @@ import os
 import csv
 import logging
 import pdfkit
-from jinja2 import Template
+from jinja2 import Template, Environment, FileSystemLoader
 from datetime import datetime
 from RaspPiReader.libs.plc_communication import write_bool_address
 from RaspPiReader.libs.onedrive_api import OneDriveAPI
 from RaspPiReader import pool
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import Alarm, OneDriveSettings, CycleSerialNumber
+from RaspPiReader.libs.models import Alarm, OneDriveSettings, CycleSerialNumber, CycleData
 
 logger = logging.getLogger(__name__)
 
@@ -159,10 +159,9 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     try:
         with open(template_file, 'r', encoding='utf-8') as file:
             template_content = file.read()
-        
         template = Template(template_content)
-        cycle_start_time = cycle_data.start_time if hasattr(cycle_data, 'start_time') else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        cycle_end_time = cycle_data.stop_time if hasattr(cycle_data, 'stop_time') else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cycle_start_time = cycle_data.start_time.strftime("%Y-%m-%d %H:%M:%S") if hasattr(cycle_data, 'start_time') and cycle_data.start_time else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cycle_end_time = cycle_data.stop_time.strftime("%Y-%m-%d %H:%M:%S") if hasattr(cycle_data, 'stop_time') and cycle_data.stop_time else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         serial_list = ", ".join(serial_numbers)
         
         report_data = {
@@ -191,16 +190,13 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         }
         
         html_content = template.render(**report_data)
-        
         options = {
             'page-size': 'A4',
             'encoding': "UTF-8",
             'enable-local-file-access': ""
         }
-        
         path_wkhtmltopdf = os.path.join(os.getcwd(), 'wkhtmltopdf.exe')
         config_pdfkit = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
-        
         pdfkit.from_string(html_content, pdf_path, options=options, configuration=config_pdfkit)
         logger.info(f"PDF report generated: {pdf_path}")
     except Exception as e:
@@ -215,16 +211,15 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         except Exception as ex:
             logger.error(f"Failed to generate fallback report: {ex}")
     
-    # --- New: Update cycle record with report paths ---
+    # --- 7. Update cycle record with report paths ---
     try:
         cycle_data.pdf_report_path = pdf_filename
         cycle_data.html_report_path = csv_filename
     except Exception as e:
         logger.error(f"Error updating cycle record with report paths: {e}")
     
-    # --- New: Store serial numbers in the normalized table ---
+    # --- 8. Store serial numbers in the normalized table ---
     try:
-        # Delete previous records (if any) for this cycle to avoid duplicates
         db.session.query(CycleSerialNumber).filter(CycleSerialNumber.cycle_id == cycle_data.id).delete()
         for sn in serial_numbers:
             record = CycleSerialNumber(cycle_id=cycle_data.id, serial_number=sn.strip())
@@ -235,7 +230,7 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         logger.error(f"Error saving cycle serial numbers: {e}")
         db.session.rollback()
     
-    # --- 7. Upload reports to OneDrive ---
+    # --- 9. Upload reports to OneDrive ---
     try:
         upload_to_onedrive(csv_path, pdf_path)
     except Exception as e:

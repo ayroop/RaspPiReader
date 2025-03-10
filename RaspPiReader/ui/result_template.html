@@ -3,18 +3,16 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Title</title>
+    <title>Cycle Report</title>
     <style>
         table {
             width: 100%;
             border-collapse: collapse;
             margin: 5px auto;
         }
-
         tr:nth-of-type(odd) {
             background: #eee;
         }
-
         th {
             background: #3498db;
             color: white;
@@ -25,7 +23,6 @@
             vertical-align: middle;
             font-size: 12px;
         }
-
         td {
             padding: 2px;
             border: 1px solid #ccc;
@@ -33,12 +30,10 @@
             vertical-align: middle;
             font-size: 12px;
         }
-
         td.center {
             text-align: center;
             vertical-align: middle;
         }
-
         td.left {
             padding: 2px;
             border: 1px solid #ccc;
@@ -46,7 +41,6 @@
             font-size: 12px;
             width: 15%;
         }
-        
         td.top {
             vertical-align: top;   
         }
@@ -109,6 +103,12 @@
                         <td>SERIAL NUMBER:</td>
                         <td>{{ data.serial_numbers }}</td>
                     </tr>
+                    {% if data.duplicate_authorized %}
+                    <tr>
+                        <td>DUPLICATE AUTHORIZED BY</td>
+                        <td>{{ data.login_username }}</td>
+                    </tr>
+                    {% endif %}
                 </table>
             </td>
             <td width="10%"></td>

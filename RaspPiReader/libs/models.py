@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Text, Float, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -176,3 +176,9 @@ class BooleanAddress(Base):
     id = Column(Integer, primary_key=True)
     address = Column(Integer, nullable=False)
     label = Column(String, nullable=False)
+
+class ReportTemplate(Base):
+    __tablename__ = 'report_templates'
+    id = Column(Integer, primary_key=True)
+    content = Column(Text, nullable=False)
+    date_created = Column(DateTime, default=datetime.utcnow)
