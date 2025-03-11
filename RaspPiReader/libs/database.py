@@ -8,6 +8,7 @@ from RaspPiReader.libs.models import (
     BooleanStatus, PlotData, DefaultProgram, Alarm, CycleSerialNumber,
     ReportTemplate 
 )
+
 logger = logging.getLogger(__name__)
 
 class Database:
