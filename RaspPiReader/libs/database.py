@@ -5,7 +5,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from RaspPiReader.libs.models import (
     Base, User, PLCCommSettings, DatabaseSettings, OneDriveSettings,
     GeneralConfigSettings, ChannelConfigSettings, CycleData, DemoData,
-    BooleanStatus, PlotData, DefaultProgram, Alarm, CycleSerialNumber
+    BooleanStatus, PlotData, DefaultProgram, Alarm, CycleSerialNumber,
+    ReportTemplate 
 )
 logger = logging.getLogger(__name__)
 
