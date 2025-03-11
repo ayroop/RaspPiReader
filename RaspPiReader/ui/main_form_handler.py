@@ -62,16 +62,22 @@ class MainFormHandler(QMainWindow):
         self.form_obj = MainForm()
         self.form_obj.setupUi(self)
         
-        # Retrieve or create StartCycleFormHandler and connect its data signal.
-        start_cycle_form = pool.get("start_cycle_form")
-        if not start_cycle_form:
-            start_cycle_form = StartCycleFormHandler()
-            pool.set("start_cycle_form", start_cycle_form)
-            logger.info("Created new StartCycleFormHandler and set in pool.")
-        start_cycle_form.data_updated_signal.connect(self.update_data)
+        # Retrieve or create StartCycleFormHandler
+        self.start_cycle_form = pool.get("start_cycle_form")
+        if not self.start_cycle_form:
+            from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
+            self.start_cycle_form = StartCycleFormHandler()
+            pool.set("start_cycle_form", self.start_cycle_form)
+            logger.info("Created new StartCycleFormHandler and set in pool inside MainFormHandler.")
+        self.start_cycle_form.data_updated_signal.connect(self.update_data)
         logger.info("Connected data_updated_signal from StartCycleFormHandler")
         
-        # Other file and plot connection variables
+        # Set main_form in the pool
+        pool.set('main_form', self)
+        
+        # Define the headers used for CSV file creation.
+        # Adjust the list below to match the columns (beyond date/time) you expect.
+        self.headers = ['Date', 'Time', 'Timer(min)', 'CycleID', 'OrderID', 'Quantity', 'CycleLocation']
         self.file_name = None
         self.folder_name = None
         self.csv_path = None
@@ -79,7 +85,7 @@ class MainFormHandler(QMainWindow):
         self.plot = None   # Will be set by setup_plot_data_display
         
         self.username = self.user_record.username if self.user_record else ''
-        pool.set('main_form', self)
+
         self.cycle_timer = QTimer()
         
         # Initialize connections, user display, and (optional) stacks
@@ -95,7 +101,6 @@ class MainFormHandler(QMainWindow):
         self.add_database_menu()
         
         # Initialize Boolean status area and plot area
-        from RaspPiReader.libs.database import Database
         self.db = Database("sqlite:///local_database.db")
         self.setup_bool_status_display()
         self.setup_plot_data_display()  # creates plot widget and calls initialize_plot_widget
@@ -547,22 +552,21 @@ class MainFormHandler(QMainWindow):
         self.active_channels = self.load_active_channels()
         self.initialize_ui_panels()
         
-        # Use a smarter approach to plot creation
-        def setup_plot():
-            # Clean up old plot if it exists
-            if hasattr(self, 'plot') and self.plot:
-                self.plot.cleanup()  # Add a cleanup method to your plot class
-            
-            self.plot = self.create_plot(
-                plot_layout=self.plotAreaLayout, 
-                legend_layout=self.formLayoutLegend
-            )
-        
-        # Use a timer to ensure UI responsiveness
-        QTimer.singleShot(50, setup_plot)
+        # Use a timer to ensure UI responsiveness for plot creation
+        QTimer.singleShot(50, self.setup_plot)
         
         # Continue with other operations
         self.start_cycle_form.show()
+        
+    def setup_plot(self):
+        # Clean up old plot if it exists
+        if hasattr(self, 'plot') and self.plot:
+            self.plot.cleanup()  # Add a cleanup method to your plot class
+        
+        self.plot = self.create_plot(
+            plot_layout=self.plotAreaLayout, 
+            legend_layout=self.formLayoutLegend
+        )
 
     def _stop(self):
         """
@@ -751,24 +755,27 @@ class MainFormHandler(QMainWindow):
     def update_cycle_info_pannel(self):
         self.d1.setText(pool.config("cycle_id"))
         self.d2.setText(pool.config("order_id"))
-        self.d3.setText(pool.config("quantity"))
-        self.d4.setText(self.start_cycle_form.cycle_start_time.strftime("%Y/%m/%d"))
-        self.d5.setText(self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S"))
+        self.d3.setText(str(pool.config("quantity")))
+        # Use start_cycle_form’s cycle_start_time once it is set
+        if self.start_cycle_form and hasattr(self.start_cycle_form, 'cycle_start_time'):
+            self.d4.setText(self.start_cycle_form.cycle_start_time.strftime("%Y/%m/%d"))
+            self.d5.setText(self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S"))
         self.d7.setText(pool.config("cycle_location"))
-        self.p1.setText(pool.config("maintain_vacuum"))
-        self.p2.setText(pool.config("initial_set_cure_temp"))
-        self.p3.setText(pool.config("temp_ramp"))
-        self.p4.setText(pool.config("set_pressure"))
+        self.p1.setText(str(pool.config("maintain_vacuum")))
+        self.p2.setText(str(pool.config("initial_set_cure_temp")))
+        self.p3.setText(str(pool.config("temp_ramp")))
+        self.p4.setText(str(pool.config("set_pressure")))
         self.p5.setText(pool.config("dwell_time"))
-        self.p6.setText(pool.config("cool_down_temp"))
+        self.p6.setText(str(pool.config("cool_down_temp")))
         self.cH1Label_36.setText(f"TIME (min) CORE TEMP ≥ {pool.config('core_temp_setpoint')} °C:")
+
 
     def create_csv_file(self):
         self.csv_update_locked = False
         self.last_written_index = 0
         file_extension = '.csv'
         csv_full_path = os.path.join(self.start_cycle_form.folder_path,
-                                     self.start_cycle_form.file_name + file_extension)
+                                    self.start_cycle_form.file_name + file_extension)
         self.csv_path = csv_full_path
         delimiter = pool.config('csv_delimiter') or ' '
         csv.register_dialect('unixpwd', delimiter=delimiter)
@@ -783,15 +790,21 @@ class MainFormHandler(QMainWindow):
         self.csv_file.close()
 
     def write_cycle_info_to_csv(self):
+    # Write the first block of cycle information.
         data = [
             ["Work Order", pool.config("order_id")],
             ["Cycle Number", pool.config("cycle_id")],
             ["Quantity", pool.config("quantity")],
-            ["Process Start Time", self.start_cycle_form.cycle_start_time],
+            ["Process Start Time", self.start_cycle_form.cycle_start_time.strftime("%Y-%m-%d %H:%M:%S")]
         ]
         self.csv_writer.writerows(data)
+        
+        # Ensure self.headers is defined. If not, define a default header list.
+        if not hasattr(self, 'headers') or not self.headers:
+            self.headers = ['Date', 'Time', 'Timer(min)', 'CycleID', 'OrderID', 'Quantity', 'CycleLocation']
+        
+        # Write the header row for the detailed CSV data.
         self.csv_writer.writerows([['Date', 'Time', 'Timer(min)'] + self.headers[3:]])
-
     def update_csv_file(self, csv_file_path=None):
         if csv_file_path is None:
             # Use reports folder for all CSV files

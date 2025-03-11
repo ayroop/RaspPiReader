@@ -39,7 +39,7 @@ cycle_settings = {
 
 class StartCycleFormHandler(QMainWindow):
     data_updated_signal = pyqtSignal(dict)
-    test_data_updated_signal = pyqtSignal(dict)    # if you wish to pass a dict, otherwise change signature
+    test_data_updated_signal = pyqtSignal(dict)    # if we wish to pass a dict, otherwise change signature
     exit_with_error_signal = pyqtSignal(str)
 
     def __init__(self, parent=None):
@@ -60,25 +60,7 @@ class StartCycleFormHandler(QMainWindow):
         self.data_reader_lock = Lock()
 
     def on_start_cycle(self):
-        if pool.get('data_stack') is None:
-            pool.set('data_stack', [ [] for _ in range(CHANNEL_COUNT+2) ])
-        if pool.get('test_data_stack') is None:
-            pool.set('test_data_stack', [ [] for _ in range(CHANNEL_COUNT+2) ])
-
-        logger.info("Start Cycle button clicked")
-        # Create new cycle data and store it
-        self.cycle_data = CycleData(
-            order_id="Order123",  # Change as needed (use input from previous forms)
-            start_time=datetime.now()
-        )
-        pool.set('current_cycle', self.cycle_data)
-        # Apply default program values (only once per cycle)
-        if not self.default_program_applied:
-            self.apply_default_program_values()
-            self.default_program_applied = True
-        # Start data reading if not already running
-        if not self.reading_thread_running:
-            self.start_data_reading()
+        self.start_cycle()
 
     def on_stop_cycle(self):
         logger.info("Stop Cycle button clicked")
@@ -274,6 +256,7 @@ class StartCycleFormHandler(QMainWindow):
         self.read_thread.daemon = True
 
     def save_cycle_data(self):
+    # Save widget values into pool configuration.
         for widget_name, key_name in cycle_settings.items():
             if hasattr(self.ui, widget_name):
                 widget = getattr(self.ui, widget_name)
@@ -288,14 +271,13 @@ class StartCycleFormHandler(QMainWindow):
         self.folder_path = os.path.join(csv_file_path, self.file_name)
         os.makedirs(self.folder_path, exist_ok=True)
         
-        # Retrieve current user using pool.get("current_user") with fallback to main_form.user.
+        # Retrieve the current user.
         current_username = pool.get("current_user")
         if current_username:
             user = self.db.get_user(current_username)
             if not user:
                 QMessageBox.critical(self, "Database Error", "Logged-in user not found.")
                 return
-            cycle_data.user = user  # sets the user_id via relationship mapping
         else:
             main_form = pool.get('main_form')
             if main_form and hasattr(main_form, 'user'):
@@ -304,15 +286,15 @@ class StartCycleFormHandler(QMainWindow):
                 if not user:
                     QMessageBox.critical(self, "Database Error", "Logged-in user not found.")
                     return
-                cycle_data.user = user
             else:
                 QMessageBox.critical(self, "Error", "No current user set in session.")
                 return
         logger.info(f"Current username determined: {current_username}")
 
+        # Create cycle_data now including size and cycle_location from default programs.
         cycle_data = CycleData(
             order_id = pool.config("order_id", str, "DEFAULT_ORDER"),
-            quantity = pool.config("quantity", str, ""),
+            quantity = pool.config("quantity", int, 0),
             size = pool.config("size", str, ""),
             cycle_location = pool.config("cycle_location", str, ""),
             dwell_time = pool.config("dwell_time", str, ""),
@@ -320,14 +302,16 @@ class StartCycleFormHandler(QMainWindow):
             core_temp_setpoint = pool.config("core_temp_setpoint", float, 0.0),
             temp_ramp = pool.config("temp_ramp", float, 0.0),
             set_pressure = pool.config("set_pressure", float, 0.0),
-            maintain_vacuum = pool.config("maintain_vacuum", float, 0.0),
+            maintain_vacuum = pool.config("maintain_vacuum", bool, False),
             initial_set_cure_temp = pool.config("initial_set_cure_temp", float, None),
             final_set_cure_temp = pool.config("final_set_cure_temp", float, None)
         )
+        
+        # Assign the retrieved user.
         cycle_data.user = user
         logger.info(f"CycleData before insert: order_id={cycle_data.order_id}, user_id={cycle_data.user_id}")
         try:
-            if not db.add_cycle_data(cycle_data):
+            if not self.db.add_cycle_data(cycle_data):
                 QMessageBox.critical(self, "Database Error", "Could not save cycle data.")
                 return
         except Exception as e:
@@ -335,9 +319,11 @@ class StartCycleFormHandler(QMainWindow):
             return
 
         logger.info(f"Cycle data saved for order {cycle_data.order_id}")
+
     def start_cycle(self):
+        # Set cycle start time, build folder/file names and save cycle data.
         self.cycle_start_time = datetime.now()
-        self.save_cycle_data()
+        self.save_cycle_data()  # This method must build and save cycle data.
         main_form = pool.get('main_form')
         if main_form:
             main_form.actionStart.setEnabled(False)
@@ -348,8 +334,8 @@ class StartCycleFormHandler(QMainWindow):
         self.running = True
         self.hide()
         self.initiate_reader_thread()
-        if self.read_thread:
-            self.read_thread.start()
+        if self.reading_thread:
+            self.reading_thread.start()
         self.initiate_onedrive_update_thread()
 
     def stop_cycle(self):

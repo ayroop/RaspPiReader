@@ -97,6 +97,8 @@ class CycleData(Base):
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     user = relationship("User", backref="cycle_data")
     quantity = Column(Integer, nullable=True)
+    size = Column(String, nullable=True)              # NEW field for size
+    cycle_location = Column(String, nullable=True)      # NEW field for cycle location
     status = Column(String, nullable=True)
     notes = Column(String, nullable=True)
     core_temp_setpoint = Column(Float, nullable=True)
@@ -108,6 +110,7 @@ class CycleData(Base):
     final_set_cure_temp = Column(Float, nullable=True)
     pdf_report_path = Column(String, nullable=True)
     html_report_path = Column(String, nullable=True)
+    temp_ramp = Column(Float, nullable=True)
 
 class CycleSerialNumber(Base):
     __tablename__ = 'cycle_serial_numbers'

@@ -22,29 +22,23 @@ class NewCycleHandler(QtWidgets.QWidget):
 
     def start_cycle(self):
         logger.info("Start Cycle button clicked - launching Work Order Form")
-        # Open the Work Order Form to begin the workflow
         self.work_order_form = WorkOrderFormHandler()
         self.work_order_form.show()
 
     def stop_cycle(self):
-        """Handle stopping the cycle and generating reports"""
         logger.info("Stop Cycle button clicked")
-        
         try:
             main_form = pool.get('main_form')
             if main_form:
-                # Delegate to the main form's stop method
-                main_form._stop()  # This will handle all the cycle stopping logic
+                main_form._stop()  # Stop logic in main form
                 logger.info("Cycle stop delegated to main form")
             else:
                 logger.error("Main form not found in pool")
                 QtWidgets.QMessageBox.warning(
-                    self, "Warning", 
-                    "Could not stop cycle - main form not found."
+                    self, "Warning", "Could not stop cycle - main form not found."
                 )
         except Exception as e:
             logger.error(f"Error stopping cycle: {str(e)}")
             QtWidgets.QMessageBox.critical(
-                self, "Error", 
-                f"Failed to stop cycle: {str(e)}"
+                self, "Error", f"Failed to stop cycle: {str(e)}"
             )
