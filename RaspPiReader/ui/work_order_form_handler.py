@@ -2,6 +2,10 @@ from PyQt5 import QtWidgets
 from RaspPiReader.ui.work_order_form import Ui_WorkOrderForm
 from RaspPiReader.ui.serial_number_entry_form_handler import SerialNumberEntryFormHandler
 import logging
+from RaspPiReader.libs import plc_communication
+from RaspPiReader.libs.communication import dataReader
+from RaspPiReader import pool
+from PyQt5.QtWidgets import QMessageBox
 
 logger = logging.getLogger(__name__)
 
@@ -10,24 +14,30 @@ class WorkOrderFormHandler(QtWidgets.QWidget):
         super(WorkOrderFormHandler, self).__init__(parent)
         self.ui = Ui_WorkOrderForm()  # Make sure your UI file no longer pre-populates order/quantity
         self.ui.setupUi(self)
-        # Ensure the quantitySpinBox maximum is still set if needed
         self.ui.quantitySpinBox.setMaximum(250)
-        self.ui.nextButton.clicked.connect(self.next)
+        self.ui.nextButton.clicked.connect(self.on_next)
         self.ui.cancelButton.clicked.connect(self.close)
     
-    def next(self):
+    def on_next(self):
         work_order = self.ui.workOrderLineEdit.text().strip()
         quantity = self.ui.quantitySpinBox.value()
-        
+
         if not work_order:
             QtWidgets.QMessageBox.warning(self, "Input Required", "Please enter a valid work order.")
             return
         if quantity <= 0:
             QtWidgets.QMessageBox.warning(self, "Input Required", "Please enter a quantity greater than zero.")
             return
-        
+
         logger.info(f"Starting serial number entry for work order {work_order} with quantity {quantity}")
-        # Launch Serial Number Entry form, passing the user-provided work order and quantity
+
+        # Update both the QSettings and the in-memory registry so that pool.config returns the new values.
+        pool.set("order_id", work_order)
+        pool.set("quantity", quantity)
+        pool.set_config("order_id", work_order)
+        pool.set_config("quantity", quantity)
+
+        # Launch Serial Number Entry form
         self.serial_form = SerialNumberEntryFormHandler(work_order, quantity)
         self.serial_form.show()
         self.close()

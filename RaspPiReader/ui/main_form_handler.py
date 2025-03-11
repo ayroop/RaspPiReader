@@ -4,7 +4,9 @@ import pdfkit
 from datetime import datetime
 import logging
 from colorama import Fore
-
+import webbrowser
+import tempfile 
+import jinja2 
 from PyQt5 import QtWidgets, uic
 from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
 from PyQt5.QtGui import QFont
@@ -41,6 +43,7 @@ from RaspPiReader.ui.alarm_settings_form_handler import AlarmSettingsFormHandler
 
 # Add PLC connection status
 from RaspPiReader.libs import plc_communication
+from RaspPiReader.libs.cycle_finalization import finalize_cycle
 
 logger = logging.getLogger(__name__)
 def timedelta2str(td):
@@ -115,6 +118,10 @@ class MainFormHandler(QMainWindow):
         self.connectionTimer = QTimer(self)
         self.connectionTimer.timeout.connect(self.update_connection_status_display)
         self.connectionTimer.start(5000)
+        self.live_update_timer = QTimer(self)
+        self.live_update_timer.timeout.connect(self.update_live_data)
+        self.live_update_timer.start(500)  # Update live data every 500ms (adjust as needed)
+        logger.info("Live update timer started.")
         self.showMaximized()
         logger.info("MainFormHandler initialized.")
 
@@ -167,6 +174,39 @@ class MainFormHandler(QMainWindow):
                 self.plot.update_plot_data(plot_data)
         except Exception as e:
             logger.error(f"Error updating main form data: {e}")
+
+    def update_cycle_info_panel(self):
+        # Cycle Set Parameters from default program configuration
+        self.maintainVacuumLabel.setText(str(pool.config("maintain_vacuum", float, 0)))
+        self.setCureTempLabel.setText(str(pool.config("core_temp_setpoint", float, 0)))
+        self.tempRampLabel.setText(str(pool.config("temp_ramp", float, 0)))
+        self.setPressureLabel.setText(str(pool.config("set_pressure", float, 0)))
+        self.dwellTimeLabel.setText(str(pool.config("dwell_time", str, "N/A")))
+        self.coolDownTempLabel.setText(str(pool.config("cool_down_temp", float, 0)))
+        
+        # Cycle Details from work order and saved configuration
+        self.cycleNumberLabel.setText(str(pool.config("cycle_id", int, 0)))
+        self.workOrderLabel.setText(str(pool.config("order_id", str, "")))
+        self.quantityLabel.setText(str(pool.config("quantity", int, 0)))
+        if hasattr(self.start_cycle_form, "cycle_start_time"):
+            self.cycleDateLabel.setText(self.start_cycle_form.cycle_start_time.strftime("%Y-%m-%d"))
+            self.cycleStartTimeLabel.setText(self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S"))
+        else:
+            self.cycleDateLabel.setText("N/A")
+            self.cycleStartTimeLabel.setText("N/A")
+        self.cycleEndTimeLabel.setText(datetime.now().strftime("%H:%M:%S"))
+        self.cycleLocationLabel.setText(str(pool.config("cycle_location", str, "N/A")))
+        
+        # Cycle Outcomes and Status based on ongoing cycle measurements
+        self.coreTempAboveTimeLabel.setText(str(pool.config("core_temp_above_setpoint_time", float, 0)))
+        self.pressureDropTempLabel.setText(str(pool.config("pressure_drop_core_temp", float, "N/A")))
+        self.cycleDurationLabel.setText(self._calculate_cycle_duration())
+
+    def _calculate_cycle_duration(self):
+        if hasattr(self.start_cycle_form, "cycle_start_time"):
+            duration = datetime.now() - self.start_cycle_form.cycle_start_time
+            return str(duration).split('.')[0]
+        return "N/A"
 
     def start_cycle_timer(self, cycle_start):
         self.cycle_start = cycle_start
@@ -769,7 +809,60 @@ class MainFormHandler(QMainWindow):
         self.p6.setText(str(pool.config("cool_down_temp")))
         self.cH1Label_36.setText(f"TIME (min) CORE TEMP ≥ {pool.config('core_temp_setpoint')} °C:")
 
-
+    def update_live_data(self):
+        try:
+            # Update Vacuum Gauges (CH1 - CH8)
+            gauge = getattr(self.form_obj, "vacuumGauge_CH1", None)
+            if gauge is not None:
+                gauge.setText(f"{pool.config('vacuum_CH1', float, 0.0):.1f} KPa")
+            for chan in range(2, 9):
+                widget = getattr(self.form_obj, f"vacuumGauge_CH{chan}", None)
+                if widget is not None:
+                    widget.setText(f"{pool.config(f'vacuum_CH{chan}', float, 0.0):.1f} KPa")
+            
+            # Update Temperature Channels (CH9 - CH12)
+            for ch in range(9, 13):
+                widget = getattr(self.form_obj, f"temp_CH{ch}", None)
+                if widget is not None:
+                    widget.setText(f"{pool.config(f'temp_CH{ch}', float, 0.0):.1f} °C")
+            
+            # Update Cylinder Pressure and System Vacuum
+            if hasattr(self.form_obj, "pressure_CH13"):
+                self.form_obj.pressure_CH13.setText(f"{pool.config('pressure_CH13', float, 0.0):.1f} KPa")
+            if hasattr(self.form_obj, "vacuum_CH14"):
+                self.form_obj.vacuum_CH14.setText(f"{pool.config('vacuum_CH14', float, 0.0):.1f} KPa")
+            
+            # Update Cycle Set Parameters (from default program)
+            if hasattr(self.form_obj, "maintainVacuumLabel"):
+                self.form_obj.maintainVacuumLabel.setText(str(pool.config("maintain_vacuum", bool, False)))
+            if hasattr(self.form_obj, "setCureTempLabel"):
+                self.form_obj.setCureTempLabel.setText(str(pool.config("initial_set_cure_temp", float, 0.0)))
+            if hasattr(self.form_obj, "tempRampLabel"):
+                self.form_obj.tempRampLabel.setText(str(pool.config("temp_ramp", float, 0.0)))
+            if hasattr(self.form_obj, "setPressureLabel"):
+                self.form_obj.setPressureLabel.setText(str(pool.config("set_pressure", float, 0.0)))
+            if hasattr(self.form_obj, "dwellTimeLabel"):
+                self.form_obj.dwellTimeLabel.setText(pool.config("dwell_time", str, "N/A"))
+            if hasattr(self.form_obj, "coolDownTempLabel"):
+                self.form_obj.coolDownTempLabel.setText(str(pool.config("cool_down_temp", float, 0.0)))
+            
+            # Update Cycle Details (from ongoing cycle and work order form):
+            if self.start_cycle_form and hasattr(self.start_cycle_form, "cycle_start_time"):
+                if hasattr(self.form_obj, "cycleDateLabel"):
+                    self.form_obj.cycleDateLabel.setText(self.start_cycle_form.cycle_start_time.strftime("%Y-%m-%d"))
+                if hasattr(self.form_obj, "cycleStartTimeLabel"):
+                    self.form_obj.cycleStartTimeLabel.setText(self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S"))
+            if hasattr(self.form_obj, "cycleEndTimeLabel"):
+                self.form_obj.cycleEndTimeLabel.setText(datetime.now().strftime("%H:%M:%S"))
+            if hasattr(self.form_obj, "cycleNumberLabel"):
+                self.form_obj.cycleNumberLabel.setText(str(pool.config("cycle_id", int, 0)))
+            # Update work order and quantity values from the work order form
+            if hasattr(self.form_obj, "workOrderLabel"):
+                self.form_obj.workOrderLabel.setText(str(pool.config("order_id", str, "")))
+            if hasattr(self.form_obj, "quantityLabel"):
+                self.form_obj.quantityLabel.setText(str(pool.config("quantity", int, 0)))
+        except Exception as e:
+            logger.error("Error in update_live_data: " + str(e))
     def create_csv_file(self):
         self.csv_update_locked = False
         self.last_written_index = 0

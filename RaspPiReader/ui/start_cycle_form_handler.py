@@ -18,6 +18,7 @@ from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
 from RaspPiReader.ui.serial_number_management_form_handler import SerialNumberManagementFormHandler
 from RaspPiReader.libs.models import CycleData, User, Alarm, DefaultProgram, CycleSerialNumber
+from RaspPiReader.libs import plc_communication
 
 logger = logging.getLogger(__name__)
 
@@ -564,6 +565,14 @@ class StartCycleFormHandler(QMainWindow):
                                     "Failed to connect to PLC. Please check your connection settings.")
                 return
         dataReader.start()
-        self.update_connection_status_display()
+        main_form = pool.get('main_form')
+        if main_form is not None:
+            main_form.update_connection_status_display()
+        else:
+            import logging
+            logging.getLogger(__name__).error("Main form is not available; cannot update connection status.")
+        if not hasattr(self, "timer"):
+            from PyQt5.QtCore import QTimer
+            self.timer = QTimer(self)
         self.timer.start(1000)
         self.running = True
