@@ -70,7 +70,7 @@ class InitiatePlotWidget:
             setattr(self, "line_" + str(ch), curve)
 
     def update_plot(self):
-    # Ensure self.data is defined and has at least one row (time values)
+    # Refresh self.data from the pool
         self.data = pool.get('data_stack') or []
         if not self.data or len(self.data) == 0 or len(self.data[0]) == 0:
             return  # No data to display
@@ -80,21 +80,36 @@ class InitiatePlotWidget:
             acc_time = pool.config('accuarate_data_time', float, 0.0) or 0.0
             if acc_time > 0:
                 acc_index = 0
+                # Find the index marking the separation based on accumulated time.
                 for i in range(n_data, 0, -1):
                     if (self.data[0][-1] - self.data[0][i - 1]) > acc_time:
                         acc_index = i
                         break
+                # Update curves for each active channel using segmented data.
                 for ch in self.active_channels:
-                    curve = getattr(self, "line_" + str(ch))
-                    x_data = self.data[0][0:acc_index:DATA_SKIP_FACTOR] + self.data[0][acc_index:]
-                    y_index = self.active_channels.index(ch) + 1
-                    y_data = self.data[y_index][0:acc_index:DATA_SKIP_FACTOR] + self.data[y_index][acc_index:]
-                    curve.setData(x_data, y_data)
+                    try:
+                        curve = getattr(self, "line_" + str(ch))
+                        # Combine downsampled portion and the remainder.
+                        x_data = self.data[0][0:acc_index:DATA_SKIP_FACTOR] + self.data[0][acc_index:]
+                        y_index = self.active_channels.index(ch) + 1
+                        y_data = self.data[y_index][0:acc_index:DATA_SKIP_FACTOR] + self.data[y_index][acc_index:]
+                        curve.setData(x_data, y_data)
+                    except Exception as e:
+                        print(f"Exception updating channel {ch}: {e}")
+                        continue
             else:
                 for ch in self.active_channels:
-                    idx = self.active_channels.index(ch)
-                    getattr(self, "line_" + str(ch)).setData(self.data[0], self.data[idx+1])
-            self.left_plot.setXRange(0, self.data[0][-1])
+                    try:
+                        idx = self.active_channels.index(ch)
+                        getattr(self, "line_" + str(ch)).setData(self.data[0], self.data[idx+1])
+                    except Exception as e:
+                        print(f"Exception updating channel {ch}: {e}")
+                        continue
+            # Safely update the left plot’s X range.
+            try:
+                self.left_plot.setXRange(0, self.data[0][-1])
+            except Exception as e:
+                print(f"Exception setting XRange: {e}")
             self.last_data_index = len(self.data[0]) - 1
             QApplication.processEvents()
 
