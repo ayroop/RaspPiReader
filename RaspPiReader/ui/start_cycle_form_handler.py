@@ -332,7 +332,7 @@ class StartCycleFormHandler(QMainWindow):
             main_form.actionStop.setEnabled(True)
             main_form.create_csv_file()
             main_form.cycle_timer.start(500)
-            main_form.update_cycle_info_panel()  # Force immediate update
+            main_form.update_cycle_info_pannel()  # Force immediate update
         self.running = True
         self.hide()
         self.initiate_reader_thread()

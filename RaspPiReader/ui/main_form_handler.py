@@ -177,37 +177,20 @@ class MainFormHandler(QMainWindow):
         except Exception as e:
             logger.error(f"Error updating main form data: {e}")
 
-    def update_cycle_info_panel(self):
-        # Update cycle details using pool and start_cycle_form attributes.
-        # Only update widgets if they exist to avoid AttributeErrors.
-        if hasattr(self.form_obj, "d1"):
-            self.form_obj.d1.setText(str(pool.config("cycle_id", str, "N/A")))
-        if hasattr(self.form_obj, "d2"):
-            self.form_obj.d2.setText(str(pool.config("order_id", str, "N/A")))
-        if hasattr(self.form_obj, "d3"):
-            self.form_obj.d3.setText(str(pool.config("quantity", int, 0)))
-        if hasattr(self.start_cycle_form, "cycle_start_time"):
-            if hasattr(self.form_obj, "d4"):
-                elf.form_obj.d4.setText(self.start_cycle_form.cycle_start_time.strftime("%Y/%m/%d"))
-            if hasattr(self.form_obj, "d5"):
-                self.form_obj.d5.setText(self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S"))
-        if hasattr(self.form_obj, "d7"):
-            self.form_obj.d7.setText(str(pool.config("cycle_location", str, "N/A")))
-        if hasattr(self.form_obj, "p1"):
-            self.form_obj.p1.setText(str(pool.config("maintain_vacuum", float, 0)))
-        if hasattr(self.form_obj, "p2"):
-            self.form_obj.p2.setText(str(pool.config("initial_set_cure_temp", float, 0)))
-        if hasattr(self.form_obj, "p3"):
-            self.form_obj.p3.setText(str(pool.config("temp_ramp", float, 0)))
-        if hasattr(self.form_obj, "p4"):
-            self.form_obj.p4.setText(str(pool.config("set_pressure", float, 0)))
-        if hasattr(self.form_obj, "p5"):
-            self.form_obj.p5.setText(str(pool.config("dwell_time", str, "N/A")))
-        if hasattr(self.form_obj, "p6"):
-            self.form_obj.p6.setText(str(pool.config("cool_down_temp", float, 0)))
-        if hasattr(self.form_obj, "cH1Label_36"):
-            core_temp_setpoint = pool.config("core_temp_setpoint", float, 0)
-            self.form_obj.cH1Label_36.setText(f"TIME (min) CORE TEMP ≥ {core_temp_setpoint} °C:")
+    def update_cycle_info_pannel(self):
+        self.d1.setText(pool.config("cycle_id"))
+        self.d2.setText(pool.config("order_id"))
+        self.d3.setText(pool.config("quantity"))
+        self.d4.setText(self.start_cycle_form.cycle_start_time.strftime("%Y/%m/%d"))
+        self.d5.setText(self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S"))
+        self.d7.setText(pool.config("cycle_location"))
+        self.p1.setText(pool.config("maintain_vacuum"))
+        self.p2.setText(pool.config("initial_set_cure_temp"))
+        self.p3.setText(pool.config("temp_ramp"))
+        self.p4.setText(pool.config("set_pressure"))
+        self.p5.setText(pool.config("dwell_time"))
+        self.p6.setText(pool.config("cool_down_temp"))
+        self.cH1Label_36.setText(f"TIME (min) CORE TEMP ≥ {pool.config('core_temp_setpoint')} °C:")
     def _calculate_cycle_duration(self):
         if hasattr(self.start_cycle_form, "cycle_start_time"):
             duration = datetime.now() - self.start_cycle_form.cycle_start_time
