@@ -598,14 +598,25 @@ class MainFormHandler(QMainWindow):
     def _stop(self):
         """
         Stop the current cycle by delegating to the start cycle form,
-        update UI actions, and preview the plot.
+        safely stopping timers and cleaning up the plot, update UI actions,
+        and preview the plot.
         """
         try:
+            # Stop any live update timers to prevent updates during cleanup.
+            if hasattr(self, 'live_update_timer') and self.live_update_timer.isActive():
+                self.live_update_timer.stop()
+            if hasattr(self, 'connectionTimer') and self.connectionTimer.isActive():
+                self.connectionTimer.stop()
+            if hasattr(self, 'status_timer') and self.status_timer.isActive():
+                self.status_timer.stop()
+            
+            # Attempt to stop cycle via start_cycle_form.
             if hasattr(self, 'start_cycle_form') and self.start_cycle_form is not None:
                 logger.info("Using existing start_cycle_form to stop cycle")
                 self.start_cycle_form.stop_cycle()
             else:
                 logger.warning("No active start_cycle_form found; creating temporary form")
+                from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
                 self.start_cycle_form = StartCycleFormHandler()
                 self.start_cycle_form.cycle_data = {
                     "order_id": "unknown",
@@ -614,6 +625,14 @@ class MainFormHandler(QMainWindow):
                 }
                 self.start_cycle_form.stop_cycle()
 
+            # Clean up the plot widget if it exists to avoid later updates on deleted objects.
+            if hasattr(self, 'plot') and self.plot:
+                try:
+                    self.plot.cleanup()
+                except Exception as cleanup_error:
+                    logger.error(f"Error during plot cleanup: {cleanup_error}")
+                self.plot = None
+
             # Update UI actions (assume these actions exist in your MainFormHandler)
             if hasattr(self, 'actionStart'):
                 self.actionStart.setEnabled(True)
@@ -621,9 +640,11 @@ class MainFormHandler(QMainWindow):
                 self.actionStop.setEnabled(False)
             if hasattr(self, 'actionPrint_results'):
                 self.actionPrint_results.setEnabled(True)
+
             # Show plot preview if applicable.
             if hasattr(self, 'show_plot_preview'):
                 self.show_plot_preview()
+
             # Close the CSV file after a short delay (if the method is defined)
             if hasattr(self, 'close_csv_file'):
                 QTimer.singleShot(1000, self.close_csv_file)
