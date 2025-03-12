@@ -39,8 +39,8 @@ cycle_settings = {
 }
 
 class StartCycleFormHandler(QMainWindow):
-    data_updated_signal = pyqtSignal(dict)
-    test_data_updated_signal = pyqtSignal(dict)    # if we wish to pass a dict, otherwise change signature
+    data_updated_signal = pyqtSignal(object)
+    test_data_updated_signal = pyqtSignal(object)
     exit_with_error_signal = pyqtSignal(str)
 
     def __init__(self, parent=None):
@@ -290,6 +290,7 @@ class StartCycleFormHandler(QMainWindow):
             else:
                 QMessageBox.critical(self, "Error", "No current user set in session.")
                 return
+
         logger.info(f"Current username determined: {current_username}")
 
         # Create cycle_data now including size and cycle_location from default programs.
@@ -320,23 +321,23 @@ class StartCycleFormHandler(QMainWindow):
             return
 
         logger.info(f"Cycle data saved for order {cycle_data.order_id}")
+        pool.set("current_cycle", cycle_data)  # Store the cycle data
 
     def start_cycle(self):
-        # Set cycle start time, build folder/file names and save cycle data.
         self.cycle_start_time = datetime.now()
-        self.save_cycle_data()  # This method must build and save cycle data.
+        self.save_cycle_data()  # This method must set pool["current_cycle"] after a successful commit.
         main_form = pool.get('main_form')
         if main_form:
             main_form.actionStart.setEnabled(False)
             main_form.actionStop.setEnabled(True)
-            main_form.actionPlot_preview.setEnabled(True)
             main_form.create_csv_file()
             main_form.cycle_timer.start(500)
+            main_form.update_cycle_info_panel()  # Force immediate update
         self.running = True
         self.hide()
         self.initiate_reader_thread()
-        if self.reading_thread:
-            self.reading_thread.start()
+        if self.read_thread:
+            self.read_thread.start()
         self.initiate_onedrive_update_thread()
 
     def stop_cycle(self):
@@ -445,10 +446,17 @@ class StartCycleFormHandler(QMainWindow):
 
     @staticmethod
     def read_data(handler, data_stack, updated_signal, dt, process_data=True):
+        # Retrieve configuration values
         core_temp_channel = pool.config('core_temp_channel', int, 1)
         pressure_channel = pool.config('pressure_channel', int, 1)
         core_temp_setpoint = pool.config('core_temp_setpoint', int, 0)
         active_channels = pool.get('active_channels')
+        # Defensive check for active_channels. If None, default to all channels.
+        if active_channels is None:
+            active_channels = list(range(1, CHANNEL_COUNT + 1))
+        # Ensure data_stack is valid (allocate if necessary) with CHANNEL_COUNT+2 slots.
+        if data_stack is None or not isinstance(data_stack, list) or len(data_stack) < (CHANNEL_COUNT + 2):
+            data_stack = [[] for _ in range(CHANNEL_COUNT + 2)]
         handler.pressure_drop_core_temp = None
         core_temp_above_setpoint_start_time = None
         handler.core_temp_above_setpoint_time = 0
@@ -471,7 +479,7 @@ class StartCycleFormHandler(QMainWindow):
                     data_stack[i + 1].append(temp_arr[i])
                 if process_data:
                     data_stack[0].append(round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2))
-                    data_stack[15].append(datetime.now())
+                    data_stack[CHANNEL_COUNT + 1].append(datetime.now())
                     if (not core_temp_above_setpoint_start_time and 
                         data_stack[core_temp_channel][-1] >= core_temp_setpoint):
                         core_temp_above_setpoint_start_time = datetime.now()
@@ -498,10 +506,14 @@ class StartCycleFormHandler(QMainWindow):
                 for i in range(CHANNEL_COUNT):
                     if (i + 1) in active_channels:
                         try:
-                            temp = dataReader.readData(
-                                int(pool.config('address' + str(i + 1), int, 0)),
-                                int(pool.config('pv' + str(i + 1), int, 0), 16)
-                            )
+                            # Fetch configuration values as strings then convert explicitly.
+                            addr_str = pool.config('address' + str(i + 1), str, "0")
+                            pv_str = pool.config('pv' + str(i + 1), str, "0")
+                            address = int(addr_str, 10)
+                            pv = int(pv_str, 16)
+                            temp = dataReader.readData(address, pv)
+                            if temp is None:
+                                raise ValueError("DataReader.readData returned None")
                             if temp & 0x8000 > 0:
                                 temp = -((0xFFFF - temp) + 1)
                             dec_point = pool.config('decimal_point' + str(i + 1), int, 0)
@@ -516,24 +528,28 @@ class StartCycleFormHandler(QMainWindow):
                                     temp = (output_high - output_low) / (input_high - input_low) * (temp - input_low) + output_low
                                     temp = round(temp, dec_point)
                         except Exception as e:
-                            print(f"Failed to read or process data from channel {i + 1}.\n" + str(e))
+                            print(f"Failed to read or process data from channel {i + 1}.\n{e}")
                             try:
                                 print("Restarting data reader")
                                 dataReader.stop()
-                                dataReader.start()
-                                print('Restart successful')
+                                dataReader.reload()
+                                print("Restart successful")
                             except Exception as e:
-                                print(f"Restart failed channel {i + 1}.\n" + str(e))
+                                print(f"Restart failed channel {i + 1}.\n{e}")
                             temp = -1000.00
                     else:
                         temp = 0.00
                     temp_arr.append(temp)
                 handler.data_reader_lock.release()
                 for i in range(CHANNEL_COUNT):
-                    data_stack[i + 1].append(temp_arr[i])
+                    try:
+                        data_stack[i + 1].append(temp_arr[i])
+                    except Exception as ex:
+                        print(f"Error appending to data_stack at index {i + 1}: {ex}")
                 if process_data:
                     data_stack[0].append(round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2))
-                    data_stack[15].append(datetime.now())
+                    # Use index CHANNEL_COUNT+1 for the timestamp slot.
+                    data_stack[CHANNEL_COUNT + 1].append(datetime.now())
                     if (not core_temp_above_setpoint_start_time and
                         data_stack[core_temp_channel][-1] >= core_temp_setpoint):
                         core_temp_above_setpoint_start_time = datetime.now()
@@ -555,7 +571,7 @@ class StartCycleFormHandler(QMainWindow):
         try:
             dataReader.stop()
         except Exception:
-            print('unable to stop data reader')
+            print('Unable to stop data reader')
 
     def _start(self):
         if not plc_communication.is_connected():

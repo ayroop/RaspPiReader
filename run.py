@@ -14,68 +14,87 @@ from RaspPiReader.libs.plc_communication import initialize_plc_communication
 from RaspPiReader.libs.logging_config import setup_logging
 from RaspPiReader.ui.splash_screen import SplashScreen
 
-def Main():
-    """Main application entry point"""
-    # Setup logging first
+def setup_application():
+    """Setup application configurations and logging"""
     setup_logging()
     logger = logging.getLogger(__name__)
     logger.info("Starting RaspPiReader application")
-    
-    # Process command line arguments (set earlier in __main__)
+    return logger
+
+def process_arguments():
+    """Process command line arguments"""
+    parser = argparse.ArgumentParser(description="RaspPiReader - PLC Data Reader Application")
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
+    parser.add_argument('--demo', action='store_true', help='Run in demo mode')
+    args = parser.parse_args()
+    pool.set('debug', args.debug)
+    pool.set('demo', args.demo)
+    return args
+
+def initialize_components(logger, args):
+    """Initialize application components"""
+    demo_mode = pool.config('demo', bool, False) or args.demo
+    pool.set('demo', demo_mode)
+    logger.info(f"Demo mode: {demo_mode}")
+
+    logger.info("Initializing local database...")
+    db = Database("sqlite:///local_database.db")
+    db.create_tables()
+
+    logger.info("Initializing PLC communication...")
+    success = initialize_plc_communication()
+    if success:
+        logger.info("PLC communication initialized successfully")
+    else:
+        logger.error("Failed to initialize PLC communication")
+
+    return db
+
+def start_sync_thread(logger):
+    """Start the database sync thread"""
+    logger.info("Starting database sync thread...")
+    sync_thread = SyncThread()
+    sync_thread.start()
+    logger.info("Database sync thread started")
+    return sync_thread
+
+def show_splash_screen(logger):
+    """Show the splash screen with a progress bar"""
+    logger.info("Launching splash screen...")
+    splash = SplashScreen()
+    splash.show()
+
+    for i in range(101):
+        QtWidgets.QApplication.processEvents()
+        splash.progress_bar.setValue(i)
+        time.sleep(0.02)
+
+    return splash
+
+def Main():
+    """Main application entry point"""
+    logger = setup_application()
+    args = process_arguments()
+
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
         logger.debug("Debug mode enabled")
-    
-    # Create Qt application
+
     app = QtWidgets.QApplication(sys.argv)
-    
+
     try:
-        # Check if we're in demo mode
-        demo_mode = pool.config('demo', bool, False) or args.demo
-        pool.set('demo', demo_mode)
-        logger.info(f"Demo mode: {demo_mode}")
-        
-        # Initialize database
-        logger.info("Initializing local database...")
-        db = Database("sqlite:///local_database.db")
-        db.create_tables()
-        
-        # Initialize PLC communication
-        logger.info("Initializing PLC communication...")
-        success = initialize_plc_communication()
-        if success:
-            logger.info("PLC communication initialized successfully")
-        else:
-            logger.error("Failed to initialize PLC communication")
-        
-        # Start database sync thread
-        logger.info("Starting database sync thread...")
-        sync_thread = SyncThread()
-        sync_thread.start()
-        logger.info("Database sync thread started")
-        
-        # --- Splash Screen Preloader ---
-        logger.info("Launching splash screen...")
-        splash = SplashScreen()  # SplashScreen creates and shows a progress bar
-        splash.show()
-        
-        # Simulate preloading steps (adjust sleep time as needed)
-        for i in range(101):
-            QtWidgets.QApplication.processEvents()  # Keep UI responsive
-            splash.progress_bar.setValue(i)
-            time.sleep(0.02)
-        
-        # After preloading, launch login form
+        initialize_components(logger, args)
+        start_sync_thread(logger)
+        splash = show_splash_screen(logger)
+
         logger.info("Launching login form...")
         login_form = LoginFormHandler()
         splash.finish(login_form)
         login_form.show()
-        
-        # Execute application
+
         return app.exec_()
     except Exception as e:
         logger.error(f"Error during application startup: {e}", exc_info=True)
-        # Show error message to user
         error_dialog = QtWidgets.QMessageBox()
         error_dialog.setIcon(QtWidgets.QMessageBox.Critical)
         error_dialog.setWindowTitle("Application Error")
@@ -85,15 +104,4 @@ def Main():
         return 1
 
 if __name__ == "__main__":
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(description="RaspPiReader - PLC Data Reader Application")
-    parser.add_argument('--debug', action='store_true', help='Enable debug mode')
-    parser.add_argument('--demo', action='store_true', help='Run in demo mode')
-    args = parser.parse_args()
-    
-    # Store command line arguments in pool
-    pool.set('debug', args.debug)
-    pool.set('demo', args.demo)
-    
-    # Run the application
     sys.exit(Main())

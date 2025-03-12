@@ -11,7 +11,7 @@ from PyQt5 import QtWidgets, uic
 from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction, QSizePolicy
-
+from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
 from RaspPiReader import pool
 from .mainForm import MainForm
 from .plot_handler import InitiatePlotWidget
@@ -64,11 +64,12 @@ class MainFormHandler(QMainWindow):
         self.user_record = user_record
         self.form_obj = MainForm()
         self.form_obj.setupUi(self)
-        
+        self.immediate_panel_update_locked = False
+
         # Retrieve or create StartCycleFormHandler
         self.start_cycle_form = pool.get("start_cycle_form")
         if not self.start_cycle_form:
-            from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
+            
             self.start_cycle_form = StartCycleFormHandler()
             pool.set("start_cycle_form", self.start_cycle_form)
             logger.info("Created new StartCycleFormHandler and set in pool inside MainFormHandler.")
@@ -79,7 +80,6 @@ class MainFormHandler(QMainWindow):
         pool.set('main_form', self)
         
         # Define the headers used for CSV file creation.
-        # Adjust the list below to match the columns (beyond date/time) you expect.
         self.headers = ['Date', 'Time', 'Timer(min)', 'CycleID', 'OrderID', 'Quantity', 'CycleLocation']
         self.file_name = None
         self.folder_name = None
@@ -90,11 +90,13 @@ class MainFormHandler(QMainWindow):
         self.username = self.user_record.username if self.user_record else ''
 
         self.cycle_timer = QTimer()
-        
+
+        # Initialize the data stacks (data_stack and test_data_stack)
+        self.create_stack()
+
         # Initialize connections, user display, and (optional) stacks
         self.set_connections()
         self.display_username()
-        # (Optional) self.create_stack()
         
         # Setup additional menus
         self.setup_access_controls()
@@ -176,32 +178,36 @@ class MainFormHandler(QMainWindow):
             logger.error(f"Error updating main form data: {e}")
 
     def update_cycle_info_panel(self):
-        # Cycle Set Parameters from default program configuration
-        self.maintainVacuumLabel.setText(str(pool.config("maintain_vacuum", float, 0)))
-        self.setCureTempLabel.setText(str(pool.config("core_temp_setpoint", float, 0)))
-        self.tempRampLabel.setText(str(pool.config("temp_ramp", float, 0)))
-        self.setPressureLabel.setText(str(pool.config("set_pressure", float, 0)))
-        self.dwellTimeLabel.setText(str(pool.config("dwell_time", str, "N/A")))
-        self.coolDownTempLabel.setText(str(pool.config("cool_down_temp", float, 0)))
-        
-        # Cycle Details from work order and saved configuration
-        self.cycleNumberLabel.setText(str(pool.config("cycle_id", int, 0)))
-        self.workOrderLabel.setText(str(pool.config("order_id", str, "")))
-        self.quantityLabel.setText(str(pool.config("quantity", int, 0)))
+        # Update cycle details using pool and start_cycle_form attributes.
+        # Only update widgets if they exist to avoid AttributeErrors.
+        if hasattr(self.form_obj, "d1"):
+            self.form_obj.d1.setText(str(pool.config("cycle_id", str, "N/A")))
+        if hasattr(self.form_obj, "d2"):
+            self.form_obj.d2.setText(str(pool.config("order_id", str, "N/A")))
+        if hasattr(self.form_obj, "d3"):
+            self.form_obj.d3.setText(str(pool.config("quantity", int, 0)))
         if hasattr(self.start_cycle_form, "cycle_start_time"):
-            self.cycleDateLabel.setText(self.start_cycle_form.cycle_start_time.strftime("%Y-%m-%d"))
-            self.cycleStartTimeLabel.setText(self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S"))
-        else:
-            self.cycleDateLabel.setText("N/A")
-            self.cycleStartTimeLabel.setText("N/A")
-        self.cycleEndTimeLabel.setText(datetime.now().strftime("%H:%M:%S"))
-        self.cycleLocationLabel.setText(str(pool.config("cycle_location", str, "N/A")))
-        
-        # Cycle Outcomes and Status based on ongoing cycle measurements
-        self.coreTempAboveTimeLabel.setText(str(pool.config("core_temp_above_setpoint_time", float, 0)))
-        self.pressureDropTempLabel.setText(str(pool.config("pressure_drop_core_temp", float, "N/A")))
-        self.cycleDurationLabel.setText(self._calculate_cycle_duration())
-
+            if hasattr(self.form_obj, "d4"):
+                elf.form_obj.d4.setText(self.start_cycle_form.cycle_start_time.strftime("%Y/%m/%d"))
+            if hasattr(self.form_obj, "d5"):
+                self.form_obj.d5.setText(self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S"))
+        if hasattr(self.form_obj, "d7"):
+            self.form_obj.d7.setText(str(pool.config("cycle_location", str, "N/A")))
+        if hasattr(self.form_obj, "p1"):
+            self.form_obj.p1.setText(str(pool.config("maintain_vacuum", float, 0)))
+        if hasattr(self.form_obj, "p2"):
+            self.form_obj.p2.setText(str(pool.config("initial_set_cure_temp", float, 0)))
+        if hasattr(self.form_obj, "p3"):
+            self.form_obj.p3.setText(str(pool.config("temp_ramp", float, 0)))
+        if hasattr(self.form_obj, "p4"):
+            self.form_obj.p4.setText(str(pool.config("set_pressure", float, 0)))
+        if hasattr(self.form_obj, "p5"):
+            self.form_obj.p5.setText(str(pool.config("dwell_time", str, "N/A")))
+        if hasattr(self.form_obj, "p6"):
+            self.form_obj.p6.setText(str(pool.config("cool_down_temp", float, 0)))
+        if hasattr(self.form_obj, "cH1Label_36"):
+            core_temp_setpoint = pool.config("core_temp_setpoint", float, 0)
+            self.form_obj.cH1Label_36.setText(f"TIME (min) CORE TEMP ≥ {core_temp_setpoint} °C:")
     def _calculate_cycle_duration(self):
         if hasattr(self.start_cycle_form, "cycle_start_time"):
             duration = datetime.now() - self.start_cycle_form.cycle_start_time
@@ -570,15 +576,13 @@ class MainFormHandler(QMainWindow):
         self.setWindowTitle(f"Main Form - Logged in as: {self.user_record.username if self.user_record else 'N/A'}")
 
     def create_stack(self):
-        # initialize data stack: [[process_time(minutes)], [v1], [v2], ... , [V14], sampling_time,]
-        data_stack = []
-        test_data_stack = []
-        for i in range(CHANNEL_COUNT + 2):
-            data_stack.append([])
-            test_data_stack.append([])
-            self.data_stack = pool.set("data_stack", data_stack)
-            self.test_data_stack = pool.set("test_data_stack", test_data_stack)
-        pass
+    # Initialize data_stack: one list for process_time and one for each channel plus one for sampling time.
+        data_stack = [[] for _ in range(CHANNEL_COUNT + 2)]
+        test_data_stack = [[] for _ in range(CHANNEL_COUNT + 2)]
+        pool.set("data_stack", data_stack)
+        pool.set("test_data_stack", test_data_stack)
+        self.data_stack = data_stack
+        self.test_data_stack = test_data_stack
     def load_active_channels(self):
         self.active_channels = []
         for i in range(CHANNEL_COUNT):
