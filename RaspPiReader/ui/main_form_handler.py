@@ -673,37 +673,45 @@ class MainFormHandler(QMainWindow):
         pass
 
     def create_plot(self, plot_layout=None, legend_layout=None):
-        self.headers = list()
-        self.headers.append(pool.config('h_label'))
-        self.headers.append(pool.config('left_v_label'))
-        self.headers.append(pool.config('right_v_label'))
+        # Read header labels from the pool configuration.
+        headers = []
         for i in range(1, CHANNEL_COUNT + 1):
-            self.headers.append(pool.config('label' + str(i)))
-
-        # Properly clean up old plots
-        if plot_layout is not None:
-            while plot_layout.count():
-                item = plot_layout.takeAt(0)
-                widget = item.widget()
-                if widget:
-                    widget.setParent(None)
-                    widget.deleteLater()  # Properly delete the widget
+            # Use pool.config with default value "CH{i}" if not set
+            label = pool.config('label' + str(i), str, f'CH{i}')
+            headers.append(label)
         
-        if legend_layout is not None:
-            while legend_layout.count():
-                item = legend_layout.takeAt(0)
-                widget = item.widget()
-                if widget:
-                    widget.setParent(None)
-                    widget.deleteLater()
+        # Clean out any old plot widget.
+        if hasattr(self, 'plot') and self.plot:
+            self.plot.cleanup()  # Let the plot widget free its resources
+            # Remove the widget from its parent layout if needed.
+            if plot_layout is None and hasattr(self, 'plot_layout'):
+                plot_layout = self.plot_layout
+            if plot_layout:
+                # Remove all widgets from this layout.
+                for index in reversed(range(plot_layout.count())):
+                    widget = plot_layout.itemAt(index).widget()
+                    if widget is not None:
+                        widget.setParent(None)
+            self.plot = None
 
-        # Create and return the new plot widget
-        return InitiatePlotWidget(
-            pool.get('active_channels'), 
-            plot_layout, 
+        # Use the instance layout if none supplied.
+        if plot_layout is None and hasattr(self, 'plot_layout'):
+            plot_layout = self.plot_layout
+
+        # Retrieve the active channels from the pool.
+        active_channels = pool.get('active_channels')
+        if active_channels is None:
+            # If not set, fall back to all channels (1 to CHANNEL_COUNT).
+            active_channels = list(range(1, CHANNEL_COUNT + 1))
+        
+        # Instantiate a new plot widget using the InitiatePlotWidget.
+        self.plot = InitiatePlotWidget(
+            active_channels=active_channels,
+            parent_layout=plot_layout,
             legend_layout=legend_layout,
-            headers=self.headers
+            headers=headers
         )
+        return self.plot
 
     def update_plot(self):
         # Don't use instance variables for locking state, use a proper lock
