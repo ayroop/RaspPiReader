@@ -4,7 +4,7 @@ class Pool:
     def __init__(self):
         self._registry = dict()
         self._setting = QSettings('RaspPiHandler', 'RaspPiModbusReader')
-        # Initialize default active channels (make sure to adjust CHANNEL_COUNT as needed)
+        # Initialize default active channels
         self._registry["active_channels"] = list(range(1, 15))  # For 14 channels
 
     def get(self, key):
@@ -31,6 +31,7 @@ class Pool:
             return default_val
 
     def set_config(self, key, value):
+        self._registry[key] = value
         self._setting.setValue(key, value)
 
 pool = Pool()

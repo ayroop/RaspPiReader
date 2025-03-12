@@ -23,21 +23,21 @@ class WorkOrderFormHandler(QtWidgets.QWidget):
         quantity = self.ui.quantitySpinBox.value()
 
         if not work_order:
-            QtWidgets.QMessageBox.warning(self, "Input Required", "Please enter a valid work order.")
+            QMessageBox.warning(self, "Input Error", "Please enter a Work Order Number")
             return
         if quantity <= 0:
-            QtWidgets.QMessageBox.warning(self, "Input Required", "Please enter a quantity greater than zero.")
+            QMessageBox.warning(self, "Input Error", "Product quantity must be at least 1")
             return
 
         logger.info(f"Starting serial number entry for work order {work_order} with quantity {quantity}")
 
-        # Update both the QSettings and the in-memory registry so that pool.config returns the new values.
+        # Update both the in‑memory registry and QSettings (pool)
         pool.set("order_id", work_order)
         pool.set("quantity", quantity)
         pool.set_config("order_id", work_order)
         pool.set_config("quantity", quantity)
 
-        # Launch Serial Number Entry form
+        # Then launch the Serial Number Entry form.
         self.serial_form = SerialNumberEntryFormHandler(work_order, quantity)
         self.serial_form.show()
         self.close()

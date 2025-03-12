@@ -7,13 +7,6 @@ from RaspPiReader.libs.models import CycleData, DefaultProgram, User, CycleSeria
 from RaspPiReader import pool
 import logging
 
-
-
-
-
-
-
-
 logger = logging.getLogger(__name__)
 
 class ProgramSelectionFormHandler(QtWidgets.QWidget):
@@ -68,9 +61,21 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         default_program = self.db.session.query(DefaultProgram).filter_by(
             username=current_user, program_number=program_index
         ).first()
-        
-        # Build an HTML table for better presentation.
+
+        # If a default program is found, update shared configuration keys.
         if default_program:
+            pool.set_config("cycle_location", default_program.cycle_location or "N/A")
+            pool.set_config("dwell_time", default_program.dwell_time if default_program.dwell_time is not None else 0.0)
+            pool.set_config("core_temp_setpoint", default_program.core_temp_setpoint if default_program.core_temp_setpoint is not None else 0.0)
+            pool.set_config("cool_down_temp", default_program.cool_down_temp if default_program.cool_down_temp is not None else 0.0)
+            pool.set_config("temp_ramp", default_program.temp_ramp if default_program.temp_ramp is not None else 0.0)
+            pool.set_config("set_pressure", default_program.set_pressure if default_program.set_pressure is not None else 0.0)
+            pool.set_config("maintain_vacuum", default_program.maintain_vacuum if default_program.maintain_vacuum is not None else 0.0)
+            pool.set_config("initial_set_cure_temp", default_program.initial_set_cure_temp if default_program.initial_set_cure_temp is not None else 0.0)
+            pool.set_config("final_set_cure_temp", default_program.final_set_cure_temp if default_program.final_set_cure_temp is not None else 0.0)
+            pool.set_config("quantity", default_program.quantity if hasattr(default_program, "quantity") and default_program.quantity is not None else 1)
+            pool.set_config("cycle_id", default_program.cycle_id if hasattr(default_program, "cycle_id") and default_program.cycle_id is not None else "")
+
             info_text = f"""
             <div style="font-family:Arial; font-size:16px; margin:10px;">
                 <h3 style="margin-bottom:10px;">Program {program_index} Settings</h3>
@@ -80,15 +85,17 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                         <th align="left">Value</th>
                     </tr>
                     <tr><td>Size</td><td>{default_program.size or 'N/A'}</td></tr>
+                    <tr><td>Cycle ID</td><td>{default_program.cycle_id or 'N/A'}</td></tr>
                     <tr><td>Cycle Location</td><td>{default_program.cycle_location or 'N/A'}</td></tr>
                     <tr><td>Dwell Time</td><td>{default_program.dwell_time or 'N/A'}</td></tr>
-                    <tr><td>Core Temperature</td><td>{default_program.core_temp_setpoint or 'N/A'}°C</td></tr>
                     <tr><td>Cool Down Temperature</td><td>{default_program.cool_down_temp or 'N/A'}°C</td></tr>
+                    <tr><td>Core Temperature Setpoint</td><td>{default_program.core_temp_setpoint or 'N/A'}°C</td></tr>
                     <tr><td>Temperature Ramp</td><td>{default_program.temp_ramp or 'N/A'}°C/min</td></tr>
                     <tr><td>Set Pressure</td><td>{default_program.set_pressure or 'N/A'} kPa</td></tr>
                     <tr><td>Maintain Vacuum</td><td>{default_program.maintain_vacuum or 'N/A'} %</td></tr>
-                    <tr><td>Initial Set Cure Temp</td><td>{default_program.initial_set_cure_temp or 'N/A'}°C</td></tr>
-                    <tr><td>Final Set Cure Temp</td><td>{default_program.final_set_cure_temp or 'N/A'}°C</td></tr>
+                    <tr><td>Initial Set Cure Temperature</td><td>{default_program.initial_set_cure_temp or 'N/A'}°C</td></tr>
+                    <tr><td>Final Set Cure Temperature</td><td>{default_program.final_set_cure_temp or 'N/A'}°C</td></tr>
+                    <tr><td>Quantity</td><td>{default_program.quantity or 'N/A'}</td></tr>
                 </table>
             </div>
             """
@@ -99,7 +106,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                 <p>No default settings found for this program.</p>
             </div>
             """
-        # Ensure the programInfoLabel widget is updated within the method.
+        # Update the UI display for program information.
         if hasattr(self.ui, "programInfoLabel"):
             self.ui.programInfoLabel.setMinimumWidth(500)
             self.ui.programInfoLabel.setMinimumHeight(400)
@@ -150,7 +157,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             self.db.session.commit()
             self.cycle_record = new_cycle
             
-            # Save each serial number
+            # Save each serial number.
             for sn in self.serial_numbers:
                 sn = sn.strip()
                 if sn:
