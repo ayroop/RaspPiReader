@@ -224,6 +224,39 @@ The application will automatically sync the general configuration settings, OneD
 - **Requirements File**: The [requirements.txt](http://_vscodecontentref_/1) file contains all the necessary packages for the project.
 - **Running the Application**: The [run.py](http://_vscodecontentref_/2) script starts the application.
 
+### Building the Executable with PyInstaller
+
+To bundle the application into a single executable for easy distribution, follow these steps:
+
+1. **Ensure Dependencies are Installed:**  
+   Activate your virtual environment and install all required packages:
+   ```sh
+   .\venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+2. **Place the Icon and Database File:**  
+   Make sure that the icon file (`RaspPiReader-icon.ico`) and your database file (`local_database.db`) are in the project root or in the same folder as `run.py`.
+
+3. **Install PyInstaller:**  
+   If not already installed, install PyInstaller:
+   ```sh
+   pip install pyinstaller
+   ```
+
+4. **Build the Executable:**  
+   Run the following command from the project root:
+   ```sh
+   pyinstaller --onefile --windowed --icon="RaspPiReader-icon.ico" --add-data "local_database.db;." run.py
+   ```
+   - `--onefile` bundles your application into a single executable.
+   - `--windowed` prevents a terminal window from opening when the GUI launches.
+   - `--icon="RaspPiReader-icon.ico"` sets your custom icon.
+   - `--add-data "local_database.db;."` includes the local database in the same folder as the executable.
+
+5. **Test the Executable:**  
+   The generated executable will be located in the `dist` folder. Navigate to that folder and run the executable to verify that it works as expected.
+   
 ### Troubleshooting
 
 - If you encounter any issues, ensure that all dependencies are installed correctly.
