@@ -16,7 +16,10 @@ class Database:
         self.engine = create_engine(database_url)
         self.Session = sessionmaker(bind=self.engine)
         self.session = self.Session()
-
+        # Automatically create any missing tables
+        self.create_tables()
+        self.session = self.Session()
+        
     def create_tables(self):
         Base.metadata.create_all(self.engine)
 
