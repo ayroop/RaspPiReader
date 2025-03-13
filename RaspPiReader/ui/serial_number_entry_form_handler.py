@@ -225,7 +225,7 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
 
             # Transition to Program Selection
             logger.info(f"Transitioning to program selection with work order {self.work_order} and {len(final_serials)} serial numbers")
-            self.program_form = ProgramSelectionFormHandler(self.work_order, final_serials, parent=None)
+            self.program_form = ProgramSelectionFormHandler(self.work_order, final_serials, self.quantity, parent=None)
             self.program_form.setMinimumSize(500, 300)
             self.program_form.show()
             self.program_form.raise_()

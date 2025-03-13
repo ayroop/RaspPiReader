@@ -1,4 +1,4 @@
-from PyQt5 import QtWidgets
+from PyQt5 import QtWidgets, QtCore
 from datetime import datetime
 from RaspPiReader.ui.program_selection_form import Ui_ProgramSelectionForm
 from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
@@ -10,36 +10,38 @@ import logging
 logger = logging.getLogger(__name__)
 
 class ProgramSelectionFormHandler(QtWidgets.QWidget):
-    def __init__(self, work_order, serial_numbers, parent=None):
+    def __init__(self, work_order, serial_numbers, quantity, parent=None):
         super(ProgramSelectionFormHandler, self).__init__(parent)
         self.ui = Ui_ProgramSelectionForm()
         self.ui.setupUi(self)
         self.work_order = work_order
+        self.quantity = quantity      # store user set quantity
         self.serial_numbers = serial_numbers  # list of (processed) serial numbers
         self.db = Database("sqlite:///local_database.db")
-        
-        # Set window title and initial/minimum size to ensure a proper appearance.
+        # Debug log to check quantity
+        logger.info(f"ProgramSelectionFormHandler initiated with quantity: {self.quantity}")
+        # Set window title and initial/minimum size
         self.setWindowTitle(f"Select Program for Order: {work_order}")
         self.resize(800, 600)
         self.setMinimumSize(800, 600)
         
-        # Set an overall stylesheet to increase font sizes.
+        # Set stylesheet for better font sizes
         self.setStyleSheet("QWidget { font-size: 16px; }")
         
-        # Set label text if not already set in the UI.
+        # Set label text if not already set
         if hasattr(self.ui, "programLabel"):
             self.ui.programLabel.setText("Select Program:")
         
-        # Populate program items if needed.
+        # Populate the combo box with programs
         self.populate_program_combo()
         
-        # Set button text if not provided in the UI.
+        # Set button texts if not provided by the UI
         if hasattr(self.ui, "startCycleButton"):
             self.ui.startCycleButton.setText("Start Cycle")
         if hasattr(self.ui, "cancelButton"):
             self.ui.cancelButton.setText("Cancel")
         
-        # Connect signals.
+        # Connect signals
         self.ui.startCycleButton.clicked.connect(self.start_cycle)
         self.ui.cancelButton.clicked.connect(self.close)
         self.ui.programComboBox.currentIndexChanged.connect(self.update_program_info)
@@ -48,7 +50,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         self.update_program_info(self.ui.programComboBox.currentIndex())
     
     def populate_program_combo(self):
-        """Ensure the combo box has the correct program items."""
+        # For demo purposes, if the combo box is empty add a few items
         if self.ui.programComboBox.count() == 0:
             self.ui.programComboBox.addItem("Program 1")
             self.ui.programComboBox.addItem("Program 2")
@@ -62,8 +64,8 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             username=current_user, program_number=program_index
         ).first()
 
-        # If a default program is found, update shared configuration keys.
         if default_program:
+            # Update configuration settings in the pool from the default program.
             pool.set_config("cycle_location", default_program.cycle_location or "N/A")
             pool.set_config("dwell_time", default_program.dwell_time if default_program.dwell_time is not None else 0.0)
             pool.set_config("core_temp_setpoint", default_program.core_temp_setpoint if default_program.core_temp_setpoint is not None else 0.0)
@@ -73,7 +75,8 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             pool.set_config("maintain_vacuum", default_program.maintain_vacuum if default_program.maintain_vacuum is not None else 0.0)
             pool.set_config("initial_set_cure_temp", default_program.initial_set_cure_temp if default_program.initial_set_cure_temp is not None else 0.0)
             pool.set_config("final_set_cure_temp", default_program.final_set_cure_temp if default_program.final_set_cure_temp is not None else 0.0)
-            pool.set_config("quantity", default_program.quantity if hasattr(default_program, "quantity") and default_program.quantity is not None else 1)
+            # Always use the user-provided quantity
+            pool.set_config("quantity", self.quantity)
             pool.set_config("cycle_id", default_program.cycle_id if hasattr(default_program, "cycle_id") and default_program.cycle_id is not None else "")
 
             info_text = f"""
@@ -95,7 +98,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                     <tr><td>Maintain Vacuum</td><td>{default_program.maintain_vacuum or 'N/A'} %</td></tr>
                     <tr><td>Initial Set Cure Temperature</td><td>{default_program.initial_set_cure_temp or 'N/A'}°C</td></tr>
                     <tr><td>Final Set Cure Temperature</td><td>{default_program.final_set_cure_temp or 'N/A'}°C</td></tr>
-                    <tr><td>Quantity</td><td>{default_program.quantity or 'N/A'}</td></tr>
+                    <tr><td>Quantity</td><td>{self.quantity}</td></tr>
                 </table>
             </div>
             """
@@ -106,18 +109,18 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                 <p>No default settings found for this program.</p>
             </div>
             """
-        # Update the UI display for program information.
         if hasattr(self.ui, "programInfoLabel"):
             self.ui.programInfoLabel.setMinimumWidth(500)
             self.ui.programInfoLabel.setMinimumHeight(400)
+            self.ui.programInfoLabel.setTextFormat(QtCore.Qt.RichText)
             self.ui.programInfoLabel.setText(info_text)
     
     def start_cycle(self):
         logger.info("Start Cycle button pressed")
         program_index = self.ui.programComboBox.currentIndex() + 1
         current_user = pool.get("current_user")
-        
-        # Query DefaultProgram record for current user and program_index (unchanged logic)
+
+        # Query DefaultProgram for the currently selected program
         default_program = self.db.session.query(DefaultProgram).filter_by(
             username=current_user, program_number=program_index
         ).first()
@@ -126,7 +129,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                 self, "Warning", f"No default program found for Program {program_index}"
             )
             return
-        
+
         user = self.db.session.query(User).filter_by(username=current_user).first()
         if not user:
             QtWidgets.QMessageBox.critical(self, "Database Error", "Logged-in user not found.")
@@ -140,11 +143,11 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             maintain_vacuum = bool(int(default_program.maintain_vacuum))
             initial_set_cure_temp = float(default_program.initial_set_cure_temp)
             final_set_cure_temp = float(default_program.final_set_cure_temp)
-            
-            # Create new cycle record with supported fields.
+
+            # Create new cycle record using the user-provided quantity
             new_cycle = CycleData(
                 order_id=self.work_order,
-                quantity=len(self.serial_numbers),
+                quantity=self.quantity,  # Always use self.quantity
                 core_temp_setpoint=core_temp_setpoint,
                 cool_down_temp=cool_down_temp,
                 set_pressure=set_pressure,
@@ -156,8 +159,8 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             self.db.session.add(new_cycle)
             self.db.session.commit()
             self.cycle_record = new_cycle
-            
-            # Save each serial number.
+
+            # Save serial numbers
             for sn in self.serial_numbers:
                 sn = sn.strip()
                 if sn:
@@ -168,7 +171,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                     record = CycleSerialNumber(cycle_id=new_cycle.id, serial_number=sn)
                     self.db.session.add(record)
             self.db.session.commit()
-            logger.info(f"New cycle created: Order {self.work_order}, Program {program_index}, {len(self.serial_numbers)} serial numbers")
+            logger.info(f"New cycle created: Order {self.work_order}, Program {program_index}, Quantity {self.quantity}, {len(self.serial_numbers)} serial numbers")
         except Exception as e:
             self.db.session.rollback()
             logger.error(f"Database error creating cycle: {e}")
@@ -176,11 +179,16 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                 self, "Database Error", f"Could not save cycle data: {str(e)}"
             )
             return
-        
-        # Retrieve the active StartCycleFormHandler instance from the pool and start the cycle.
+
+        # Retrieve the active StartCycleFormHandler from the pool and start the cycle.
         start_cycle_form = pool.get("start_cycle_form")
-        if start_cycle_form:
+        if start_cycle_form and hasattr(start_cycle_form, "start_cycle"):
             start_cycle_form.start_cycle()
-        
+
+        # Optionally update main form cycle info.
+        main_form = pool.get("main_form")
+        if main_form and hasattr(main_form, "update_cycle_info_pannel"):
+            main_form.update_cycle_info_pannel(default_program)
+
         QtWidgets.QMessageBox.information(self, "Success", "Cycle started successfully!")
         self.close()

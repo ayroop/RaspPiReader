@@ -77,8 +77,7 @@ class MainFormHandler(QMainWindow):
         logger.info("Connected data_updated_signal from StartCycleFormHandler")
         
         # Set main_form in the pool
-        pool.set('main_form', self)
-        
+        pool.set("main_form", self)
         # Define the headers used for CSV file creation.
         self.headers = ['Date', 'Time', 'Timer(min)', 'CycleID', 'OrderID', 'Quantity', 'CycleLocation']
         self.file_name = None
@@ -123,6 +122,7 @@ class MainFormHandler(QMainWindow):
         self.live_update_timer = QTimer(self)
         self.live_update_timer.timeout.connect(self.update_live_data)
         self.live_update_timer.start(500)  # Update live data every 500ms (adjust as needed)
+        
         logger.info("Live update timer started.")
         self.showMaximized()
         logger.info("MainFormHandler initialized.")
@@ -794,14 +794,17 @@ class MainFormHandler(QMainWindow):
         self.run_duration.setText(timedelta2str(datetime.now() - self.start_cycle_form.cycle_start_time))
         self.d6.setText(datetime.now().strftime("%H:%M:%S"))  # Cycle end time
 
-    def update_cycle_info_pannel(self):
-        self.d1.setText(str(pool.config("cycle_id", str, "")))
+    def update_cycle_info_pannel(self, program=None):
+        # Cycle Info Panel – basic data:
+        self.d1.setText(
+            str(program.cycle_id) if program and program.cycle_id else pool.config("cycle_id", str, "")
+        )
         self.d2.setText(pool.config("order_id", str, ""))
-        # Use a default of 1 for quantity if nothing is set.
-        quantity = pool.config("quantity", int, 1)
-        # (Optional) Log the quantity value
-        print("DEBUG: Quantity from pool.config =", quantity)
-        self.d3.setText(str(quantity))
+        # Retrieve quantity using pool.get instead of pool.config
+        qty = pool.get("quantity")
+        if qty is None:
+            qty = 0
+        self.d3.setText(str(qty))
         
         if self.start_cycle_form and hasattr(self.start_cycle_form, 'cycle_start_time'):
             self.d4.setText(self.start_cycle_form.cycle_start_time.strftime("%Y/%m/%d"))
@@ -810,17 +813,33 @@ class MainFormHandler(QMainWindow):
             self.d4.setText("N/A")
             self.d5.setText("N/A")
         
-        self.d7.setText(pool.config("cycle_location", str, ""))
-        
-        self.p1.setText(str(pool.config("maintain_vacuum", float, 0.0)))
-        self.p2.setText(str(pool.config("initial_set_cure_temp", float, 0.0)))
-        self.p3.setText(str(pool.config("temp_ramp", float, 0.0)))
-        self.p4.setText(str(pool.config("set_pressure", float, 0.0)))
-        self.p5.setText(str(pool.config("dwell_time", float, 0.0)))
-        self.p6.setText(str(pool.config("cool_down_temp", float, 0.0)))
-        
-        self.cH1Label_36.setText(f"TIME (min) CORE TEMP ≥ {str(pool.config('core_temp_setpoint', float, 0.0))} °C:")
+        self.d7.setText(
+            str(program.cycle_location) if program and program.cycle_location else pool.config("cycle_location", str, "")
+        )
 
+        # Cycle Set Parameters Panel:
+        self.p1.setText(
+            str(program.maintain_vacuum) if program and program.maintain_vacuum is not None else str(pool.config("maintain_vacuum", float, 0.0))
+        )
+        self.p2.setText(
+            str(program.initial_set_cure_temp) if program and program.initial_set_cure_temp is not None else str(pool.config("initial_set_cure_temp", float, 0.0))
+        )
+        self.p3.setText(
+            str(program.temp_ramp) if program and program.temp_ramp is not None else str(pool.config("temp_ramp", float, 0.0))
+        )
+        self.p4.setText(
+            str(program.set_pressure) if program and program.set_pressure is not None else str(pool.config("set_pressure", float, 0.0))
+        )
+        self.p5.setText(
+            str(program.dwell_time) if program and program.dwell_time is not None else str(pool.config("dwell_time", float, 0.0))
+        )
+        self.p6.setText(
+            str(program.cool_down_temp) if program and program.cool_down_temp is not None else str(pool.config("cool_down_temp", float, 0.0))
+        )
+        
+        self.cH1Label_36.setText(
+            f"TIME (min) CORE TEMP ≥ {str(program.core_temp_setpoint) if (program and program.core_temp_setpoint is not None) else str(pool.config('core_temp_setpoint', float, 0.0))} °C:"
+        )
     def update_live_data(self):
         try:
             # Update Vacuum Gauges (CH1 - CH8)
@@ -872,7 +891,7 @@ class MainFormHandler(QMainWindow):
             if hasattr(self.form_obj, "workOrderLabel"):
                 self.form_obj.workOrderLabel.setText(str(pool.config("order_id", str, "")))
             if hasattr(self.form_obj, "quantityLabel"):
-                self.form_obj.quantityLabel.setText(str(pool.config("quantity", int, 0)))
+                self.form_obj.quantityLabel.setText(str(pool.get("quantity") or 0))
         except Exception as e:
             logger.error("Error in update_live_data: " + str(e))
     def create_csv_file(self):

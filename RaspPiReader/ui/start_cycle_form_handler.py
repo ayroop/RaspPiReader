@@ -325,7 +325,10 @@ class StartCycleFormHandler(QMainWindow):
 
     def start_cycle(self):
         self.cycle_start_time = datetime.now()
-        self.save_cycle_data()  # This method must set pool["current_cycle"] after a successful commit.
+        self.save_cycle_data()  # This method will have stored the cycle data in pool as "current_cycle"
+        # Assign the cycle record from the pool so that stop_cycle can find it.
+        self.cycle_record = pool.get("current_cycle")
+        pool.set("start_cycle_form", self)  # Set the start_cycle_form in the pool
         main_form = pool.get('main_form')
         if main_form:
             main_form.actionStart.setEnabled(False)
@@ -339,7 +342,6 @@ class StartCycleFormHandler(QMainWindow):
         if self.read_thread:
             self.read_thread.start()
         self.initiate_onedrive_update_thread()
-
     def stop_cycle(self):
         # Ensure that the active cycle record exists
         if not hasattr(self, "cycle_record") or self.cycle_record is None:
@@ -412,7 +414,19 @@ class StartCycleFormHandler(QMainWindow):
             except Exception:
                 pass
 
+        self.running = False  # Mark the cycle as no longer running
         self.close()
+
+        # Stop the timers on the main form
+        main_form = pool.get('main_form')
+        if main_form:
+            main_form.cycle_timer.stop()
+            main_form.actionStart.setEnabled(True)
+            main_form.actionStop.setEnabled(False)
+
+        # Remove the active cycle references from pool so stop cannot be called again on a non-existent cycle.
+        pool.set("start_cycle_form", None)
+        pool.set("current_cycle", None)
 
     def get_serial_numbers(self):
         try:

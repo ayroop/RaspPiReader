@@ -28,14 +28,14 @@ class NewCycleHandler(QtWidgets.QWidget):
     def stop_cycle(self):
         logger.info("Stop Cycle button clicked")
         try:
-            main_form = pool.get('main_form')
-            if main_form:
-                main_form._stop()  # Stop logic in main form
-                logger.info("Cycle stop delegated to main form")
+            start_cycle_form = pool.get('start_cycle_form')
+            if start_cycle_form:
+                start_cycle_form.stop_cycle()  # Delegate to the active cycle form.
+                logger.info("Cycle stop delegated to start cycle form")
             else:
-                logger.error("Main form not found in pool")
+                logger.error("No active cycle found in pool")
                 QtWidgets.QMessageBox.warning(
-                    self, "Warning", "Could not stop cycle - main form not found."
+                    self, "Warning", "Could not stop cycle - active cycle not found."
                 )
         except Exception as e:
             logger.error(f"Error stopping cycle: {str(e)}")
