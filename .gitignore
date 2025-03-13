@@ -44,3 +44,4 @@ local_database.db.bak
 reports
 wkhtmltopdf.exe
 wkhtmltopdf.zip
+setup.iss
