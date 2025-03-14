@@ -44,6 +44,7 @@ from RaspPiReader.ui.alarm_settings_form_handler import AlarmSettingsFormHandler
 # Add PLC connection status
 from RaspPiReader.libs import plc_communication
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
+from RaspPiReader.libs.plc_communication import read_holding_register, read_coils
 
 logger = logging.getLogger(__name__)
 def timedelta2str(td):
@@ -129,24 +130,38 @@ class MainFormHandler(QMainWindow):
 
     def update_data(self, new_data):
         """
-        Update UI elements based on the new_data dictionary.
-        Keys expected:
-         - temperature: float/int for temperature in °C
-         - pressure: float/int for cylinder pressure in KPa
-         - vacuum: dict with keys 'CH1'..'CH8' for vacuum gauge values (KPa)
-         - cycle_info: dict with keys 'maintain_vacuum','set_cure_temp','temp_ramp',
-                         'set_pressure','dwell_time','cool_down_temp','cycle_start_time','cycle_end_time'
-         - plot: list of (time, value) pairs for plotting
+        Update UI elements based on the new_data dictionary and live PLC channel readings.
+        
+        Expected keys in new_data:
+        - temperature, pressure
+        - vacuum: dict with keys 'CH1'..'CH8' (vacuum gauge values in KPa)
+        - cycle_info: dict with keys such as 'maintain_vacuum', 'set_cure_temp', etc.
+        - plot: list of (time, value) pairs for plotting
+        
+        Additionally, live channel values from the PLC (using read_holding_register)
+        are read and can be used to update dedicated UI labels.
         """
+        from RaspPiReader.libs.plc_communication import read_holding_register
         logger.info(f"MainForm received update: {new_data}")
         try:
-            # Temperature and Pressure
+            # Update Temperature and Pressure from simulation data
             temperature = new_data.get('temperature', 'N/A')
             pressure = new_data.get('pressure', 'N/A')
             self.form_obj.temperatureLabel.setText(f"Temperature: {temperature} °C")
             self.form_obj.pressureLabel.setText(f"Pressure: {pressure} KPa")
             
-            # Vacuum Gauge channels CH1 to CH8
+            # Read PLC channel values (e.g., CH1 to CH8) using holding registers
+            channel_values = {}
+            for ch in range(1, CHANNEL_COUNT + 1):
+                addr_key = f'channel_{ch}_address'
+                channel_addr = pool.config(addr_key, int, 0)
+                # Read the value from the PLC register; if error, default to zero
+                channel_value = read_holding_register(channel_addr, 1)
+                channel_values[f"CH{ch}"] = channel_value if channel_value is not None else 0
+                # Optionally update dedicated UI labels for each channel; for example:
+                # getattr(self.form_obj, f"channel{ch}Label").setText(str(channel_values[f'CH{ch}']))
+            
+            # Update Vacuum Gauge channels from simulation data
             vacuum_data = new_data.get('vacuum', {})
             if vacuum_data:
                 self.form_obj.vacuumLabelCH1.setText(f"CH1: {vacuum_data.get('CH1', 0)} KPa")
@@ -158,7 +173,7 @@ class MainFormHandler(QMainWindow):
                 self.form_obj.vacuumLabelCH7.setText(f"CH7: {vacuum_data.get('CH7', 0)} KPa")
                 self.form_obj.vacuumLabelCH8.setText(f"CH8: {vacuum_data.get('CH8', 0)} KPa")
             
-            # Cycle Info fields
+            # Update Cycle Info fields from simulation data
             cycle_info = new_data.get('cycle_info', {})
             if cycle_info:
                 self.form_obj.maintainVacuumLineEdit.setText(str(cycle_info.get('maintain_vacuum', '')))
@@ -170,7 +185,7 @@ class MainFormHandler(QMainWindow):
                 self.form_obj.cycleStartTimeLabel.setText(cycle_info.get('cycle_start_time', 'N/A'))
                 self.form_obj.cycleEndTimeLabel.setText(cycle_info.get('cycle_end_time', 'N/A'))
             
-            # Plot update (expects plot data as a list of tuples, where each tuple has format: (time, val1, val2, ...))
+            # Update the plot if plot data is available
             plot_data = new_data.get('plot', [])
             if plot_data and self.plot:
                 self.plot.update_plot_data(plot_data)
@@ -268,26 +283,25 @@ class MainFormHandler(QMainWindow):
 
     def update_bool_status(self):
         """
-        Update the Boolean status labels with data from the database and real-time PLC status.
-        Each label will show text like:
-        "Bool Address 1: <Address> - <Label> - <Status>"
-        where the <Address> and <Label> are formatted with the fixed color code #832116,
-        and <Status> is the dynamic PLC value in green if True or red if False.
+        Update the Boolean status labels with the latest PLC status.
+        
+        Each label displays:
+        "Bool Address X: <Address> - <Label> - <Status>"
+        
+        The dynamic PLC value for each boolean (read via dataReader) is shown in green if True,
+        red if False, or black if unavailable.
         """
-        from RaspPiReader.libs.database import Database
-        from RaspPiReader.libs.communication import dataReader
-
+      
         db = Database("sqlite:///local_database.db")
         boolean_entries = db.session.query(BooleanAddress).all()
         fixed_color = "#832116"
 
-        # Loop through each status widget (assumed to be stored in self.boolStatusLabels)
         for i, label in enumerate(self.boolStatusLabels):
             if i < len(boolean_entries):
                 entry = boolean_entries[i]
-                # Attempt to read dynamic bool status from the PLC for this address.
+                # Read the PLC boolean status from the designated address
                 try:
-                    plc_status = dataReader.read_bool_address(entry.address, dev=1)  # Expected to return True or False
+                    plc_status = dataReader.read_bool_address(entry.address, dev=1)
                 except Exception as ex:
                     plc_status = None
 
@@ -428,6 +442,33 @@ class MainFormHandler(QMainWindow):
         self.dynamicStatusLabel.setStyleSheet(f"color: {color.lower()};")
         # The ms_timeout parameter can be used if you later decide to clear the message after some time.
         
+    def update_alarm_status(self):
+        """
+        Read a dedicated alarm address (holding register) from the PLC and update the UI.
+        
+        Alarm codes are interpreted as:
+        0 = No Alarm
+        1 = Low Pressure
+        2 = High Pressure
+        otherwise, the code is displayed.
+        
+        This method can be called independently or integrated inside update_connection_status_display.
+        """
+        alarm_address = pool.config('alarm_address', int, 200)  # adjust the address as needed
+        alarm_value = read_holding_register(alarm_address, 1)
+        if alarm_value == 0:
+            alarm_text = "No Alarm"
+        elif alarm_value == 1:
+            alarm_text = "Low Pressure"
+        elif alarm_value == 2:
+            alarm_text = "High Pressure"
+        else:
+            alarm_text = f"Alarm Code {alarm_value}"
+        
+        # Update a dedicated alarm status label if available in your UI.
+        if hasattr(self.form_obj, 'alarmStatusLabel'):
+            self.form_obj.alarmStatusLabel.setText(alarm_text)
+        logger.info(f"Alarm status updated: {alarm_text}")
 
     def check_alarms(self):
         """

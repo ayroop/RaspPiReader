@@ -19,6 +19,7 @@ from RaspPiReader.libs.cycle_finalization import finalize_cycle
 from RaspPiReader.ui.serial_number_management_form_handler import SerialNumberManagementFormHandler
 from RaspPiReader.libs.models import CycleData, User, Alarm, DefaultProgram, CycleSerialNumber
 from RaspPiReader.libs import plc_communication
+from RaspPiReader.libs.plc_communication import write_coil
 
 logger = logging.getLogger(__name__)
 
@@ -325,17 +326,22 @@ class StartCycleFormHandler(QMainWindow):
 
     def start_cycle(self):
         self.cycle_start_time = datetime.now()
-        self.save_cycle_data()  # This method will have stored the cycle data in pool as "current_cycle"
-        # Assign the cycle record from the pool so that stop_cycle can find it.
+        self.save_cycle_data()  # Stores the cycle data in pool as "current_cycle"
         self.cycle_record = pool.get("current_cycle")
-        pool.set("start_cycle_form", self)  # Set the start_cycle_form in the pool
+        pool.set("start_cycle_form", self)
+        
+        # Write to the start cycle coil so the PLC knows the cycle has started.
+        start_coil_addr = pool.config('cycle_start_coil_address', int, 100)  # example address, adjust as needed
+        from RaspPiReader.libs.plc_communication import write_coil
+        write_coil(start_coil_addr, True)
+        
         main_form = pool.get('main_form')
         if main_form:
             main_form.actionStart.setEnabled(False)
             main_form.actionStop.setEnabled(True)
             main_form.create_csv_file()
             main_form.cycle_timer.start(500)
-            main_form.update_cycle_info_pannel()  # Force immediate update
+            main_form.update_cycle_info_pannel()
         self.running = True
         self.hide()
         self.initiate_reader_thread()
@@ -347,6 +353,10 @@ class StartCycleFormHandler(QMainWindow):
         if not hasattr(self, "cycle_record") or self.cycle_record is None:
             QMessageBox.critical(self, "Error", "No active cycle record found.")
             return
+
+        # Write 0 to the start cycle coil to signal the cycle is stopped.
+        start_coil_addr = pool.config('cycle_start_coil_address', int, 100)
+        write_coil(start_coil_addr, False)
 
         # Update the cycle record's stop time
         self.cycle_record.stop_time = datetime.now()
