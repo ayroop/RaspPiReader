@@ -324,12 +324,39 @@ class StartCycleFormHandler(QMainWindow):
         logger.info(f"Cycle data saved for order {cycle_data.order_id}")
         pool.set("current_cycle", cycle_data)  # Store the cycle data
 
+    def start_cycle_signal(self):
+        """
+        Send a signal to the PLC that the cycle is starting. 
+        Writes True (coil=1) to the dedicated coil address.
+        """
+        coil_addr = pool.config("cycle_start_coil_address", int, 100)
+        success = plc_communication.write_coil(coil_addr, True)
+        if success:
+            self.cycle_start_time = datetime.now()
+            logger.info(f"Cycle start signal sent (coil {coil_addr} set to True).")
+        else:
+            logger.error("Failed to send cycle start signal to PLC.")
+
+    def stop_cycle_signal(self):
+        """
+        Send a signal to the PLC that the cycle is stopping.
+        Writes False (coil=0) to the dedicated coil address.
+        """
+        coil_addr = pool.config("cycle_start_coil_address", int, 100)
+        success = plc_communication.write_coil(coil_addr, False)
+        if success:
+            self.cycle_end_time = datetime.now()
+            logger.info(f"Cycle stop signal sent (coil {coil_addr} set to False).")
+        else:
+            logger.error("Failed to send cycle stop signal to PLC.")
+
     def start_cycle(self):
         self.cycle_start_time = datetime.now()
         self.save_cycle_data()  # Stores the cycle data in pool as "current_cycle"
         self.cycle_record = pool.get("current_cycle")
         pool.set("start_cycle_form", self)
-        
+        self.start_cycle_signal()
+
         # Write to the start cycle coil so the PLC knows the cycle has started.
         start_coil_addr = pool.config('cycle_start_coil_address', int, 100)  # example address, adjust as needed
         from RaspPiReader.libs.plc_communication import write_coil
@@ -348,6 +375,7 @@ class StartCycleFormHandler(QMainWindow):
         if self.read_thread:
             self.read_thread.start()
         self.initiate_onedrive_update_thread()
+        self.show()
     def stop_cycle(self):
         # Ensure that the active cycle record exists
         if not hasattr(self, "cycle_record") or self.cycle_record is None:

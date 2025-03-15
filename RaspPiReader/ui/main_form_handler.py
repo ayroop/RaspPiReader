@@ -11,13 +11,12 @@ from PyQt5 import QtWidgets, uic
 from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction, QSizePolicy
-from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
 from RaspPiReader import pool
 from .mainForm import MainForm
+from RaspPiReader.ui.mainForm import MainForm
 from .plot_handler import InitiatePlotWidget
 from .plot_preview_form_handler import PlotPreviewFormHandler
 from .setting_form_handler import SettingFormHandler, CHANNEL_COUNT
-from .start_cycle_form_handler import StartCycleFormHandler
 from .user_management_form_handler import UserManagementFormHandler
 from RaspPiReader.ui.one_drive_settings_form_handler import OneDriveSettingsFormHandler
 from RaspPiReader.libs.onedrive_api import OneDriveAPI
@@ -26,13 +25,15 @@ from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormH
 
 import pyqtgraph as pg
 
-# New import related with 6 bool addresses and new cycle widget
+# New imports for new cycle workflow
 from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.configuration import config
 from .boolean_status import Ui_BooleanStatusWidget
 from RaspPiReader.libs.models import BooleanStatus, PlotData, BooleanAddress
 from RaspPiReader.libs.database import Database
-from RaspPiReader.ui.new_cycle_handler import NewCycleHandler
+from RaspPiReader.ui.new_cycle_handler import NewCycleHandler  # Use new cycle widget
+from RaspPiReader.ui.default_program_form import DefaultProgramForm
+from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler  # For work order flow
 
 # Add default program settings
 from RaspPiReader.ui.default_program_form import DefaultProgramForm
@@ -47,12 +48,11 @@ from RaspPiReader.libs.cycle_finalization import finalize_cycle
 from RaspPiReader.libs.plc_communication import read_holding_register, read_coils
 
 logger = logging.getLogger(__name__)
+
 def timedelta2str(td):
-    # Use total_seconds to account for days as well
     total_seconds = int(td.total_seconds())
     h, rem = divmod(total_seconds, 3600)
     m, s = divmod(rem, 60)
-    # Zero-pad each component to always have two digits
     def zp(val):
         return str(val).zfill(2)
     return f"{zp(h)}:{zp(m)}:{zp(s)}"
@@ -63,22 +63,28 @@ class MainFormHandler(QMainWindow):
     def __init__(self, user_record=None):
         super(MainFormHandler, self).__init__()
         self.user_record = user_record
+
+        # Setup UI. setupUi attaches widgets (e.g. run_duration, d6) to self.
         self.form_obj = MainForm()
         self.form_obj.setupUi(self)
         self.immediate_panel_update_locked = False
 
-        # Retrieve or create StartCycleFormHandler
-        self.start_cycle_form = pool.get("start_cycle_form")
-        if not self.start_cycle_form:
-            
-            self.start_cycle_form = StartCycleFormHandler()
-            pool.set("start_cycle_form", self.start_cycle_form)
-            logger.info("Created new StartCycleFormHandler and set in pool inside MainFormHandler.")
-        self.start_cycle_form.data_updated_signal.connect(self.update_data)
-        logger.info("Connected data_updated_signal from StartCycleFormHandler")
-        
+        # Immediately assign cycle timer labels using findChild.
+        self.run_duration = self.findChild(QtWidgets.QLabel, "run_duration")
+        self.d6 = self.findChild(QtWidgets.QLabel, "d6")
+        if self.run_duration is None or self.d6 is None:
+            logger.warning("Cycle timer labels (run_duration and d6) not found on main window.")
+        else:
+            logger.info("Cycle timer labels successfully identified.")
+
+        # New code – initialize new cycle widget
+        self.new_cycle_handler = NewCycleHandler(self)
+        self.new_cycle_handler.show()
+        logger.info("Initialized NewCycleHandler for new cycle workflow")
+
         # Set main_form in the pool
         pool.set("main_form", self)
+
         # Define the headers used for CSV file creation.
         self.headers = ['Date', 'Time', 'Timer(min)', 'CycleID', 'OrderID', 'Quantity', 'CycleLocation']
         self.file_name = None
@@ -86,7 +92,6 @@ class MainFormHandler(QMainWindow):
         self.csv_path = None
         self.pdf_path = None
         self.plot = None   # Will be set by setup_plot_data_display
-        
         self.username = self.user_record.username if self.user_record else ''
 
         self.cycle_timer = QTimer()
@@ -193,10 +198,11 @@ class MainFormHandler(QMainWindow):
             logger.error(f"Error updating main form data: {e}")
 
     def _calculate_cycle_duration(self):
-        if hasattr(self.start_cycle_form, "cycle_start_time"):
-            duration = datetime.now() - self.start_cycle_form.cycle_start_time
+        if hasattr(self.new_cycle_handler, "cycle_start_time"):
+            duration = datetime.now() - self.new_cycle_handler.cycle_start_time
             return str(duration).split('.')[0]
         return "N/A"
+
 
     def start_cycle_timer(self, cycle_start):
         self.cycle_start = cycle_start
@@ -205,9 +211,28 @@ class MainFormHandler(QMainWindow):
         self.cycle_timer.start(1000)
 
     def update_cycle_timer(self):
-        elapsed = datetime.now() - self.cycle_start
-        self.form_obj.cycleDurationLabel.setText(str(elapsed).split('.')[0])  
-        
+        """
+        Update the cycle timer display.
+        If a cycle is active (new_cycle_handler has a cycle_start_time):
+          - If cycle_end_time is set, display elapsed time and end time.
+          - Otherwise, display current elapsed time and "N/A" for end time.
+        Updates self.run_duration (for elapsed time) and self.d6 (for cycle end time).
+        """
+        if self.run_duration is not None and self.d6 is not None:
+            if self.new_cycle_handler and hasattr(self.new_cycle_handler, "cycle_start_time"):
+                if hasattr(self.new_cycle_handler, "cycle_end_time"):
+                    elapsed = self.new_cycle_handler.cycle_end_time - self.new_cycle_handler.cycle_start_time
+                    end_time_str = self.new_cycle_handler.cycle_end_time.strftime("%H:%M:%S")
+                else:
+                    elapsed = datetime.now() - self.new_cycle_handler.cycle_start_time
+                    end_time_str = "N/A"
+                self.run_duration.setText(str(elapsed).split('.')[0])
+                self.d6.setText(end_time_str)
+            else:
+                self.run_duration.setText("0:00:00")
+                self.d6.setText("N/A")
+        else:
+            logger.warning("Cycle timer labels not found on main window. Cannot update cycle timer display.")
     def add_alarm_settings_menu(self):
         # Create a new menu called "Alarms" and add the alarm settings action.
         menubar = self.menuBar()
@@ -257,28 +282,46 @@ class MainFormHandler(QMainWindow):
         central_layout.addWidget(self.boolStatusWidgetContainer)
         
     def integrate_new_cycle_widget(self):
-        # Create an instance of the new cycle widget
-        self.new_cycle_handler = NewCycleHandler(self)
-        
-        # Get the central layout of the QMainWindow (set up by MainForm.setupUi)
-        central_layout = self.centralWidget().layout()
+        """
+        Integrate the new cycle widget and Boolean status widget into the main window layout.
+        This method will:
+        - Ensure the central widget has a layout.
+        - Remove the new cycle widget from any current parent.
+        - Create a container widget with an HBox layout.
+        - Add the Boolean status widget (if available) and the new cycle widget.
+        - Add the container to the central layout and show it.
+        """
+        central_widget = self.centralWidget()
+        central_layout = central_widget.layout()
         if central_layout is None:
-            central_layout = QtWidgets.QVBoxLayout(self.centralWidget())
+            # Create and set a new vertical layout in the central widget if none exists.
+            central_layout = QtWidgets.QVBoxLayout(central_widget)
+            central_widget.setLayout(central_layout)
+
+        # If new_cycle_handler is already parented somewhere, remove it.
+        if self.new_cycle_handler.parent() is not None:
+            self.new_cycle_handler.setParent(None)
+
+        # Hide the new cycle widget temporarily while integrating.
+        self.new_cycle_handler.hide()
         
-        # Remove the already added bool status widget container from the central layout
-        central_layout.removeWidget(self.boolStatusWidgetContainer)
-        
-        # Create a new container with a horizontal layout
-        container = QtWidgets.QWidget(self.centralWidget())
+        # Create a container widget to hold both the Boolean status container and the new cycle widget.
+        container = QtWidgets.QWidget(central_widget)
         h_layout = QtWidgets.QHBoxLayout(container)
         h_layout.setContentsMargins(0, 0, 0, 0)
-        # Add the Boolean status container on the left
-        h_layout.addWidget(self.boolStatusWidgetContainer)
-        # Add the new cycle widget on the right
+        
+        # Add the Boolean status widget container if it exists.
+        if hasattr(self, "boolStatusWidgetContainer") and self.boolStatusWidgetContainer:
+            h_layout.addWidget(self.boolStatusWidgetContainer)
+        
+        # Add the new cycle widget.
         h_layout.addWidget(self.new_cycle_handler)
         
-        # Add the container to the central layout
+        # Add the container to the central layout.
         central_layout.addWidget(container)
+        
+        # Now show the new cycle widget as part of the container.
+        self.new_cycle_handler.show()
         container.show()
 
     def update_bool_status(self):
@@ -295,16 +338,13 @@ class MainFormHandler(QMainWindow):
         db = Database("sqlite:///local_database.db")
         boolean_entries = db.session.query(BooleanAddress).all()
         fixed_color = "#832116"
-
         for i, label in enumerate(self.boolStatusLabels):
             if i < len(boolean_entries):
                 entry = boolean_entries[i]
-                # Read the PLC boolean status from the designated address
                 try:
                     plc_status = dataReader.read_bool_address(entry.address, dev=1)
                 except Exception as ex:
                     plc_status = None
-
                 if plc_status is None:
                     status_text = "N/A"
                     status_color = "black"
@@ -314,7 +354,6 @@ class MainFormHandler(QMainWindow):
                 else:
                     status_text = "False"
                     status_color = "red"
-
                 display_text = (
                     f"Bool Address {i+1}: "
                     f"<span style='color:{fixed_color};'>{entry.address} - {entry.label}</span> - "
@@ -341,16 +380,15 @@ class MainFormHandler(QMainWindow):
         QTimer.singleShot(100, self.initialize_plot_widget)
 
     def initialize_plot_widget(self):
-        """
-        Create the plot widget using the InitiatePlotWidget class.
-        """
         parent_layout = self.plotWidgetContainer.layout()
+        # Generate a dynamic list of channel names based on CHANNEL_COUNT:
+        channel_list = [f"CH{i}" for i in range(1, CHANNEL_COUNT + 1)]
         self.plot = InitiatePlotWidget(
-            active_channels=["CH1", "CH2", "CH3", "CH4", "CH5", "CH6", "CH7", "CH8"],
+            active_channels=channel_list,
             parent_layout=parent_layout,
             headers=["Time", "Value"]
         )
-        self.plot.update_plot()
+        self.plot.update_plot()  # Initialize updated plot data if needed.
 
     def init_custom_status_bar(self):
         """
@@ -454,7 +492,7 @@ class MainFormHandler(QMainWindow):
         
         This method can be called independently or integrated inside update_connection_status_display.
         """
-        alarm_address = pool.config('alarm_address', int, 200)  # adjust the address as needed
+        alarm_address = pool.config('alarm_address', int, 200)  # adjust as needed
         alarm_value = read_holding_register(alarm_address, 1)
         if alarm_value == 0:
             alarm_text = "No Alarm"
@@ -465,7 +503,6 @@ class MainFormHandler(QMainWindow):
         else:
             alarm_text = f"Alarm Code {alarm_value}"
         
-        # Update a dedicated alarm status label if available in your UI.
         if hasattr(self.form_obj, 'alarmStatusLabel'):
             self.form_obj.alarmStatusLabel.setText(alarm_text)
         logger.info(f"Alarm status updated: {alarm_text}")
@@ -601,16 +638,20 @@ class MainFormHandler(QMainWindow):
         return pool.set('active_channels', self.active_channels)
         pass
     def _start(self):
-        # Reset data stack
+        # Reset data stack and UI panels
         self.create_stack()
         self.active_channels = self.load_active_channels()
         self.initialize_ui_panels()
-        
-        # Use a timer to ensure UI responsiveness for plot creation
         QTimer.singleShot(50, self.setup_plot)
-        
-        # Continue with other operations
-        self.start_cycle_form.show()
+        # Start a new cycle using the new cycle handler.
+        self.new_cycle_handler.start_cycle()
+        # Start the cycle timer if the new_cycle_handler has been properly initialized.
+        if hasattr(self.new_cycle_handler, "cycle_start_time"):
+            self.start_cycle_timer(self.new_cycle_handler.cycle_start_time)
+            if hasattr(self, "actionStart"):
+                self.actionStart.setEnabled(False)
+            if hasattr(self, "actionStop"):
+                self.actionStop.setEnabled(True)
         
     def setup_plot(self):
         # Clean up old plot if it exists
@@ -623,13 +664,8 @@ class MainFormHandler(QMainWindow):
         )
 
     def _stop(self):
-        """
-        Stop the current cycle by delegating to the start cycle form,
-        safely stopping timers and cleaning up the plot, update UI actions,
-        and preview the plot.
-        """
         try:
-            # Stop any live update timers to prevent updates during cleanup.
+            # Stop live update and connection timers as before.
             if hasattr(self, 'live_update_timer') and self.live_update_timer.isActive():
                 self.live_update_timer.stop()
             if hasattr(self, 'connectionTimer') and self.connectionTimer.isActive():
@@ -637,45 +673,34 @@ class MainFormHandler(QMainWindow):
             if hasattr(self, 'status_timer') and self.status_timer.isActive():
                 self.status_timer.stop()
             
-            # Attempt to stop cycle via start_cycle_form.
-            if hasattr(self, 'start_cycle_form') and self.start_cycle_form is not None:
-                logger.info("Using existing start_cycle_form to stop cycle")
-                self.start_cycle_form.stop_cycle()
+            # Delegate stop action to the new cycle handler.
+            if self.new_cycle_handler and hasattr(self.new_cycle_handler, "stop_cycle"):
+                logger.info("Using new_cycle_handler to stop cycle")
+                self.new_cycle_handler.stop_cycle()
             else:
-                logger.warning("No active start_cycle_form found; creating temporary form")
-                from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
-                self.start_cycle_form = StartCycleFormHandler()
-                self.start_cycle_form.cycle_data = {
-                    "order_id": "unknown",
-                    "start_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "stop_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                }
-                self.start_cycle_form.stop_cycle()
-
-            # Clean up the plot widget if it exists to avoid later updates on deleted objects.
+                logger.warning("No active new_cycle_handler found; unable to stop cycle properly.")
+            
+            # Cleanup plot and update UI actions.
             if hasattr(self, 'plot') and self.plot:
                 try:
                     self.plot.cleanup()
                 except Exception as cleanup_error:
                     logger.error(f"Error during plot cleanup: {cleanup_error}")
                 self.plot = None
-
-            # Update UI actions (assume these actions exist in your MainFormHandler)
+            
             if hasattr(self, 'actionStart'):
                 self.actionStart.setEnabled(True)
             if hasattr(self, 'actionStop'):
                 self.actionStop.setEnabled(False)
             if hasattr(self, 'actionPrint_results'):
                 self.actionPrint_results.setEnabled(True)
-
-            # Show plot preview if applicable.
+            
             if hasattr(self, 'show_plot_preview'):
                 self.show_plot_preview()
-
-            # Close the CSV file after a short delay (if the method is defined)
+            
             if hasattr(self, 'close_csv_file'):
                 QTimer.singleShot(1000, self.close_csv_file)
-
+            
             logger.info("Cycle stopping completed successfully")
         except Exception as e:
             logger.error(f"Error stopping cycle: {str(e)}")
@@ -721,38 +746,29 @@ class MainFormHandler(QMainWindow):
         pass
 
     def create_plot(self, plot_layout=None, legend_layout=None):
-        # Read header labels from the pool configuration.
-        headers = []
-        for i in range(1, CHANNEL_COUNT + 1):
-            # Use pool.config with default value "CH{i}" if not set
-            label = pool.config('label' + str(i), str, f'CH{i}')
-            headers.append(label)
+        # Read header labels
+        headers = [pool.config('label' + str(i), str, f'CH{i}') for i in range(1, CHANNEL_COUNT + 1)]
         
-        # Clean out any old plot widget.
+        # If plot already exists, clean it up and remove it from the layout
         if hasattr(self, 'plot') and self.plot:
-            self.plot.cleanup()  # Let the plot widget free its resources
-            # Remove the widget from its parent layout if needed.
+            self.plot.cleanup()
+            # Optionally clear the layout:
             if plot_layout is None and hasattr(self, 'plot_layout'):
                 plot_layout = self.plot_layout
             if plot_layout:
-                # Remove all widgets from this layout.
                 for index in reversed(range(plot_layout.count())):
                     widget = plot_layout.itemAt(index).widget()
-                    if widget is not None:
+                    if widget:
                         widget.setParent(None)
             self.plot = None
 
-        # Use the instance layout if none supplied.
+        # Use instance layout if none supplied
         if plot_layout is None and hasattr(self, 'plot_layout'):
             plot_layout = self.plot_layout
 
-        # Retrieve the active channels from the pool.
-        active_channels = pool.get('active_channels')
-        if active_channels is None:
-            # If not set, fall back to all channels (1 to CHANNEL_COUNT).
-            active_channels = list(range(1, CHANNEL_COUNT + 1))
+        active_channels = pool.get('active_channels') or list(range(1, CHANNEL_COUNT + 1))
         
-        # Instantiate a new plot widget using the InitiatePlotWidget.
+        # Create new plot widget
         self.plot = InitiatePlotWidget(
             active_channels=active_channels,
             parent_layout=plot_layout,
@@ -827,13 +843,29 @@ class MainFormHandler(QMainWindow):
         for i in range(CHANNEL_COUNT):
             spin_widget = getattr(self, 'ch' + str(i + 1) + 'Value')
             spin_widget.setValue(self.data_stack[i + 1][-1])
-            self.o1.setText(str(self.start_cycle_form.core_temp_above_setpoint_time or 'N/A'))
-            self.o2.setText(str(self.start_cycle_form.pressure_drop_core_temp or 'N/A'))
+        # Replace legacy values with new_cycle_handler attributes
+        if hasattr(self.new_cycle_handler, "core_temp_above_setpoint_time"):
+            self.o1.setText(str(self.new_cycle_handler.core_temp_above_setpoint_time or 'N/A'))
+        else:
+            self.o1.setText("N/A")
+        if hasattr(self.new_cycle_handler, "pressure_drop_core_temp"):
+            self.o2.setText(str(self.new_cycle_handler.pressure_drop_core_temp or 'N/A'))
+        else:
+            self.o2.setText("N/A")
         self.immediate_panel_update_locked = False
 
     def cycle_timer_update(self):
-        self.run_duration.setText(timedelta2str(datetime.now() - self.start_cycle_form.cycle_start_time))
-        self.d6.setText(datetime.now().strftime("%H:%M:%S"))  # Cycle end time
+        if hasattr(self.new_cycle_handler, "cycle_start_time"):
+            self.run_duration.setText(timedelta2str(datetime.now() - self.new_cycle_handler.cycle_start_time))
+        else:
+            self.run_duration.setText("00:00:00")
+        # Optionally, if a cycle_end_time is already set, display it:
+        if hasattr(self.new_cycle_handler, "cycle_end_time"):
+            self.d6.setText(self.new_cycle_handler.cycle_end_time.strftime("%H:%M:%S"))
+        else:
+            self.d6.setText(datetime.now().strftime("%H:%M:%S"))
+
+
 
     def update_cycle_info_pannel(self, program=None):
         # Cycle Info Panel – basic data:
@@ -847,9 +879,9 @@ class MainFormHandler(QMainWindow):
             qty = 0
         self.d3.setText(str(qty))
         
-        if self.start_cycle_form and hasattr(self.start_cycle_form, 'cycle_start_time'):
-            self.d4.setText(self.start_cycle_form.cycle_start_time.strftime("%Y/%m/%d"))
-            self.d5.setText(self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S"))
+        if self.new_cycle_handler and hasattr(self.new_cycle_handler, 'cycle_start_time'):
+            self.d4.setText(self.new_cycle_handler.cycle_start_time.strftime("%Y/%m/%d"))
+            self.d5.setText(self.new_cycle_handler.cycle_start_time.strftime("%H:%M:%S"))
         else:
             self.d4.setText("N/A")
             self.d5.setText("N/A")
@@ -898,13 +930,13 @@ class MainFormHandler(QMainWindow):
                 if widget is not None:
                     widget.setText(f"{pool.config(f'temp_CH{ch}', float, 0.0):.1f} °C")
             
-            # Update Cylinder Pressure and System Vacuum
+            # Update other sensors
             if hasattr(self.form_obj, "pressure_CH13"):
                 self.form_obj.pressure_CH13.setText(f"{pool.config('pressure_CH13', float, 0.0):.1f} KPa")
             if hasattr(self.form_obj, "vacuum_CH14"):
                 self.form_obj.vacuum_CH14.setText(f"{pool.config('vacuum_CH14', float, 0.0):.1f} KPa")
             
-            # Update Cycle Set Parameters (from default program)
+            # Update Cycle Set Parameters
             if hasattr(self.form_obj, "maintainVacuumLabel"):
                 self.form_obj.maintainVacuumLabel.setText(str(pool.config("maintain_vacuum", bool, False)))
             if hasattr(self.form_obj, "setCureTempLabel"):
@@ -918,17 +950,22 @@ class MainFormHandler(QMainWindow):
             if hasattr(self.form_obj, "coolDownTempLabel"):
                 self.form_obj.coolDownTempLabel.setText(str(pool.config("cool_down_temp", float, 0.0)))
             
-            # Update Cycle Details (from ongoing cycle and work order form):
-            if self.start_cycle_form and hasattr(self.start_cycle_form, "cycle_start_time"):
+            # Update Cycle Details using new_cycle_handler instead of legacy start_cycle_form
+            if self.new_cycle_handler and hasattr(self.new_cycle_handler, "cycle_start_time"):
                 if hasattr(self.form_obj, "cycleDateLabel"):
-                    self.form_obj.cycleDateLabel.setText(self.start_cycle_form.cycle_start_time.strftime("%Y-%m-%d"))
+                    self.form_obj.cycleDateLabel.setText(self.new_cycle_handler.cycle_start_time.strftime("%Y-%m-%d"))
                 if hasattr(self.form_obj, "cycleStartTimeLabel"):
-                    self.form_obj.cycleStartTimeLabel.setText(self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S"))
+                    self.form_obj.cycleStartTimeLabel.setText(self.new_cycle_handler.cycle_start_time.strftime("%H:%M:%S"))
+            else:
+                if hasattr(self.form_obj, "cycleDateLabel"):
+                    self.form_obj.cycleDateLabel.setText("N/A")
+                if hasattr(self.form_obj, "cycleStartTimeLabel"):
+                    self.form_obj.cycleStartTimeLabel.setText("N/A")
+            
             if hasattr(self.form_obj, "cycleEndTimeLabel"):
                 self.form_obj.cycleEndTimeLabel.setText(datetime.now().strftime("%H:%M:%S"))
             if hasattr(self.form_obj, "cycleNumberLabel"):
                 self.form_obj.cycleNumberLabel.setText(str(pool.config("cycle_id", int, 0)))
-            # Update work order and quantity values from the work order form
             if hasattr(self.form_obj, "workOrderLabel"):
                 self.form_obj.workOrderLabel.setText(str(pool.config("order_id", str, "")))
             if hasattr(self.form_obj, "quantityLabel"):
@@ -939,9 +976,16 @@ class MainFormHandler(QMainWindow):
         self.csv_update_locked = False
         self.last_written_index = 0
         file_extension = '.csv'
-        csv_full_path = os.path.join(self.start_cycle_form.folder_path,
-                                    self.start_cycle_form.file_name + file_extension)
-        self.csv_path = csv_full_path
+        # Use new_cycle_handler properties if available; otherwise use fallback path.
+        if hasattr(self.new_cycle_handler, 'folder_path') and hasattr(self.new_cycle_handler, 'file_name'):
+            csv_full_path = os.path.join(self.new_cycle_handler.folder_path,
+                                        self.new_cycle_handler.file_name + file_extension)
+            self.csv_path = csv_full_path
+        else:
+            reports_dir = os.path.join(os.getcwd(), "reports")
+            if not os.path.exists(reports_dir):
+                os.makedirs(reports_dir)
+            self.csv_path = os.path.join(reports_dir, "cycle_report.csv")
         delimiter = pool.config('csv_delimiter') or ' '
         csv.register_dialect('unixpwd', delimiter=delimiter)
         self.open_csv_file(mode='w')
@@ -952,24 +996,24 @@ class MainFormHandler(QMainWindow):
         self.csv_writer = csv.writer(self.csv_file)
 
     def close_csv_file(self):
-        self.csv_file.close()
-
+        if hasattr(self, 'csv_file') and self.csv_file:
+            self.csv_file.close()
     def write_cycle_info_to_csv(self):
-    # Write the first block of cycle information.
+        if self.new_cycle_handler and hasattr(self.new_cycle_handler, "cycle_start_time"):
+            start_time_str = self.new_cycle_handler.cycle_start_time.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            start_time_str = "N/A"
         data = [
             ["Work Order", pool.config("order_id")],
             ["Cycle Number", pool.config("cycle_id")],
             ["Quantity", pool.config("quantity")],
-            ["Process Start Time", self.start_cycle_form.cycle_start_time.strftime("%Y-%m-%d %H:%M:%S")]
+            ["Process Start Time", start_time_str]
         ]
         self.csv_writer.writerows(data)
-        
-        # Ensure self.headers is defined. If not, define a default header list.
         if not hasattr(self, 'headers') or not self.headers:
             self.headers = ['Date', 'Time', 'Timer(min)', 'CycleID', 'OrderID', 'Quantity', 'CycleLocation']
-        
-        # Write the header row for the detailed CSV data.
         self.csv_writer.writerows([['Date', 'Time', 'Timer(min)'] + self.headers[3:]])
+
     def update_csv_file(self, csv_file_path=None):
         if csv_file_path is None:
             # Use reports folder for all CSV files
@@ -1037,12 +1081,26 @@ class MainFormHandler(QMainWindow):
     def show_error_and_stop(self, msg, parent=None):
         error_dialog = QErrorMessage(parent or self)
         error_dialog.showMessage(msg)
-        self.start_cycle_form.stop_cycle()
+        # Call new_cycle_handler.stop_cycle() instead of legacy start_cycle_form.stop_cycle()
+        if self.new_cycle_handler and hasattr(self.new_cycle_handler, "stop_cycle"):
+            self.new_cycle_handler.stop_cycle()
         self.actionStart.setEnabled(True)
         self.actionStop.setEnabled(False)
-        self.csv_file.close()
+        if hasattr(self, 'csv_file'):
+            self.csv_file.close()
 
     def generate_html_report(self, image_path=None):
+        if self.new_cycle_handler and hasattr(self.new_cycle_handler, "cycle_start_time") and hasattr(self.new_cycle_handler, "cycle_end_time"):
+            cycle_date = self.new_cycle_handler.cycle_start_time.strftime("%Y/%m/%d")
+            cycle_start = self.new_cycle_handler.cycle_start_time.strftime("%H:%M:%S")
+            cycle_end = self.new_cycle_handler.cycle_end_time.strftime("%H:%M:%S")
+            # Use getattr with a default value to safely retrieve numeric fields
+            core_high_temp_time = round(getattr(self.new_cycle_handler, "core_temp_above_setpoint_time", 0), 2)
+            if not core_high_temp_time:
+                core_high_temp_time = "-"
+            release_temp = getattr(self.new_cycle_handler, "pressure_drop_core_temp", "-")
+        else:
+            cycle_date = cycle_start = cycle_end = core_high_temp_time = release_temp = "-"
         report_data = {
             "order_id": pool.config("order_id") or "-",
             "cycle_id": pool.config("cycle_id") or "-",
@@ -1056,30 +1114,35 @@ class MainFormHandler(QMainWindow):
             "maintain_vacuum": pool.config("maintain_vacuum") or "-",
             "initial_set_cure_temp": pool.config("initial_set_cure_temp") or "-",
             "final_set_cure_temp": pool.config("final_set_cure_temp") or "-",
-            "core_high_temp_time": round(self.start_cycle_form.core_temp_above_setpoint_time, 2) or "-",
-            "release_temp": self.start_cycle_form.pressure_drop_core_temp or "-",
-            "cycle_date": self.start_cycle_form.cycle_start_time.strftime("%Y/%m/%d") or "-",
-            "cycle_start_time": self.start_cycle_form.cycle_start_time.strftime("%H:%M:%S") or "-",
-            "cycle_end_time": self.start_cycle_form.cycle_end_time.strftime("%H:%M:%S") or "-",
+            "core_high_temp_time": core_high_temp_time,
+            "release_temp": release_temp,
+            "cycle_date": cycle_date,
+            "cycle_start_time": cycle_start,
+            "cycle_end_time": cycle_end,
             "image_path": image_path,
             "logo_path": os.path.join(os.getcwd(), 'ui\\logo.jpg'),
         }
+        self.render_print_template(template_file='result_template.html', data=report_data)
 
-        self.render_print_template(template_file='result_template.html',
-                                   data=report_data,
-                                   )
 
     def render_print_template(self, *args, template_file=None, **kwargs):
         templateLoader = jinja2.FileSystemLoader(searchpath=os.path.join(os.getcwd(), "ui"))
         templateEnv = jinja2.Environment(loader=templateLoader, extensions=['jinja2.ext.loopcontrols'])
         template = templateEnv.get_template(template_file)
-        html = template.render(**kwargs)
+        html = template.render(**kwargs.get("data", {}))
+        import tempfile
         with tempfile.NamedTemporaryFile('w', delete=False, suffix='.html') as f:
             fname = f.name
             f.write(html)
         file_extension = '.pdf'
-        pdf_full_path = os.path.join(self.start_cycle_form.folder_path,
-                                     self.start_cycle_form.file_name + file_extension)
+        if hasattr(self.new_cycle_handler, 'folder_path') and hasattr(self.new_cycle_handler, 'file_name'):
+            pdf_full_path = os.path.join(self.new_cycle_handler.folder_path,
+                                        self.new_cycle_handler.file_name + file_extension)
+        else:
+            reports_dir = os.path.join(os.getcwd(), "reports")
+            if not os.path.exists(reports_dir):
+                os.makedirs(reports_dir)
+            pdf_full_path = os.path.join(reports_dir, "cycle_report.pdf")
         self.html2pdf(fname, pdf_full_path)
 
     def html2pdf(self, html_path, pdf_path):
@@ -1185,12 +1248,11 @@ class MainFormHandler(QMainWindow):
             return False
 
     def closeEvent(self, event):
-        if hasattr(self, 'start_cycle_form') \
-                and hasattr(self.start_cycle_form, 'running') \
-                and self.start_cycle_form.running:
-            quit_msg = "Are you Sure?\nCSV data may be not be saved."
+        if pool.get("current_cycle"):
+            quit_msg = "Are you Sure?\nCSV data may not be saved."
         else:
             quit_msg = "Are you sure?"
+
         reply = QMessageBox.question(self, 'Exiting app ...',
                                      quit_msg, (QMessageBox.Yes | QMessageBox.Cancel))
         if reply == QMessageBox.Yes:

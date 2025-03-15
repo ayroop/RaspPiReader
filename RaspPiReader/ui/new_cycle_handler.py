@@ -22,23 +22,21 @@ class NewCycleHandler(QtWidgets.QWidget):
 
     def start_cycle(self):
         logger.info("Start Cycle button clicked - launching Work Order Form")
+        # Record the cycle start time so that MainFormHandler can detect an active cycle.
+        self.cycle_start_time = datetime.now()
+        # Store this cycle as the current active cycle
+        
+        pool.set("current_cycle", self)
         self.work_order_form = WorkOrderFormHandler()
         self.work_order_form.show()
 
     def stop_cycle(self):
         logger.info("Stop Cycle button clicked")
-        try:
-            start_cycle_form = pool.get('start_cycle_form')
-            if start_cycle_form:
-                start_cycle_form.stop_cycle()  # Delegate to the active cycle form.
-                logger.info("Cycle stop delegated to start cycle form")
-            else:
-                logger.error("No active cycle found in pool")
-                QtWidgets.QMessageBox.warning(
-                    self, "Warning", "Could not stop cycle - active cycle not found."
-                )
-        except Exception as e:
-            logger.error(f"Error stopping cycle: {str(e)}")
-            QtWidgets.QMessageBox.critical(
-                self, "Error", f"Failed to stop cycle: {str(e)}"
-            )
+        if hasattr(self, "cycle_start_time"):
+            self.cycle_end_time = datetime.now()
+            duration = self.cycle_end_time - self.cycle_start_time
+            logger.info(f"Cycle stopped; duration: {str(duration).split('.')[0]}")
+        else:
+            logger.warning("Cycle start time not set; cannot compute duration")
+        
+        pool.set("current_cycle", None)

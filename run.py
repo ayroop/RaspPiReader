@@ -71,6 +71,7 @@ def show_splash_screen(logger):
 
     return splash
 
+initialize_plc_communication()  # Ensure Modbus client is configured
 def Main():
     """Main application entry point"""
     logger = setup_application()
