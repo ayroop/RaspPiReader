@@ -643,15 +643,13 @@ class MainFormHandler(QMainWindow):
         self.active_channels = self.load_active_channels()
         self.initialize_ui_panels()
         QTimer.singleShot(50, self.setup_plot)
-        # Start a new cycle using the new cycle handler.
+        # Start a new cycle using the new cycle handler
         self.new_cycle_handler.start_cycle()
-        # Start the cycle timer if the new_cycle_handler has been properly initialized.
-        if hasattr(self.new_cycle_handler, "cycle_start_time"):
-            self.start_cycle_timer(self.new_cycle_handler.cycle_start_time)
-            if hasattr(self, "actionStart"):
-                self.actionStart.setEnabled(False)
-            if hasattr(self, "actionStop"):
-                self.actionStop.setEnabled(True)
+  
+        if hasattr(self, "actionStart"):
+            self.actionStart.setEnabled(False)
+        if hasattr(self, "actionStop"):
+            self.actionStop.setEnabled(True)
         
     def setup_plot(self):
         # Clean up old plot if it exists

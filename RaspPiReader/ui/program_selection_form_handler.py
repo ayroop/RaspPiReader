@@ -185,10 +185,16 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         if start_cycle_form and hasattr(start_cycle_form, "start_cycle"):
             start_cycle_form.start_cycle()
 
-        # Optionally update main form cycle info.
+        # Update the main form cycle info, and start the cycle timer now.
         main_form = pool.get("main_form")
-        if main_form and hasattr(main_form, "update_cycle_info_pannel"):
-            main_form.update_cycle_info_pannel(default_program)
+        if main_form:
+            # Set cycle start time and start the timer now.
+            from datetime import datetime
+            main_form.new_cycle_handler.cycle_start_time = datetime.now()
+            main_form.start_cycle_timer(main_form.new_cycle_handler.cycle_start_time)
+            if hasattr(main_form, "update_cycle_info_pannel"):
+                main_form.update_cycle_info_pannel(default_program)
+            logger.info("Cycle timer started after program selection.")
 
         QtWidgets.QMessageBox.information(self, "Success", "Cycle started successfully!")
         self.close()
