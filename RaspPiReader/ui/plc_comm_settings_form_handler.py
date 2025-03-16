@@ -21,7 +21,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         # First, ensure modal is set to avoid the window appearing/disappearing
         self.setWindowTitle("PLC Communication Settings")
         self.setModal(True)
-        
+        self.plc_init_worker = None  # Store the worker reference
         # Build UI components in logical sequence
         self._create_ui_elements()
         self._connect_signals()
@@ -331,9 +331,9 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             # Calculate timeout based on timeout value in form
             timeout_value = params.get('timeout', 2.0)
             test_timeout = max(timeout_value * 1000 * 2, 5000)  # At least 5 seconds or 2x the timeout
-            
-            # Start the timeout timer
-            self.test_timeout_timer.start(test_timeout)
+            # Start the timeout timer 
+            self.test_timeout_timer.start(int(test_timeout))
+  
             
             # Start the test thread
             test_thread.start()
@@ -569,7 +569,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             self.statusLabel.setText("Connecting...")
             self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
             
-            # Create a progress indicator to show the user something is happening
+            # Create a progress indicator to show that something is happening
             self.progressBar = QtWidgets.QProgressBar(self)
             self.progressBar.setRange(0, 0)  # Indeterminate progress
             self.progressBar.setTextVisible(False)
@@ -582,26 +582,21 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             self.connection_timeout_timer.timeout.connect(self._handle_connection_timeout)
             
             # Define a callback function to handle the result of PLC initialization
-            def init_callback(success):
-                # Use the single shot timer to safely update the UI from a different thread
+            def init_callback(success, error):
+                if not success:
+                    logger.error(f"PLC initialization error: {error}")
                 QTimer.singleShot(0, lambda: self._handle_init_result(success))
-                
-                # Stop the timeout timer as we got a response
                 QTimer.singleShot(0, self.connection_timeout_timer.stop)
             
-            # Initialize PLC communication in a background thread
-            from RaspPiReader.libs import plc_communication
             logger.info("Initializing PLC communication with new settings (async)")
             
-            # Get the timeout value from form field
+            # IMPORTANT: Start initialization ONLY ONCE and store the worker reference
+            self.plc_init_worker = plc_communication.initialize_plc_communication_async(callback=init_callback)
+            
+            # Get the timeout value from the form field and ensure it’s an int (milliseconds)
             timeout_value = self.timeoutSpinBox.value()
-            connection_timeout = max(timeout_value * 1000 * 2, 5000)  # At least 5 seconds, or 2x the timeout setting
-            
-            # Start the timeout timer
+            connection_timeout = max(timeout_value * 1000 * 2, 5000)  # At least 5 sec or 2x the timeout setting
             self.connection_timeout_timer.start(int(connection_timeout))
-            
-            # Start initialization thread
-            plc_communication.initialize_plc_communication_async(callback=init_callback)
 
     def _handle_connection_timeout(self):
         """Handle the case when connection initialization times out"""
@@ -639,6 +634,9 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         if hasattr(self, 'progressBar') and self.progressBar is not None:
             self.progressBar.setParent(None)
             self.progressBar = None
+        
+        # Clear the stored worker reference now that we're done
+        self.plc_init_worker = None
         
         if success:
             logger.info("PLC communication initialized successfully")

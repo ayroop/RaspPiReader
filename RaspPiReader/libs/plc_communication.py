@@ -6,6 +6,8 @@ from pymodbus.exceptions import ConnectionException, ModbusException
 from RaspPiReader import pool
 from RaspPiReader.libs.communication import ModbusCommunication, dataReader, plc_lock
 from PyQt5.QtCore import QSettings, QTimer, QObject, pyqtSignal
+from PyQt5 import QtCore
+from PyQt5.QtWidgets import QApplication
 
 # Configure logger
 logger = logging.getLogger(__name__)
@@ -19,6 +21,41 @@ _initializing = False
 # Global connection monitor timer
 connection_monitor = None
 
+class PLCInitWorker(QtCore.QThread):
+    # Signal to deliver (success: bool, error message: str)
+    result = QtCore.pyqtSignal(bool, str)
+
+    def __init__(self, connection_type, config_params, parent=None):
+        super(PLCInitWorker, self).__init__(parent)
+        self.connection_type = connection_type
+        self.config_params = config_params
+
+    def run(self):
+        success = False
+        error_msg = ""
+        try:
+            if self.connection_type == 'tcp':
+                host = self.config_params.get('host', '127.0.0.1')
+                port = self.config_params.get('port', 502)
+                timeout = self.config_params.get('timeout', 6.0)
+                client = ModbusTcpClient(host=host, port=port, timeout=timeout)
+            else:
+                client = ModbusSerialClient(**self.config_params)
+            t0 = time.time()
+            if client.connect():
+                logger.info(f"[PLCInitWorker] Connection established in {time.time()-t0:.3f} seconds")
+                # Example test read from register address 100 (adjust as required)
+                rr = client.read_holding_registers(100, 1, unit=1)
+                if rr.isError():
+                    error_msg = f"Test read error: {rr}"
+                else:
+                    success = True
+                client.close()
+            else:
+                error_msg = "Failed to connect with client"
+        except Exception as e:
+            error_msg = str(e)
+        self.result.emit(success, error_msg)
 
 class ConnectionMonitor(QObject):
     """
@@ -257,22 +294,41 @@ def ensure_connection():
 # Enable non-blocking initialization
 def initialize_plc_communication_async(callback=None):
     """
-    Initialize PLC communication in a background thread.
-    
-    Args:
-        callback: Optional callback function that takes a boolean success parameter
-    
-    Returns:
-        The thread object that is performing the initialization
+    Initialize PLC communication asynchronously using a QThread worker.
+    Reads connection parameters from pool and starts the worker.
     """
-    thread = threading.Thread(
-        target=_initialize_plc_thread,
-        args=(callback,),
-        name="PLCInitThread"
-    )
-    thread.daemon = True
-    thread.start()
-    return thread
+    connection_type = pool.config('plc/connection_type', str, 'tcp')
+    if connection_type == 'tcp':
+        host = pool.config('plc/host', str, '127.0.0.1')
+        port = pool.config('plc/tcp_port', int, 502)
+        timeout = pool.config('plc/timeout', float, 6.0)
+        config_params = {'host': host, 'port': port, 'timeout': timeout}
+        logger.info(f"Initializing PLC with TCP host: {host}, port: {port}")
+    else:
+        port_val = pool.config('plc/port', str, 'COM1')
+        baudrate = pool.config('plc/baudrate', int, 9600)
+        bytesize = pool.config('plc/bytesize', int, 8)
+        parity = pool.config('plc/parity', str, 'N')
+        stopbits = pool.config('plc/stopbits', float, 1.0)
+        timeout = pool.config('plc/timeout', float, 6.0)
+        config_params = {
+            'port': port_val,
+            'baudrate': baudrate,
+            'bytesize': bytesize,
+            'parity': parity,
+            'stopbits': stopbits,
+            'timeout': timeout
+        }
+        logger.info(f"Initializing PLC with Serial port: {port_val}")
+
+    # Create the worker and assign its parent to the application instance.
+    worker = PLCInitWorker(connection_type, config_params, parent=QApplication.instance())
+    if callback:
+        worker.result.connect(lambda success, error: 
+            QtCore.QTimer.singleShot(0, lambda: callback(success, error))
+        )
+    worker.start()
+    return worker
 
 def _initialize_plc_thread(callback=None):
     """
