@@ -1,8 +1,4 @@
-import logging
-import time
-import os
-import socket
-import threading
+import logging, os, time, socket, threading
 from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient
 from pymodbus.exceptions import ConnectionException, ModbusException
 from PyQt5.QtCore import QSettings
@@ -19,9 +15,9 @@ class ModbusCommunication:
         self.client = None
         self.connected = False
         self.last_error = ""
-        self.connection_type = None
+        self.connection_type = None  # Should be 'tcp' or 'rtu'
         self._configured = False
-        self.name = name  # Name to identify this instance in logs
+        self.name = name  # Identifier for logging
         logger.info(f"ModbusCommunication instance '{name}' created")
 
     def configure(self, connection_type=None, **kwargs):
@@ -108,56 +104,57 @@ class ModbusCommunication:
         return True
 
     def connect(self):
-        """Connect to the Modbus device with improved timeout handling."""
-        if not self._configured or not self.client:
-            self.last_error = "Modbus client not configured"
-            logger.error(f"[{self.name}] {self.last_error}")
-            self.connected = False
-            return False
-            
-        with plc_lock:  # Use the global lock to prevent multiple simultaneous connections
+        if (not self._configured) or (not self.client):
+            self.connection_type = pool.config("plc/comm_mode", str, "tcp").lower()
+            if self.connection_type == "tcp":
+                host = pool.config("plc/host", str, "127.0.0.1")
+                port = pool.config("plc/tcp_port", int, 502)
+                timeout = pool.config("plc/timeout", float, 6.0)
+                self.client = ModbusTcpClient(host, port=port, timeout=timeout)
+                self._configured = True
+                logger.info(f"[{self.name}] Client configured with host={host}, port={port}, timeout={timeout}")
+            elif self.connection_type == "rtu":
+                port = pool.config("plc/com_port", str, "COM1")
+                baudrate = pool.config("plc/baudrate", int, 9600)
+                timeout = pool.config("plc/timeout", float, 6.0)
+                self.client = ModbusSerialClient(method='rtu', port=port, baudrate=baudrate, timeout=timeout)
+                self._configured = True
+                logger.info(f"[{self.name}] Client configured for RTU with port={port}, baudrate={baudrate}, timeout={timeout}")
+            else:
+                self.last_error = "Unsupported communication type"
+                logger.error(f"[{self.name}] {self.last_error}")
+                self.connected = False
+                return False
+
+        with plc_lock:
             logger.debug(f"[{self.name}] Acquiring PLC connection lock")
             try:
-                # For RTU connections, verify port exists on non-Windows systems
                 if self.connection_type == 'rtu' and hasattr(self.client, 'port'):
-                    port = self.client.port
-                    # For non-Windows systems, ensure the serial device exists.
-                    if not os.path.exists(port) and not port.upper().startswith('COM'):
-                        self.last_error = f"Serial port {port} does not exist"
+                    serial_port = self.client.port
+                    if not os.path.exists(serial_port) and not serial_port.upper().startswith('COM'):
+                        self.last_error = f"Serial port {serial_port} does not exist"
                         logger.error(f"[{self.name}] {self.last_error}")
                         self.connected = False
                         return False
-                        
-                # For TCP connections, verify we can reach the host first with a quick socket test
                 if self.connection_type == 'tcp':
                     host = self.client.host
                     port = self.client.port
-                    
-                    # Use a shorter socket timeout for the initial connection test
                     socket_timeout = min(self.client.timeout, 2.0)
-                    
                     try:
-                        # Create the socket with a brief timeout to check host reachability
                         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         s.settimeout(socket_timeout)
                         logger.info(f"[{self.name}] Testing TCP connection to {host}:{port}")
-                        connection_start = time.time()
+                        start = time.time()
                         s.connect((host, port))
-                        connection_time = time.time() - connection_start
-                        logger.info(f"[{self.name}] TCP socket connected in {connection_time:.3f} seconds")
-                        
-                        # Try to send/receive data to confirm port is responsive
+                        logger.info(f"[{self.name}] TCP socket connected in {time.time()-start:.3f} seconds")
                         try:
-                            s.send(b"\x00\x00")  # Minimal test packet
-                            s.settimeout(0.5)    # Brief timeout for response check
+                            s.send(b"\x00\x00")
+                            s.settimeout(0.5)
                             s.recv(1)
                         except (socket.timeout, ConnectionResetError):
-                            # We don't need this to succeed - it's just a liveness test
                             pass
-                        
                         s.close()
                         logger.info(f"[{self.name}] TCP connection test successful for {host}:{port}")
-                        
                     except socket.timeout:
                         self.last_error = f"Connection to {host}:{port} timed out"
                         logger.error(f"[{self.name}] {self.last_error}")
@@ -173,26 +170,20 @@ class ModbusCommunication:
                         logger.error(f"[{self.name}] {self.last_error}")
                         self.connected = False
                         return False
-                        
-                # Attempt to establish the actual Modbus connection
+
                 logger.info(f"[{self.name}] Establishing Modbus {self.connection_type} connection")
-                connection_start = time.time()
+                start = time.time()
                 self.connected = self.client.connect()
-                connection_time = time.time() - connection_start
-                logger.info(f"[{self.name}] Modbus client connect() took {connection_time:.3f} seconds")
-                
+                logger.info(f"[{self.name}] Modbus client connect() took {time.time()-start:.3f} seconds")
                 if self.connected:
-                    # For TCP connections, perform a test read to verify the connection
                     if self.connection_type == 'tcp':
                         try:
-                            logger.info(f"[{self.name}] Performing test read to verify Modbus connection")
-                            read_start = time.time()
-                            test_result = self.client.read_holding_registers(0, 1, unit=1)
-                            read_time = time.time() - read_start
-                            logger.info(f"[{self.name}] Test read completed in {read_time:.3f} seconds")
-                            
-                            if test_result is None or test_result.isError():
-                                self.last_error = f"Connection test failed: {test_result}"
+                            logger.info(f"[{self.name}] Performing test read to verify connection")
+                            start_read = time.time()
+                            result = self.client.read_holding_registers(0, 1, unit=1)
+                            logger.info(f"[{self.name}] Test read completed in {time.time()-start_read:.3f} seconds")
+                            if result is None or result.isError():
+                                self.last_error = f"Test read error: {result}"
                                 logger.error(f"[{self.name}] {self.last_error}")
                                 self.connected = False
                                 return False
@@ -206,19 +197,11 @@ class ModbusCommunication:
                             logger.error(f"[{self.name}] {self.last_error}")
                             self.connected = False
                             return False
-                            
                     logger.info(f"[{self.name}] Successfully connected to Modbus device via {self.connection_type}")
                 else:
                     self.last_error = f"Failed to connect to Modbus device with {self.connection_type} connection"
                     logger.error(f"[{self.name}] {self.last_error}")
-                    
                 return self.connected
-                
-            except ModbusException as me:
-                self.last_error = f"Modbus exception during connection: {str(me)}"
-                logger.error(f"[{self.name}] {self.last_error}")
-                self.connected = False
-                return False
             except Exception as e:
                 self.last_error = f"Exception during connection attempt: {str(e)}"
                 logger.error(f"[{self.name}] {self.last_error}")
@@ -226,7 +209,6 @@ class ModbusCommunication:
                 return False
             finally:
                 logger.debug(f"[{self.name}] Releasing PLC connection lock")
-
     def disconnect(self):
         """Disconnect from the Modbus device."""
         if self.client and self.connected:
