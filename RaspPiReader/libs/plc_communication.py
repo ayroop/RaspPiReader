@@ -1,8 +1,10 @@
 import logging
 import time
 import threading
-from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient
-from pymodbus.exceptions import ConnectionException, ModbusException
+from threading import Lock
+import pymodbus
+from pymodbus.client.sync import ModbusTcpClient, ModbusSerialClient
+from pymodbus.exceptions import ConnectionException, ModbusIOException, ModbusException
 from RaspPiReader import pool
 from RaspPiReader.libs.communication import ModbusCommunication, dataReader, plc_lock
 from PyQt5.QtCore import QSettings, QTimer, QObject, pyqtSignal
@@ -12,7 +14,7 @@ from PyQt5.QtWidgets import QApplication
 # Configure logger
 logger = logging.getLogger(__name__)
 
-# Global Modbus communication object
+# Global Modbus communication object - properly initialized
 modbus_comm = ModbusCommunication(name="PLCCommunication")
 
 # Flag to indicate if we're currently in the process of initializing
@@ -20,6 +22,10 @@ _initializing = False
 
 # Global connection monitor timer
 connection_monitor = None
+
+# Connection retry settings
+CONNECTION_RETRY_ATTEMPTS = 3
+CONNECTION_RETRY_DELAY = 1  # seconds
 
 class PLCInitWorker(QtCore.QThread):
     # Signal to deliver (success: bool, error message: str)
@@ -44,8 +50,8 @@ class PLCInitWorker(QtCore.QThread):
             t0 = time.time()
             if client.connect():
                 logger.info(f"[PLCInitWorker] Connection established in {time.time()-t0:.3f} seconds")
-                # Example test read from register address 100 (adjust as required)
-                rr = client.read_holding_registers(100, 1, unit=1)
+                # Example test read from register address 0 (changed from 100 to match your PLC's behavior)
+                rr = client.read_holding_registers(0, 1, unit=1)  # Always use unit=1, never 0
                 if rr.isError():
                     error_msg = f"Test read error: {rr}"
                 else:
@@ -122,87 +128,61 @@ class ConnectionMonitor(QObject):
 
 
 def initialize_plc_communication():
-    """Initialize PLC communication with settings from the application configuration"""
-    global modbus_comm, _initializing, connection_monitor
-
-    with plc_lock:  # Use the global lock to ensure exclusive access
-        # Set flag to prevent concurrent initialization
+    """Initialize PLC communication based on current settings.
+       This function ensures that the modbus_comm is configured and connected.
+    """
+    global modbus_comm, _initializing
+    with plc_lock:
         _initializing = True
-        
         try:
-            # First, stop the data reader to prevent conflicts
+            # (Optional) Stop any running data reader here to avoid conflicts
             if dataReader.running:
                 logger.info("Stopping DataReader before PLC initialization")
                 dataReader.stop()
-            
-            # Get connection type from settings
-            connection_type = pool.config('plc/connection_type', str, 'rtu')
-            
-            logger.info(f"Initializing PLC communication - Connection type: {connection_type}")
-            
-            # Configure client based on connection type
+
+            # Load connection type and parameters from pool/settings
+            connection_type = pool.config('plc/connection_type', str, 'tcp')
+            logger.info(f"Initializing PLC communication -Connection type: {connection_type}")
+    
             if connection_type == 'tcp':
-                host = pool.config('plc/host', str, 'localhost')
+                host = pool.config('plc/host', str, '127.0.0.1')
                 port = pool.config('plc/tcp_port', int, 502)
                 timeout = pool.config('plc/timeout', float, 1.0)
-                
-                logger.info(f"Initializing PLC with TCP host: {host}")
-                config_params = {
-                    'host': host,
-                    'port': port,
-                    'timeout': timeout
-                }
+                config_params = {'host': host, 'port': port, 'timeout': timeout}
             else:
-                port = pool.config('plc/port', str, 'COM1')
+                port_val = pool.config('plc/port', str, 'COM1')
                 baudrate = pool.config('plc/baudrate', int, 9600)
                 bytesize = pool.config('plc/bytesize', int, 8)
                 parity = pool.config('plc/parity', str, 'N')
                 stopbits = pool.config('plc/stopbits', float, 1.0)
                 timeout = pool.config('plc/timeout', float, 1.0)
-                
-                logger.info(f"Initializing PLC with serial port: {port}")
                 config_params = {
-                    'port': port,
+                    'port': port_val,
                     'baudrate': baudrate,
                     'bytesize': bytesize,
                     'parity': parity,
                     'stopbits': stopbits,
                     'timeout': timeout
                 }
-                
-            logger.info(f"Configuring PLC communication with {connection_type} and parameters: {config_params}")
-            
-            # Disconnect if already connected
+    
+            # Disconnect any previous connection and reconfigure
             modbus_comm.disconnect()
-            
-            # Configure and connect
-            success = modbus_comm.configure(connection_type, **config_params)
-            if success:
-                logger.info(f"PLC communication configured with {connection_type}")
-                success = modbus_comm.connect()
-                if success:
-                    logger.info("Successfully connected to PLC")
-                    
-                    # Only now start the DataReader to avoid conflicts
-                    if not pool.config('demo', bool, False):
-                        # We use the same configuration parameters for DataReader
-                        logger.info("Starting DataReader after successful PLC connection")
-                        dataReader.start()
-                    
-                    # Note: The connection monitor timer is now started in the main Qt thread
-                    # by the calling code to avoid thread issues
-                else:
-                    logger.error(f"Failed to connect to PLC: {modbus_comm.get_error()}")
+            if not modbus_comm.configure(connection_type, **config_params):
+                logger.error(f"Failed to configure PLC communication: {modbus_comm.get_error()}")
+                return False
+            # Attempt connection now
+            if modbus_comm.connect():
+                logger.info("Successfully connected to PLC")
+                # (Optionally) restart dataReader here if not in demo mode
+                return True
             else:
-                logger.error(f"Failed to configure PLC communication with {connection_type}: {modbus_comm.get_error()}")
-                success = False
+                logger.error(f"Failed to connect to PLC: {modbus_comm.get_error()}")
+                return False
         except Exception as e:
             logger.error(f"Error initializing PLC communication: {e}")
-            success = False
+            return False
         finally:
             _initializing = False
-            
-        return success
 
 
 def set_port(port):
@@ -245,6 +225,7 @@ def is_connected():
             
         # Try a quick read to verify that the connection is alive.
         try:
+            # Always use device ID 1 for connection test
             result = modbus_comm.read_registers(0, 1, 1, 'holding')
             connection_ok = (result is not None)
             logger.debug(f"{modbus_comm.connection_type.upper()} connection status check: {'OK' if connection_ok else 'FAILED'}")
@@ -256,40 +237,53 @@ def is_connected():
 
 def ensure_connection():
     """
-    Ensure that the PLC connection is active.
-    If no connection exists or the connection is lost,
-    this will attempt to initialize or reconnect.
-    Returns True if the connection is active after checking, otherwise False.
+    Ensure that a valid connection exists.
+    If the modbus_comm is not configured or connected, reinitialize it.
+    Returns:
+         bool: True if connection is established, False otherwise.
     """
-    global modbus_comm, _initializing
-    
-    # Don't try to reconnect if we're already in the process of initializing
-    if _initializing:
-        logger.debug("Skip reconnection - already initializing")
+    global modbus_comm
+    # Check that we have a configured Modbus client
+    if modbus_comm is None or not modbus_comm.is_configured():
+        logger.info("Modbus client not configured. Re-initializing...")
+        modbus_comm = ModbusCommunication(name="PLCCommunication")
+        if not initialize_plc_communication():
+            logger.error("Unable to configure Modbus client.")
+            return False
+
+    # Check connection status; if not connected, attempt reconnection
+    if not getattr(modbus_comm, 'connected', False):
+        logger.warning("Modbus client not connected. Attempting to reconnect...")
+        modbus_comm.disconnect()  # Ensure any stale connection is closed
+        for attempt in range(CONNECTION_RETRY_ATTEMPTS):
+            logger.info(f"Reconnection attempt {attempt + 1} of {CONNECTION_RETRY_ATTEMPTS}")
+            if modbus_comm.connect():
+                logger.info("Reconnected to PLC successfully.")
+                return True
+            time.sleep(CONNECTION_RETRY_DELAY)
+        logger.error("Failed to reconnect after retrying.")
         return False
+
+    # Connection is active
+    return True
+
+def validate_device_id(device_id):
+    """
+    Validate that the device ID is in the valid range for Modbus (1-247)
     
-    with plc_lock:  # Use the global lock to ensure exclusive access
-        # If the PLC communication object does not exist or is not configured, initialize communication.
-        if modbus_comm is None or not modbus_comm.is_configured():
-            logger.warning("No PLC communication object exists or not configured, initializing now.")
-            return initialize_plc_communication()
-            
-        # If not connected, attempt to reconnect.
-        if not is_connected():
-            logger.warning("PLC not connected, trying to reconnect.")
-            try:
-                if modbus_comm.connect():
-                    logger.debug("Reconnection successful.")
-                    return True
-                else:
-                    logger.error(f"Reconnection failed: {modbus_comm.get_error()}")
-                    return False
-            except Exception as e:
-                logger.error(f"Error reconnecting to PLC: {e}")
-                return False
-            
-        # If the connection is active, return True.
-        return True
+    Args:
+        device_id (int): The device ID to validate
+        
+    Returns:
+        int: A valid device ID (defaults to 1 if invalid)
+    """
+    if not isinstance(device_id, int):
+        logger.warning(f"Invalid device ID type: {type(device_id)}. Using default ID 1")
+        return 1
+    if device_id < 1 or device_id > 247:
+        logger.warning(f"Invalid device ID value: {device_id}. Using default ID 1")
+        return 1
+    return device_id
 
 # Enable non-blocking initialization
 def initialize_plc_communication_async(callback=None):
@@ -349,6 +343,10 @@ def _initialize_plc_thread(callback=None):
 def read_coil(address, device_id=1):
     """Read a single coil from the PLC"""
     global modbus_comm
+    
+    # Always validate device ID to avoid 'Station #0' errors
+    device_id = validate_device_id(device_id)
+    
     with plc_lock:
         if not ensure_connection():
             logger.error("Cannot read coil: No connection to PLC")
@@ -367,6 +365,10 @@ def read_coil(address, device_id=1):
 def read_coils(address, count=1, device_id=1):
     """Read multiple coils from the PLC"""
     global modbus_comm
+    
+    # Always validate device ID to avoid 'Station #0' errors
+    device_id = validate_device_id(device_id)
+    
     with plc_lock:
         if not ensure_connection():
             logger.error("Cannot read coils: No connection to PLC")
@@ -385,6 +387,10 @@ def read_coils(address, count=1, device_id=1):
 def write_coil(address, value, device_id=1):
     """Write a boolean value to a coil"""
     global modbus_comm
+    
+    # Always validate device ID to avoid 'Station #0' errors
+    device_id = validate_device_id(device_id)
+    
     with plc_lock:
         if not ensure_connection():
             logger.error("Cannot write coil: No connection to PLC")
@@ -400,6 +406,10 @@ def write_coil(address, value, device_id=1):
 def read_holding_register(address, device_id=1):
     """Read a single holding register from the PLC"""
     global modbus_comm
+    
+    # Always validate device ID to avoid 'Station #0' errors
+    device_id = validate_device_id(device_id)
+    
     with plc_lock:
         if not ensure_connection():
             logger.error("Cannot read holding register: No connection to PLC")
@@ -416,23 +426,69 @@ def read_holding_register(address, device_id=1):
 
 
 def read_holding_registers(address, count=1, device_id=1):
-    """Read multiple holding registers from the PLC"""
+    """
+    Read multiple holding registers from the PLC with improved error handling
+    
+    Args:
+        address (int): Starting register address
+        count (int): Number of registers to read
+        device_id (int): Slave/Unit ID of the device (1-247)
+        
+    Returns:
+        list: Register values or None if error
+    """
     global modbus_comm
+    
+    # Validate device ID
+    device_id = validate_device_id(device_id)
+    
     with plc_lock:
         if not ensure_connection():
-            logger.error("Cannot read holding registers: No connection to PLC")
-            return [None] * count
+            logger.error("Cannot read registers: No connection to PLC")
+            return None
         
         try:
-            return modbus_comm.read_registers(address, count, device_id, 'holding')
+            # Log the request details for debugging
+            logger.debug(f"Reading {count} holding registers from address {address} with device ID {device_id}")
+            
+            # Attempt to read the registers
+            result = modbus_comm.read_registers(address, count, device_id, 'holding')
+            
+            # Check if the result is valid
+            if result is not None:
+                logger.debug(f"Successfully read registers: {result}")
+                return result
+            else:
+                logger.error("Unknown error reading holding registers")
+                return None
+                
+        except ModbusIOException as e:
+            logger.error(f"IO error reading holding registers: {e}")
+            if hasattr(modbus_comm, 'connected'):
+                modbus_comm.connected = False
+            return None
+            
+        except ConnectionException as e:
+            logger.error(f"Connection error reading holding registers: {e}")
+            if hasattr(modbus_comm, 'connected'):
+                modbus_comm.connected = False
+            return None
+            
+        except ModbusException as e:
+            logger.error(f"Modbus protocol error reading holding registers: {e}")
+            return None
+            
         except Exception as e:
-            logger.error(f"Error reading {count} holding registers from address {address}: {e}")
-            return [None] * count
-
+            logger.error(f"Unexpected error reading holding registers: {e}")
+            return None
 
 def read_input_register(address, device_id=1):
     """Read a single input register from the PLC"""
     global modbus_comm
+    
+    # Always validate device ID to avoid 'Station #0' errors
+    device_id = validate_device_id(device_id)
+    
     with plc_lock:
         if not ensure_connection():
             logger.error("Cannot read input register: No connection to PLC")
@@ -449,23 +505,71 @@ def read_input_register(address, device_id=1):
 
 
 def read_input_registers(address, count=1, device_id=1):
-    """Read multiple input registers from the PLC"""
+    """
+    Read multiple input registers from the PLC with improved error handling
+    
+    Args:
+        address (int): Starting register address
+        count (int): Number of registers to read
+        device_id (int): Slave/Unit ID of the device (1-247)
+        
+    Returns:
+        list: Register values or None if error
+    """
     global modbus_comm
+    
+    # Validate device ID to prevent the "Station #0 so no response allowed" error
+    device_id = validate_device_id(device_id)
+    
     with plc_lock:
         if not ensure_connection():
-            logger.error("Cannot read input registers: No connection to PLC")
-            return [None] * count
+            logger.error("Cannot read registers: No connection to PLC")
+            return None
         
         try:
-            return modbus_comm.read_registers(address, count, device_id, 'input')
+            # Log the request details for debugging
+            logger.debug(f"Reading {count} input registers from address {address} with device ID {device_id}")
+            
+            # Attempt to read the registers
+            result = modbus_comm.read_registers(address, count, device_id, 'input')
+            
+            # Check if the result is valid
+            if result is not None:
+                logger.debug(f"Successfully read registers: {result}")
+                return result
+            else:
+                logger.error("Unknown error reading input registers")
+                return None
+                
+        except ModbusIOException as e:
+            logger.error(f"IO error reading input registers: {e}")
+            # Connection might be lost, try to reconnect next time
+            if hasattr(modbus_comm, 'connected'):
+                modbus_comm.connected = False
+            return None
+            
+        except ConnectionException as e:
+            logger.error(f"Connection error reading input registers: {e}")
+            if hasattr(modbus_comm, 'connected'):
+                modbus_comm.connected = False
+            return None
+            
+        except ModbusException as e:
+            logger.error(f"Modbus protocol error reading input registers: {e}")
+            return None
+            
         except Exception as e:
-            logger.error(f"Error reading {count} input registers from address {address}: {e}")
-            return [None] * count
+            logger.error(f"Unexpected error reading input registers: {e}")
+            return None
 
 
 def write_register(address, value, device_id=1):
     """Write a value to a holding register"""
     global modbus_comm
+    
+    # Always validate device ID to avoid 'Station #0' errors
+    device_id = validate_device_id(device_id)
+    
     with plc_lock:
         if not ensure_connection():
             logger.error("Cannot write register: No connection to PLC")
@@ -481,6 +585,10 @@ def write_register(address, value, device_id=1):
 def write_registers(address, values, device_id=1):
     """Write multiple values to consecutive holding registers"""
     global modbus_comm
+    
+    # Always validate device ID to avoid 'Station #0' errors
+    device_id = validate_device_id(device_id)
+    
     with plc_lock:
         if not ensure_connection():
             logger.error("Cannot write registers: No connection to PLC")
@@ -491,15 +599,7 @@ def write_registers(address, values, device_id=1):
             if not isinstance(values, (list, tuple)):
                 values = [values]
             
-            if hasattr(modbus_comm, 'write_registers'):
-                return modbus_comm.write_registers(address, values, device_id)
-            else:
-                # Fallback method: write registers one by one
-                success = True
-                for i, value in enumerate(values):
-                    if not modbus_comm.write_register(address + i, value, device_id):
-                        success = False
-                return success
+            return modbus_comm.write_registers(address, values, device_id)
         except Exception as e:
             logger.error(f"Error writing values {values} to registers starting at address {address}: {e}")
             return False
@@ -556,10 +656,6 @@ def test_connection(connection_type=None, simulation_mode=False, **params):
     """
     logger.info("Testing connection (simulation_mode parameter ignored, using real connection)")
     
-    # Remove any simulation_mode influence by forcing it to False
-    if 'simulation_mode' in params:
-        del params['simulation_mode']
-
     # Create a temporary communication object just for testing
     test_comm = ModbusCommunication(name="ConnectionTest")
     
@@ -594,117 +690,70 @@ def test_connection(connection_type=None, simulation_mode=False, **params):
         if 'timeout' in params and params['timeout'] < 2.0:
             logger.info(f"Increasing timeout from {params['timeout']} to 2.0 seconds for testing")
             params['timeout'] = 2.0
+            
+    # Log the configuration for debugging
+    logger.info(f"Configuring test connection with params: {params}")
     
-    with plc_lock:  # Use global lock for testing to prevent other operations
-        try:
-            # Log the configuration attempt
-            logger.info(f"Configuring test connection with params: {params}")
-            config_start = time.time()
-            
-            if not test_comm.configure(connection_type, **params):
-                logger.error(f"Failed to configure test connection - invalid parameters: {test_comm.get_error()}")
-                return False
-                
-            config_time = time.time() - config_start
-            logger.info(f"Test connection configured in {config_time:.3f} seconds")
-            
-            # Log the connection attempt
-            connect_start = time.time()
-            connection_success = test_comm.connect()
-            connect_time = time.time() - connect_start
-            
-            if not connection_success:
-                logger.error(f"Connection failed after {connect_time:.3f} seconds - could not connect to {connection_type.upper()} device: {test_comm.get_error()}")
-                return False
-                
-            logger.info(f"Connection established in {connect_time:.3f} seconds, performing test read")
-            
-            # Now perform a test read
-            try:
-                read_start = time.time()
-                register_value = test_comm.read_registers(0, 1, 1, 'holding')
-                read_time = time.time() - read_start
-                
-                success = register_value is not None
-                if success:
-                    logger.info(f"REAL connection test successful - register read returned: {register_value} in {read_time:.3f} seconds")
-                else:
-                    logger.error(f"REAL connection test failed after {read_time:.3f} seconds - register read returned None")
-                return success
-            except Exception as e:
-                read_time = time.time() - read_start
-                logger.error(f"REAL connection test failed after {read_time:.3f} seconds during read operation: {str(e)}")
-                return False
-            finally:
-                disconnect_start = time.time()
-                test_comm.disconnect()
-                disconnect_time = time.time() - disconnect_start
-                logger.info(f"Test connection disconnected in {disconnect_time:.3f} seconds")
-        except Exception as e:
-            logger.error(f"REAL connection test exception: {str(e)}")
-            return False
-
-def get_available_ports():
-    """Get a list of available serial ports"""
+    t0 = time.time()
+    success = test_comm.configure(connection_type, **params)
+    logger.info(f"Test connection configured in {time.time()-t0:.3f} seconds")
+    
+    if not success:
+        logger.error(f"Failed to configure test connection: {test_comm.get_error()}")
+        return False
+        
+    # Now try to connect with the test client
     try:
-        from PyQt5 import QtSerialPort
-        ports = QtSerialPort.QSerialPortInfo.availablePorts()
-        return [port.portName() for port in ports]
+        t0 = time.time()
+        if not test_comm.connect():
+            logger.error(f"Connection failed after {time.time()-t0:.3f} seconds - could not connect to {connection_type.upper()} device: {test_comm.get_error()}")
+            return False
+            
+        logger.info(f"Connection established in {time.time()-t0:.3f} seconds, performing test read")
+        
+        # Try to read a register to verify the connection works properly
+        try:
+            # Always use device ID 1 for testing, never 0
+            t0 = time.time()
+            if connection_type == 'tcp':
+                result = test_comm.read_registers(0, 1, 1, 'holding')
+            else:
+                result = test_comm.read_registers(0, 1, 1, 'holding')
+                
+            if result is not None:
+                logger.info(f"REAL connection test successful - register read returned: {result} in {time.time()-t0:.3f} seconds")
+            else:
+                logger.error(f"REAL connection test failed - register read returned None")
+                test_comm.disconnect()
+                return False
+                
+        except Exception as e:
+            logger.error(f"REAL connection test failed - register read failed with error: {e}")
+            test_comm.disconnect()
+            return False
+            
+        # Disconnect the test client before returning
+        t0 = time.time()
+        test_comm.disconnect()
+        logger.info(f"Test connection disconnected in {time.time()-t0:.3f} seconds")
+        
+        return True
+        
     except Exception as e:
-        logger.error(f"Error getting available serial ports: {e}")
-        return []
+        logger.error(f"Error during connection test: {e}")
+        return False
 
-
-def get_connection_parameters():
-    """Get the current connection parameters as a dictionary"""
-    is_demo = pool.config('demo', bool, False)
-    connection_type = pool.config('plc/connection_type', str, 'rtu')
+def start_connection_monitor(interval=30000):  # Default 30 seconds
+    """Start the connection monitor timer"""
+    global connection_monitor
     
-    params = {
-        'demo_mode': is_demo,
-        'connection_type': connection_type,
-        'timeout': pool.config('plc/timeout', float, 1.0)
-    }
-    
-    if connection_type == 'tcp':
-        params.update({
-            'host': pool.config('plc/host', str, 'localhost'),
-            'port': pool.config('plc/tcp_port', int, 502)
-        })
-    else:
-        params.update({
-            'port': pool.config('plc/port', str, 'COM1'),
-            'baudrate': pool.config('plc/baudrate', int, 9600),
-            'bytesize': pool.config('plc/bytesize', int, 8),
-            'parity': pool.config('plc/parity', str, 'N'),
-            'stopbits': pool.config('plc/stopbits', float, 1.0)
-        })
-    
-    return params
-
-
-def sync_with_data_reader():
-    """Synchronize the PLC communication with the data reader"""
-    global modbus_comm
-    
-    # Check if both are already connected
-    plc_connected = is_connected()
-    data_reader_connected = dataReader.is_connected()
-    
-    if plc_connected and data_reader_connected:
-        logger.info("Both PLC and DataReader are already connected - no sync needed")
+    # Create a new monitor if needed
+    if connection_monitor is None:
+        connection_monitor = ConnectionMonitor(parent=QApplication.instance())
+        
+    # Start the timer
+    if connection_monitor.start(interval):
+        logger.info(f"PLC connection monitor started with interval {interval}ms")
         return True
-    elif plc_connected and not data_reader_connected:
-        # PLC is connected but DataReader is not, just start the DataReader
-        logger.info("PLC is connected but DataReader is not - starting DataReader")
-        dataReader.start()
-        return True
-    elif not plc_connected and data_reader_connected:
-        # DataReader is connected but PLC is not - stop DataReader and initialize both
-        logger.info("DataReader is connected but PLC is not - reinitializing both")
-        dataReader.stop()
-        return initialize_plc_communication()
-    else:
-        # Neither is connected - initialize both
-        logger.info("Neither PLC nor DataReader are connected - initializing both")
-        return initialize_plc_communication()
+        
+    return False
