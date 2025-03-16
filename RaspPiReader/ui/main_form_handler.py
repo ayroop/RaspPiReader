@@ -211,20 +211,14 @@ class MainFormHandler(QMainWindow):
         self.cycle_timer.start(1000)
 
     def update_cycle_timer(self):
-        """
-        Update the cycle timer display.
-        If a cycle is active (new_cycle_handler has a cycle_start_time):
-          - If cycle_end_time is set, display elapsed time and end time.
-          - Otherwise, display current elapsed time and "N/A" for end time.
-        Updates self.run_duration (for elapsed time) and self.d6 (for cycle end time).
-        """
         if self.run_duration is not None and self.d6 is not None:
-            if self.new_cycle_handler and hasattr(self.new_cycle_handler, "cycle_start_time"):
-                if hasattr(self.new_cycle_handler, "cycle_end_time"):
-                    elapsed = self.new_cycle_handler.cycle_end_time - self.new_cycle_handler.cycle_start_time
+            start_time = self.new_cycle_handler.cycle_start_time
+            if start_time is not None:
+                if self.new_cycle_handler.cycle_end_time is not None:
+                    elapsed = self.new_cycle_handler.cycle_end_time - start_time
                     end_time_str = self.new_cycle_handler.cycle_end_time.strftime("%H:%M:%S")
                 else:
-                    elapsed = datetime.now() - self.new_cycle_handler.cycle_start_time
+                    elapsed = datetime.now() - start_time
                     end_time_str = "N/A"
                 self.run_duration.setText(str(elapsed).split('.')[0])
                 self.d6.setText(end_time_str)
@@ -284,43 +278,41 @@ class MainFormHandler(QMainWindow):
     def integrate_new_cycle_widget(self):
         """
         Integrate the new cycle widget and Boolean status widget into the main window layout.
-        This method will:
-        - Ensure the central widget has a layout.
-        - Remove the new cycle widget from any current parent.
-        - Create a container widget with an HBox layout.
-        - Add the Boolean status widget (if available) and the new cycle widget.
-        - Add the container to the central layout and show it.
+        After adding the new cycle widget, hide its Start/Stop buttons.
         """
         central_widget = self.centralWidget()
         central_layout = central_widget.layout()
         if central_layout is None:
-            # Create and set a new vertical layout in the central widget if none exists.
             central_layout = QtWidgets.QVBoxLayout(central_widget)
             central_widget.setLayout(central_layout)
 
-        # If new_cycle_handler is already parented somewhere, remove it.
-        if self.new_cycle_handler.parent() is not None:
-            self.new_cycle_handler.setParent(None)
+        # Ensure new cycle widget is re-parented to the central widget.
+        if self.new_cycle_handler.parent() is not central_widget:
+            self.new_cycle_handler.setParent(central_widget)
+            
+        # Hide the new cycle widget buttons
+        if hasattr(self.new_cycle_handler, "ui"):
+            self.new_cycle_handler.ui.startCycleButton.hide()
+            self.new_cycle_handler.ui.stopCycleButton.hide()
+            
+        self.new_cycle_handler.hide()  # Initially hide before integration if needed.
 
-        # Hide the new cycle widget temporarily while integrating.
-        self.new_cycle_handler.hide()
-        
-        # Create a container widget to hold both the Boolean status container and the new cycle widget.
+        # Create container widget to integrate with other panels (e.g. Boolean status widget)
         container = QtWidgets.QWidget(central_widget)
         h_layout = QtWidgets.QHBoxLayout(container)
         h_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Add the Boolean status widget container if it exists.
+        # If the Boolean status widget container exists, add it
         if hasattr(self, "boolStatusWidgetContainer") and self.boolStatusWidgetContainer:
             h_layout.addWidget(self.boolStatusWidgetContainer)
         
-        # Add the new cycle widget.
+        # Add the new cycle widget (without its buttons)
         h_layout.addWidget(self.new_cycle_handler)
         
-        # Add the container to the central layout.
+        # Add the container into the main layout.
         central_layout.addWidget(container)
         
-        # Now show the new cycle widget as part of the container.
+        # Show container and the new cycle widget (buttons remain hidden)
         self.new_cycle_handler.show()
         container.show()
 

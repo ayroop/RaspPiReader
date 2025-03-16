@@ -1,12 +1,12 @@
 from PyQt5 import QtWidgets, QtCore, QtSerialPort
-from PyQt5.QtCore import QSettings
+from PyQt5.QtCore import QSettings, QTimer
 from PyQt5.QtWidgets import QApplication, QDialog
 from PyQt5.QtGui import QFont
 import logging
 import sqlite3
 import sys
 import os
-
+import threading
 from RaspPiReader import pool
 from RaspPiReader.libs import plc_communication
 from RaspPiReader.libs.database import Database
@@ -282,57 +282,130 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         return params
     
     def _test_connection(self):
-        """Test the connection with current settings"""
+        """Test the connection with current settings and improved timeout handling"""
         try:
-            # Get demo mode from pool configuration
-            current_demo_mode = pool.config('demo', bool, False)
+            # Disable buttons during test
+            self._set_buttons_enabled(False)
             
             # Show a "Testing..." status
-            self.statusLabel.setText("Testing connection...")
-            self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
-            QApplication.processEvents()  # Ensure UI updates
+            self._update_status_label("Testing connection...", "blue")
             
-            # For real testing, get current params
+            # Create a progress indicator to show the user something is happening
+            self._show_progress_bar()
+            
+            # Set up timeout handling
+            self.test_timeout_timer = QTimer(self)
+            self.test_timeout_timer.setSingleShot(True)
+            self.test_timeout_timer.timeout.connect(self._handle_test_timeout)
+            
+            # Get connection parameters from UI
             connection_type = 'tcp' if self.tcpRadio.isChecked() else 'rtu'
             params = self._get_current_connection_params()
-                    
-            logger.info(f"Performing REAL CONNECTION TEST with: {connection_type}, params: {params}")
-                    
-            # Call test_connection with explicit simulation_mode=False
-            success = plc_communication.test_connection(
-                connection_type=connection_type,
-                simulation_mode=False,
-                **params
-            )
             
-            # Show result
-            if success:
-                self.statusLabel.setText("Connected")
-                self.statusLabel.setStyleSheet("color: green; font-weight: bold;")
-                QtWidgets.QMessageBox.information(
-                    self,
-                    "Connection Test",
-                    "Successfully connected to PLC using REAL connection."
-                )
-            else:
-                self.statusLabel.setText("Connection Failed")
-                self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
-                QtWidgets.QMessageBox.warning(
-                    self,
-                    "Connection Test",
-                    "Failed to connect to PLC. Check your settings and ensure the device is connected."
-                )
+            logger.info(f"Performing CONNECTION TEST with: {connection_type}, params: {params}")
+            
+            # Make sure to include a sufficient timeout for testing
+            if 'timeout' not in params or params['timeout'] < 2.0:
+                params['timeout'] = 2.0
+            
+            # Define a worker function that runs in a thread
+            def test_worker():
+                try:
+                    success = plc_communication.test_connection(
+                        connection_type=connection_type,
+                        **params
+                    )
+                    # Use singleShot timer to update UI safely from thread
+                    QTimer.singleShot(0, lambda: self._handle_test_result(success))
+                    # Stop timeout timer
+                    QTimer.singleShot(0, self.test_timeout_timer.stop)
+                except Exception as e:
+                    logger.error(f"Error in test worker thread: {e}")
+                    QTimer.singleShot(0, lambda: self._handle_test_result(False, str(e)))
+                    QTimer.singleShot(0, self.test_timeout_timer.stop)
+            
+            # Create and start the test thread
+            test_thread = threading.Thread(target=test_worker, name="ConnectionTestThread")
+            test_thread.daemon = True
+            
+            # Calculate timeout based on timeout value in form
+            timeout_value = params.get('timeout', 2.0)
+            test_timeout = max(timeout_value * 1000 * 2, 5000)  # At least 5 seconds or 2x the timeout
+            
+            # Start the timeout timer
+            self.test_timeout_timer.start(test_timeout)
+            
+            # Start the test thread
+            test_thread.start()
         
         except Exception as e:
-            logger.error(f"Error testing connection: {e}")
-            self.statusLabel.setText("Connection Error")
-            self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
+            logger.error(f"Error setting up connection test: {e}")
+            self._cleanup_after_test()
+            self._update_status_label("Connection Error", "red")
             QtWidgets.QMessageBox.critical(
                 self,
                 "Connection Test Error",
-                f"An error occurred while testing the connection: {str(e)}"
+                f"An error occurred while setting up the connection test: {str(e)}"
             )
-        
+
+    def _handle_test_timeout(self):
+        """Handle the case when connection test times out"""
+        logger.error("PLC connection test timed out")
+        self._cleanup_after_test()
+        self._update_status_label("Test Timeout", "red")
+        QtWidgets.QMessageBox.warning(
+            self,
+            "Test Timeout",
+            "The connection test timed out. Please check your settings and ensure the PLC is reachable."
+        )
+
+    def _handle_test_result(self, success, error_msg=None):
+        """Handle the result of the connection test"""
+        self._cleanup_after_test()
+        if success:
+            self._update_status_label("Connected", "green")
+            QtWidgets.QMessageBox.information(
+                self,
+                "Connection Test",
+                "Successfully connected to PLC."
+            )
+        else:
+            self._update_status_label("Connection Failed", "red")
+            message = "Failed to connect to PLC. Check your settings and ensure the device is connected."
+            if error_msg:
+                message += f"\n\nError details: {error_msg}"
+            QtWidgets.QMessageBox.warning(
+                self,
+                "Connection Test",
+                message
+            )
+
+    def _set_buttons_enabled(self, enabled):
+        """Enable or disable buttons"""
+        self.testButton.setEnabled(enabled)
+        self.saveButton.setEnabled(enabled)
+        self.cancelButton.setEnabled(enabled)
+
+    def _update_status_label(self, text, color):
+        """Update the status label with the given text and color"""
+        self.statusLabel.setText(text)
+        self.statusLabel.setStyleSheet(f"color: {color}; font-weight: bold;")
+
+    def _show_progress_bar(self):
+        """Show a progress bar to indicate ongoing operation"""
+        self.progressBar = QtWidgets.QProgressBar(self)
+        self.progressBar.setRange(0, 0)  # Indeterminate progress
+        self.progressBar.setTextVisible(False)
+        self.statusLayout.addWidget(self.progressBar)
+        QApplication.processEvents()  # Ensure UI updates
+
+    def _cleanup_after_test(self):
+        """Cleanup UI elements and re-enable buttons after test"""
+        if hasattr(self, 'progressBar') and self.progressBar is not None:
+            self.progressBar.setParent(None)
+            self.progressBar = None
+        self._set_buttons_enabled(True)
+
     def _save_settings_simple(self, test_only=False):
         """Save settings directly to config without triggering recursion"""
         try:
@@ -485,20 +558,104 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             return False
     
     def save_and_close(self):
-        """Save settings and initialize PLC communication"""
+        """Save settings and initialize PLC communication in a non-blocking way with timeout control"""
         if self._save_settings_simple(test_only=False):
-            # Initialize the PLC communication with new settings
-            logger.info("Initializing PLC communication with new settings")
-            success = plc_communication.initialize_plc_communication()
+            # Disable buttons to prevent multiple clicks
+            self.saveButton.setEnabled(False)
+            self.cancelButton.setEnabled(False)
+            self.testButton.setEnabled(False)
             
-            if success:
-                logger.info("PLC communication initialized successfully")
-                # Accept the dialog only if initialization succeeds
-                self.accept()
-            else:
-                logger.error("Failed to initialize PLC communication")
-                QtWidgets.QMessageBox.warning(
-                    self,
-                    "PLC Communication Error",
-                    "Failed to initialize PLC communication with new settings."
-                )
+            # Show a "connecting" status with progress indication
+            self.statusLabel.setText("Connecting...")
+            self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
+            
+            # Create a progress indicator to show the user something is happening
+            self.progressBar = QtWidgets.QProgressBar(self)
+            self.progressBar.setRange(0, 0)  # Indeterminate progress
+            self.progressBar.setTextVisible(False)
+            self.statusLayout.addWidget(self.progressBar)
+            QApplication.processEvents()  # Ensure UI updates
+            
+            # Set up timeout handling
+            self.connection_timeout_timer = QTimer(self)
+            self.connection_timeout_timer.setSingleShot(True)
+            self.connection_timeout_timer.timeout.connect(self._handle_connection_timeout)
+            
+            # Define a callback function to handle the result of PLC initialization
+            def init_callback(success):
+                # Use the single shot timer to safely update the UI from a different thread
+                QTimer.singleShot(0, lambda: self._handle_init_result(success))
+                
+                # Stop the timeout timer as we got a response
+                QTimer.singleShot(0, self.connection_timeout_timer.stop)
+            
+            # Initialize PLC communication in a background thread
+            from RaspPiReader.libs import plc_communication
+            logger.info("Initializing PLC communication with new settings (async)")
+            
+            # Get the timeout value from form field
+            timeout_value = self.timeoutSpinBox.value()
+            connection_timeout = max(timeout_value * 1000 * 2, 5000)  # At least 5 seconds, or 2x the timeout setting
+            
+            # Start the timeout timer
+            self.connection_timeout_timer.start(int(connection_timeout))
+            
+            # Start initialization thread
+            plc_communication.initialize_plc_communication_async(callback=init_callback)
+
+    def _handle_connection_timeout(self):
+        """Handle the case when connection initialization times out"""
+        logger.error("PLC connection initialization timed out")
+        
+        # Re-enable buttons
+        self.saveButton.setEnabled(True)
+        self.cancelButton.setEnabled(True)
+        self.testButton.setEnabled(True)
+        
+        # Remove progress indicator
+        if hasattr(self, 'progressBar') and self.progressBar is not None:
+            self.progressBar.setParent(None)
+            self.progressBar = None
+        
+        # Update status label
+        self.statusLabel.setText("Connection Timeout")
+        self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
+        
+        # Show error message
+        QtWidgets.QMessageBox.warning(
+            self,
+            "Connection Timeout",
+            "The connection attempt timed out. Please check your settings and ensure the PLC is reachable."
+        )
+
+    def _handle_init_result(self, success):
+        """Handle the result of PLC initialization (called on the main thread)"""
+        # Re-enable buttons
+        self.saveButton.setEnabled(True)
+        self.cancelButton.setEnabled(True)
+        self.testButton.setEnabled(True)
+        
+        # Remove progress indicator
+        if hasattr(self, 'progressBar') and self.progressBar is not None:
+            self.progressBar.setParent(None)
+            self.progressBar = None
+        
+        if success:
+            logger.info("PLC communication initialized successfully")
+            # Create and start the connection monitor in the main thread
+            from RaspPiReader.libs import plc_communication
+            if plc_communication.connection_monitor is None:
+                plc_communication.connection_monitor = plc_communication.ConnectionMonitor(self)
+            plc_communication.connection_monitor.start(30000)  # 30 seconds interval
+            
+            # Accept the dialog
+            self.accept()
+        else:
+            logger.error("Failed to initialize PLC communication")
+            self.statusLabel.setText("Connection Failed")
+            self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
+            QtWidgets.QMessageBox.warning(
+                self,
+                "PLC Communication Error",
+                "Failed to initialize PLC communication with new settings. Check your connection parameters and ensure the PLC is properly connected."
+            )

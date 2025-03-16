@@ -1,3 +1,4 @@
+
 import sys
 import os
 import argparse
@@ -10,7 +11,7 @@ from RaspPiReader.ui.login_form_handler import LoginFormHandler
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.sync import SyncThread
 from RaspPiReader.libs.demo_data_reader import data as demo_data
-from RaspPiReader.libs.plc_communication import initialize_plc_communication
+from RaspPiReader.libs.plc_communication import initialize_plc_communication_async
 from RaspPiReader.libs.logging_config import setup_logging
 from RaspPiReader.ui.splash_screen import SplashScreen
 
@@ -41,12 +42,25 @@ def initialize_components(logger, args):
     db = Database("sqlite:///local_database.db")
     db.create_tables()
 
-    logger.info("Initializing PLC communication...")
-    success = initialize_plc_communication()
-    if success:
-        logger.info("PLC communication initialized successfully")
-    else:
-        logger.error("Failed to initialize PLC communication")
+    # Start PLC initialization in background to avoid blocking startup
+    logger.info("Starting PLC communication initialization in background...")
+    
+    def plc_init_callback(success):
+        if success:
+            logger.info("PLC communication initialized successfully")
+            # Start the connection monitor in the main thread
+            from RaspPiReader.libs.plc_communication import connection_monitor, ConnectionMonitor
+            if connection_monitor is None:
+                from PyQt5.QtWidgets import QApplication
+                app = QApplication.instance()
+                if app:
+                    connection_monitor = ConnectionMonitor(app)
+                    connection_monitor.start(30000)  # check every 30 seconds
+        else:
+            logger.error("Failed to initialize PLC communication")
+    
+    # Start initialization in background
+    initialize_plc_communication_async(plc_init_callback)
 
     return db
 
@@ -71,7 +85,6 @@ def show_splash_screen(logger):
 
     return splash
 
-initialize_plc_communication()  # Ensure Modbus client is configured
 def Main():
     """Main application entry point"""
     logger = setup_application()
