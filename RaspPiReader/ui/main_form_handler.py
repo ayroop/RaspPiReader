@@ -906,17 +906,11 @@ class MainFormHandler(QMainWindow):
         )
     
     def update_live_data(self):
-        """
-        Read PLC values and update the UI components.
-        If connected, update vacuum gauges, temperature, pressure and system vacuum.
-        Also accumulate new data points and call the plot widget's add_data_point() method.
-        """
         try:
-            # Only attempt data read if connection is up.
             if not plc_communication.is_connected():
                 return
 
-            # --- UPDATE VACUUM GAUGE LABELS (CH1 - CH8) ---
+            # --- UPDATE VACUUM GAUGE VALUES (Channels 1-8) ---
             for ch in range(1, 9):
                 try:
                     addr_key = f'channel_{ch}_address'
@@ -927,8 +921,7 @@ class MainFormHandler(QMainWindow):
                         decimal_places = pool.config(f'decimal_point{ch}', int, 0)
                         if channel_value is not None:
                             if scale_enabled and decimal_places > 0:
-                                scaled_value = channel_value / (10 ** decimal_places)
-                                value = scaled_value
+                                value = channel_value / (10 ** decimal_places)
                             else:
                                 try:
                                     value = float(channel_value)
@@ -936,10 +929,9 @@ class MainFormHandler(QMainWindow):
                                     value = 0.0
                         else:
                             value = 0.0
-                        # Look for the spinbox in the central widget (defined as "ch{ch}Value")
-                        spinbox_vacuum = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
-                        if spinbox_vacuum:
-                            spinbox_vacuum.setValue(value)
+                        spinbox = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
+                        if spinbox:
+                            spinbox.setValue(value)
                         else:
                             logger.error(f"Spinbox ch{ch}Value not found in UI.")
                     else:
@@ -947,7 +939,7 @@ class MainFormHandler(QMainWindow):
                 except Exception as e:
                     logger.error(f"Error reading CH{ch}: {e}")
 
-            # --- UPDATE TEMPERATURE (channels 9-12) ---
+            # --- UPDATE TEMPERATURE VALUES (Channels 9-12) ---
             for ch in range(9, 13):
                 try:
                     addr_key = f'channel_{ch}_address'
@@ -955,81 +947,87 @@ class MainFormHandler(QMainWindow):
                     if channel_addr > 0:
                         channel_value = read_holding_register(channel_addr, 1)
                         scale_enabled = pool.config(f'scale{ch}', bool, False)
-                        decimal_places = pool.config(f'decimal_point{ch}', int, 1)
+                        decimal_places = pool.config(f'decimal_point{ch}', int, 0)
                         if channel_value is not None:
                             if scale_enabled and decimal_places > 0:
-                                scaled_value = channel_value / (10 ** decimal_places)
-                                display_value = f"{scaled_value:.{decimal_places}f}"
+                                value = channel_value / (10 ** decimal_places)
                             else:
-                                display_value = str(channel_value)
+                                try:
+                                    value = float(channel_value)
+                                except Exception:
+                                    value = 0.0
                         else:
-                            display_value = "0.0"
-                        temp_label = self.form_obj.__dict__.get(f"CH{ch}Label")
-                        if temp_label:
-                            temp_label.setText(display_value)
-                    # else ignore
-                except Exception as e:
-                    logger.error(f"Error reading temperature CH{ch}: {e}")
-                    temp_label = self.form_obj.__dict__.get(f"CH{ch}Label")
-                    if temp_label:
-                        temp_label.setText("Error")
-
-            # --- UPDATE PRESSURE (CH13) and SYSTEM VACUUM (CH14) ---
-            for ch, label_name in [(13, "cylinderPressureLabel"), (14, "systemVacuumLabel")]:
-                try:
-                    addr_key = f'channel_{ch}_address'
-                    channel_addr = pool.config(addr_key, int, 0)
-                    if channel_addr > 0:
-                        channel_value = read_holding_register(channel_addr, 1)
-                        scale_enabled = pool.config(f'scale{ch}', bool, False)
-                        decimal_places = pool.config(f'decimal_point{ch}', int, 1)
-                        if channel_value is not None:
-                            if scale_enabled and decimal_places > 0:
-                                scaled_value = channel_value / (10 ** decimal_places)
-                                display_value = f"{scaled_value:.{decimal_places}f}"
-                            else:
-                                display_value = str(channel_value)
+                            value = 0.0
+                        spinbox = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
+                        if spinbox:
+                            spinbox.setValue(value)
                         else:
-                            display_value = "0.0"
-                        value_label = self.form_obj.__dict__.get(f"CH{ch}Label")
-                        if value_label:
-                            value_label.setText(display_value)
-                    # else ignore
+                            logger.error(f"Spinbox ch{ch}Value not found in UI.")
+                    else:
+                        logger.debug(f"Channel {ch} address not configured")
                 except Exception as e:
                     logger.error(f"Error reading CH{ch}: {e}")
-                    value_label = self.form_obj.__dict__.get(f"CH{ch}Label")
-                    if value_label:
-                        value_label.setText("Error")
 
-            # --- UPDATE ALARM STATUS ---
-            self.update_alarm_status()
-
-            # --- UPDATE PLOT DATA ---
-            # Assume self.plot is an instance of InitiatePlotWidget with a working add_data_point method.
-            if self.plot is not None:
-                timestamp = datetime.now()
-                active_channels = self.active_channels if hasattr(self, 'active_channels') and self.active_channels else self.load_active_channels()
-                # Build a data point dict for active channels
-                data_point = {}
-                for ch in active_channels:
-                    addr_key = f'channel_{ch}_address'
-                    channel_addr = pool.config(addr_key, int, 0)
-                    if channel_addr > 0:
-                        value = read_holding_register(channel_addr, 1)
-                        scale_enabled = pool.config(f'scale{ch}', bool, False)
-                        decimal_places = pool.config(f'decimal_point{ch}', int, 0)
-                        if value is not None:
-                            if scale_enabled and decimal_places > 0:
-                                value = value / (10 ** decimal_places)
+            # --- UPDATE CYLINDER PRESSURE (Channel 13) ---
+            try:
+                ch = 13
+                addr_key = f'channel_{ch}_address'
+                channel_addr = pool.config(addr_key, int, 0)
+                if channel_addr > 0:
+                    channel_value = read_holding_register(channel_addr, 1)
+                    scale_enabled = pool.config(f'scale{ch}', bool, False)
+                    decimal_places = pool.config(f'decimal_point{ch}', int, 0)
+                    if channel_value is not None:
+                        if scale_enabled and decimal_places > 0:
+                            value = channel_value / (10 ** decimal_places)
                         else:
-                            value = 0
-                        data_point[f"CH{ch}"] = value
-                if data_point:
-                    # Call the plot widget’s add_data_point method.
-                    self.plot.add_data_point(timestamp, data_point)
+                            try:
+                                value = float(channel_value)
+                            except Exception:
+                                value = 0.0
+                    else:
+                        value = 0.0
+                    spinbox = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
+                    if spinbox:
+                        spinbox.setValue(value)
+                    else:
+                        logger.error(f"Spinbox ch{ch}Value not found in UI.")
+                else:
+                    logger.debug(f"Channel {ch} address not configured")
+            except Exception as e:
+                logger.error(f"Error reading CH13: {e}")
+
+            # --- UPDATE SYSTEM VACUUM (Channel 14) ---
+            try:
+                ch = 14
+                addr_key = f'channel_{ch}_address'
+                channel_addr = pool.config(addr_key, int, 0)
+                if channel_addr > 0:
+                    channel_value = read_holding_register(channel_addr, 1)
+                    scale_enabled = pool.config(f'scale{ch}', bool, False)
+                    decimal_places = pool.config(f'decimal_point{ch}', int, 0)
+                    if channel_value is not None:
+                        if scale_enabled and decimal_places > 0:
+                            value = channel_value / (10 ** decimal_places)
+                        else:
+                            try:
+                                value = float(channel_value)
+                            except Exception:
+                                value = 0.0
+                    else:
+                        value = 0.0
+                    spinbox = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
+                    if spinbox:
+                        spinbox.setValue(value)
+                    else:
+                        logger.error(f"Spinbox ch{ch}Value not found in UI.")
+                else:
+                    logger.debug(f"Channel {ch} address not configured")
+            except Exception as e:
+                logger.error(f"Error reading CH14: {e}")
 
         except Exception as e:
-            logger.error("Error in update_live_data: " + str(e))
+            logger.error(f"Error in update_live_data: {e}")
     def create_csv_file(self):
         self.csv_update_locked = False
         self.last_written_index = 0
