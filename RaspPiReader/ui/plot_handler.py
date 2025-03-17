@@ -1,179 +1,118 @@
 import pyqtgraph as pg
-import pyqtgraph.exporters
-from PyQt5.QtWidgets import QApplication, QLabel, QCheckBox
-from RaspPiReader import pool
+from PyQt5.QtWidgets import QSizePolicy
 from datetime import datetime
-
-DATA_SKIP_FACTOR = 10
+from RaspPiReader import pool
+from RaspPiReader.libs.configuration import config  # config.colors is a list of QColor objects
 
 class InitiatePlotWidget:
     def __init__(self, active_channels, parent_layout, legend_layout=None, headers=None):
+        """
+        active_channels: list of channel identifiers, e.g., ["CH1", "CH2", ..., "CH14"]
+        parent_layout: Layout widget in which this plot is embedded.
+        legend_layout: Optional legend layout.
+        headers: Optional header definitions.
+        """
         self.parent_layout = parent_layout
         self.headers = headers
         self.legend_layout = legend_layout
-        self.active_channels = active_channels  # For example: ["CH1", "CH2", ...]
-        self.data_points = []  # List to store (elapsed, data_point) tuples
-        self.start_time = None
+        self.active_channels = active_channels  # list of channel names
+        self.curves = {}  # Maps channel -> curve object
+        # Store data as (elapsed_time, value) tuples per channel
+        self.data_points = {ch: [] for ch in self.active_channels}
+        self.start_time = datetime.now()
         self.create_plot()
 
     def create_plot(self):
-        # Create left plot widget
-        self.left_plot = pg.PlotWidget(background="white", title="")
-        self.parent_layout.addWidget(self.left_plot)
-        self.left_plot.showAxis('right')
-        # Create a right plot viewbox linked to the left plot
-        self.right_plot = pg.ViewBox()
-        self.left_plot.scene().addItem(self.right_plot)
-        self.left_plot.getAxis('right').linkToView(self.right_plot)
-        self.right_plot.setXLink(self.left_plot)
-        self.left_plot.getViewBox().sigResized.connect(self.update_views)
-
-        self.right_plot.setDefaultPadding(0.0)
-        self.left_plot.setDefaultPadding(0.0)
-
-        # Set axis labels from headers if provided, else use fallback values
-        if self.headers and len(self.headers) >= 3:
-            self.left_plot.setLabel('bottom', self.headers[0], **{'font-size': '10pt'})
-            self.left_plot.setLabel('left', self.headers[1], **{'font-size': '10pt'})
-            self.left_plot.setLabel('right', self.headers[2], **{'font-size': '10pt'})
-        else:
-            self.left_plot.setLabel('bottom', "Time", **{'font-size': '10pt'})
-            self.left_plot.setLabel('left', "Value", **{'font-size': '10pt'})
-            self.left_plot.setLabel('right', "", **{'font-size': '10pt'})
-
-        # Create legend: use built-in legend if no separate layout is provided.
-        if self.legend_layout is not None:
-            self.create_dynamic_legend()
-        else:
-            self.legend = self.left_plot.addLegend(colCount=2, brush='#f5f5f5', labelTextColor='#242323')
-
-        self.last_data_index = 0
-        self.data = pool.get('data_stack')
-
-        # Determine which channels plot on left axis and on right axis.
-        self.left_lines = [ch for ch in self.active_channels if pool.config('axis_direction' + str(ch)) == 'L']
-        self.right_lines = [ch for ch in self.active_channels if ch not in self.left_lines]
-
-        # Create curves for each active channel.
-        for idx, ch in enumerate(self.active_channels):
-            args = {
-                'pen': {'color': pool.config("color" + str(ch)), 'width': 2},
-                'autoDownsample': True
-            }
-            if self.legend_layout is None and self.headers and len(self.headers) > idx + 2:
-                args.update(name=self.headers[idx + 2])
-            if ch in self.left_lines:
-                curve = self.left_plot.plot([], [], **args)
-            else:
-                curve = pg.PlotCurveItem([], [], **args)
-                self.right_plot.addItem(curve)
-                if self.legend_layout is None and hasattr(curve, "name"):
-                    self.legend.addItem(curve, curve.name())
-            setattr(self, "line_" + str(ch), curve)
-
-    def add_data_point(self, timestamp, data_point):
-        """
-        Append a new data point and update the plot.
-        data_point: dict mapping channel names (e.g., "CH1") to values.
-        """
-        if self.start_time is None:
-            self.start_time = timestamp
-        elapsed = (timestamp - self.start_time).total_seconds()
-        self.data_points.append((elapsed, data_point))
-        # Update each curve incrementally.
+        # Create main PlotWidget with white background.
+        self.plot_widget = pg.PlotWidget(background="w")
+        self.plot_widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        self.plot_widget.showGrid(x=True, y=True)
+        self.plot_widget.setLabel('left', 'Value')
+        self.plot_widget.setLabel('bottom', 'Time', units='s')
+        # Expose plot_widget as left_plot as well (so code referring to self.left_plot works)
+        self.left_plot = self.plot_widget  
+        if self.parent_layout is not None:
+            self.parent_layout.addWidget(self.plot_widget)
+        # Create legend inside plot widget.
+        self.legend = self.plot_widget.addLegend(offset=(30, 30))
+        # Create one curve per active channel using user‐selected colors.
         for ch in self.active_channels:
-            xs = [pt[0] for pt in self.data_points]
-            # If data_point for channel is missing, default to 0.
-            ys = [pt[1].get(ch, 0) for pt in self.data_points]
-            curve = getattr(self, "line_" + str(ch), None)
-            if curve is not None:
-                curve.setData(xs, ys)
-        # Update the X range of the plot.
-        try:
-            self.left_plot.setXRange(0, xs[-1])
-        except Exception:
-            pass
+            try:
+                idx = int(ch.replace("CH", "")) - 1
+            except Exception:
+                idx = 0
+            # Check user-selected color from pool; key example "color_CH1"
+            color_key = f"color_{ch}"
+            color = pool.config(color_key, str, None)
+            if not color:
+                if hasattr(config, 'colors') and config.colors:
+                    color = config.colors[idx % len(config.colors)].name()
+                else:
+                    color = "b"
+            pen = pg.mkPen(color=color, width=2)
+            curve = self.plot_widget.plot([], [], pen=pen, name=ch)
+            self.curves[ch] = curve
+
+    def add_data_point(self, channel, value):
+        """
+        Add a new data point (elapsed time, value) for the given channel.
+        """
+        if channel not in self.data_points:
+            self.data_points[channel] = []
+        elapsed = (datetime.now() - self.start_time).total_seconds()
+        self.data_points[channel].append((elapsed, value))
+        # Limit to last 1000 points for each channel.
+        if len(self.data_points[channel]) > 1000:
+            self.data_points[channel] = self.data_points[channel][-1000:]
 
     def update_plot(self):
-        # Refresh self.data from the pool and update curves (for legacy or full refresh purposes)
-        self.data = pool.get('data_stack') or []
-        if not self.data or len(self.data) == 0 or len(self.data[0]) == 0:
-            return  # No data to display
-
-        n_data = len(self.data[0])
-        if n_data > self.last_data_index:
-            acc_time = pool.config('accuarate_data_time', float, 0.0) or 0.0
-            if acc_time > 0:
-                acc_index = 0
-                for i in range(n_data, 0, -1):
-                    if (self.data[0][-1] - self.data[0][i - 1]) > acc_time:
-                        acc_index = i
-                        break
-                for ch in self.active_channels:
-                    try:
-                        curve = getattr(self, "line_" + str(ch))
-                        x_data = self.data[0][0:acc_index:DATA_SKIP_FACTOR] + self.data[0][acc_index:]
-                        y_index = self.active_channels.index(ch) + 1
-                        y_data = self.data[y_index][0:acc_index:DATA_SKIP_FACTOR] + self.data[y_index][acc_index:]
-                        curve.setData(x_data, y_data)
-                    except Exception as e:
-                        print(f"Exception updating channel {ch}: {e}")
-                        continue
+        """
+        Update each curve using the stored data points and auto-range.
+        """
+        for ch in self.active_channels:
+            data = self.data_points.get(ch, [])
+            if data:
+                times, values = zip(*data)
+                self.curves[ch].setData(times, values)
             else:
-                for ch in self.active_channels:
-                    try:
-                        idx = self.active_channels.index(ch)
-                        getattr(self, "line_" + str(ch)).setData(self.data[0], self.data[idx+1])
-                    except Exception as e:
-                        print(f"Exception updating channel {ch}: {e}")
-                        continue
-            try:
-                self.left_plot.setXRange(0, self.data[0][-1])
-            except Exception as e:
-                print(f"Exception setting XRange: {e}")
-            self.last_data_index = len(self.data[0]) - 1
-            QApplication.processEvents()
+                self.curves[ch].setData([], [])
+        self.update_views()
 
     def update_views(self):
-        self.right_plot.setGeometry(self.left_plot.getViewBox().sceneBoundingRect())
-        self.right_plot.linkedViewChanged(self.left_plot.getViewBox(), self.right_plot.XAxis)
+        """
+        Adjust the view to include all data (auto-range).
+        """
+        self.plot_widget.enableAutoRange()
 
     def create_dynamic_legend(self):
-        func = lambda idx: (lambda state: self.show_hide_plot(idx, state))
-        for idx, ch in enumerate(self.active_channels):
-            header_index = idx + 2 if self.headers and len(self.headers) > idx + 2 else None
-            header_text = self.headers[header_index] if header_index is not None else f"Channel {ch}"
-            check_box, label = self.create_legend_item(header_text, pool.config('color' + str(ch)))
-            self.legend_layout.addRow(check_box, label)
-            check_box.stateChanged.connect(func(idx))
+        """
+        Clear and re-add items to the legend.
+        """
+        self.legend.clear()
+        for ch in self.active_channels:
+            self.legend.addItem(self.curves[ch], ch)
 
-    def create_legend_item(self, text, color):
-        if color is None:
-            color = "#000000"
-        if text is None:
-            text = "Undefined"
-        check_box = QCheckBox()
-        check_box.setChecked(True)
-        legend_string = (
-            '<font color="' + color + '"> &#8212;&#8212;&nbsp;&nbsp; </font>'
-            + '<font color="black">' + text + '</font>'
-        )
-        label = QLabel()
-        label.setText(legend_string)
-        return check_box, label
-
-    def show_hide_plot(self, idx, state):
-        ch = self.active_channels[idx]
-        if state:
-            getattr(self, "line_" + str(ch)).show()
-        else:
-            getattr(self, "line_" + str(ch)).hide()
+    def show_hide_plot(self, channel, state):
+        """
+        Show/hide the specified channel's curve.
+        """
+        if channel in self.curves:
+            self.curves[channel].setVisible(state)
 
     def export_plot(self, full_export_path):
-        exporter = pg.exporters.ImageExporter(self.left_plot.scene())
-        exporter.parameters()['width'] = 2500
-        exporter.export(full_export_path)
+        """
+        Export the current plot as an image file.
+        """
+        try:
+            exporter = pg.exporters.ImageExporter(self.plot_widget.plotItem)
+            exporter.export(full_export_path)
+        except Exception as e:
+            print(f"Error exporting plot: {e}")
 
     def cleanup(self):
-        self.left_plot.clear()
-        self.right_plot.clear()
+        """
+        Clear the plot widget and reset data.
+        """
+        self.plot_widget.clear()
+        self.data_points.clear()
+        self.curves.clear()
