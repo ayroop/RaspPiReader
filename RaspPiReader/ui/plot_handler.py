@@ -2,6 +2,7 @@ import pyqtgraph as pg
 import pyqtgraph.exporters
 from PyQt5.QtWidgets import QApplication, QLabel, QCheckBox
 from RaspPiReader import pool
+from datetime import datetime
 
 DATA_SKIP_FACTOR = 10
 
@@ -11,6 +12,8 @@ class InitiatePlotWidget:
         self.headers = headers
         self.legend_layout = legend_layout
         self.active_channels = active_channels  # For example: ["CH1", "CH2", ...]
+        self.data_points = []  # List to store (elapsed, data_point) tuples
+        self.start_time = None
         self.create_plot()
 
     def create_plot(self):
@@ -48,11 +51,10 @@ class InitiatePlotWidget:
         self.data = pool.get('data_stack')
 
         # Determine which channels plot on left axis and on right axis.
-        # Here we check configuration using each channel string.
         self.left_lines = [ch for ch in self.active_channels if pool.config('axis_direction' + str(ch)) == 'L']
         self.right_lines = [ch for ch in self.active_channels if ch not in self.left_lines]
 
-        # Create curves using enumeration so that index arithmetic works properly.
+        # Create curves for each active channel.
         for idx, ch in enumerate(self.active_channels):
             args = {
                 'pen': {'color': pool.config("color" + str(ch)), 'width': 2},
@@ -69,8 +71,31 @@ class InitiatePlotWidget:
                     self.legend.addItem(curve, curve.name())
             setattr(self, "line_" + str(ch), curve)
 
+    def add_data_point(self, timestamp, data_point):
+        """
+        Append a new data point and update the plot.
+        data_point: dict mapping channel names (e.g., "CH1") to values.
+        """
+        if self.start_time is None:
+            self.start_time = timestamp
+        elapsed = (timestamp - self.start_time).total_seconds()
+        self.data_points.append((elapsed, data_point))
+        # Update each curve incrementally.
+        for ch in self.active_channels:
+            xs = [pt[0] for pt in self.data_points]
+            # If data_point for channel is missing, default to 0.
+            ys = [pt[1].get(ch, 0) for pt in self.data_points]
+            curve = getattr(self, "line_" + str(ch), None)
+            if curve is not None:
+                curve.setData(xs, ys)
+        # Update the X range of the plot.
+        try:
+            self.left_plot.setXRange(0, xs[-1])
+        except Exception:
+            pass
+
     def update_plot(self):
-    # Refresh self.data from the pool
+        # Refresh self.data from the pool and update curves (for legacy or full refresh purposes)
         self.data = pool.get('data_stack') or []
         if not self.data or len(self.data) == 0 or len(self.data[0]) == 0:
             return  # No data to display
@@ -80,16 +105,13 @@ class InitiatePlotWidget:
             acc_time = pool.config('accuarate_data_time', float, 0.0) or 0.0
             if acc_time > 0:
                 acc_index = 0
-                # Find the index marking the separation based on accumulated time.
                 for i in range(n_data, 0, -1):
                     if (self.data[0][-1] - self.data[0][i - 1]) > acc_time:
                         acc_index = i
                         break
-                # Update curves for each active channel using segmented data.
                 for ch in self.active_channels:
                     try:
                         curve = getattr(self, "line_" + str(ch))
-                        # Combine downsampled portion and the remainder.
                         x_data = self.data[0][0:acc_index:DATA_SKIP_FACTOR] + self.data[0][acc_index:]
                         y_index = self.active_channels.index(ch) + 1
                         y_data = self.data[y_index][0:acc_index:DATA_SKIP_FACTOR] + self.data[y_index][acc_index:]
@@ -105,7 +127,6 @@ class InitiatePlotWidget:
                     except Exception as e:
                         print(f"Exception updating channel {ch}: {e}")
                         continue
-            # Safely update the left plot’s X range.
             try:
                 self.left_plot.setXRange(0, self.data[0][-1])
             except Exception as e:
@@ -114,12 +135,10 @@ class InitiatePlotWidget:
             QApplication.processEvents()
 
     def update_views(self):
-        # Ensure the right viewbox is always aligned to the left plot view.
         self.right_plot.setGeometry(self.left_plot.getViewBox().sceneBoundingRect())
         self.right_plot.linkedViewChanged(self.left_plot.getViewBox(), self.right_plot.XAxis)
 
     def create_dynamic_legend(self):
-        # Create legend items with checkboxes for each channel.
         func = lambda idx: (lambda state: self.show_hide_plot(idx, state))
         for idx, ch in enumerate(self.active_channels):
             header_index = idx + 2 if self.headers and len(self.headers) > idx + 2 else None
