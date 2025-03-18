@@ -127,12 +127,24 @@ class MainFormHandler(QMainWindow):
         self.connectionTimer.start(5000)
         self.live_update_timer = QTimer(self)
         self.live_update_timer.timeout.connect(self.update_live_data)
-        self.live_update_timer.start(2000)  # Update live data every 500ms (adjust as needed)
+        # self.live_update_timer.start(2000)  # Update live data every 500ms (adjust as needed)
         
         logger.info("Live update timer started.")
         self.showMaximized()
         logger.info("MainFormHandler initialized.")
 
+    def start_live_data(self):
+        """Start reading live data every 2 seconds."""
+        if not self.live_update_timer.isActive():
+            self.live_update_timer.start(2000)
+            logger.info("Live data update timer started.")
+
+    def stop_live_data(self):
+        """Stop reading live data."""
+        if self.live_update_timer.isActive():
+            self.live_update_timer.stop()
+            logger.info("Live data update timer stopped.")
+            
     def update_data(self, new_data):
         """
         Update UI elements based on the new_data dictionary and live PLC channel readings.

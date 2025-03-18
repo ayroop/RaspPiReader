@@ -188,7 +188,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         # Update the main form cycle info, and start the cycle timer now.
         main_form = pool.get("main_form")
         if main_form:
-            # Set cycle start time and start the timer now.
+            # Set cycle start time and start the timer now, which in turn starts live data reading
             from datetime import datetime
             main_form.new_cycle_handler.cycle_start_time = datetime.now()
             main_form.start_cycle_timer(main_form.new_cycle_handler.cycle_start_time)

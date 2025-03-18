@@ -38,15 +38,24 @@ class NewCycleHandler(QtWidgets.QWidget):
 
     def start_cycle(self):
         """
-        Start a new cycle: reset timing values, record the start time, 
-        set this handler in the global pool, and launch the work order form.
+        Start a new cycle: reset timing, record start time, set up cycle,
+        launch work order form, and start live data reading.
         """
         logger.info("Start Cycle button clicked - launching Work Order Form")
         self.reset_timing()
         self.cycle_start_time = datetime.now()
         pool.set("current_cycle", self)
+
+        # Launch work order form as before
         self.work_order_form = WorkOrderFormHandler()
         self.work_order_form.show()
+
+        # Start live data updating via main form.
+        main_form = pool.get("main_form")
+        if main_form:
+            main_form.start_live_data()
+        else:
+            logger.warning("Main form not available to start live data reading.")
 
     def stop_cycle(self):
         """
