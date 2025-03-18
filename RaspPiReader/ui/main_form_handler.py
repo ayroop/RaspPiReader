@@ -127,7 +127,7 @@ class MainFormHandler(QMainWindow):
         self.connectionTimer.start(5000)
         self.live_update_timer = QTimer(self)
         self.live_update_timer.timeout.connect(self.update_live_data)
-        self.live_update_timer.start(500)  # Update live data every 500ms (adjust as needed)
+        self.live_update_timer.start(2000)  # Update live data every 500ms (adjust as needed)
         
         logger.info("Live update timer started.")
         self.showMaximized()
