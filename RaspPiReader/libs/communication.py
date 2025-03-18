@@ -180,7 +180,7 @@ class ModbusCommunication:
                         try:
                             logger.info(f"[{self.name}] Performing test read to verify connection")
                             start_read = time.time()
-                            result = self.client.read_holding_registers(0, 1, unit=1)
+                            result = self.client.read_holding_registers(1, 1, unit=1)
                             logger.info(f"[{self.name}] Test read completed in {time.time()-start_read:.3f} seconds")
                             if result is None or result.isError():
                                 self.last_error = f"Test read error: {result}"

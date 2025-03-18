@@ -138,7 +138,7 @@ def test_connection_sync(connection_type, params):
             if client.connect():
                 logger.info(f"test_connection_sync: Connection established in {time.time()-t0:.3f} seconds, performing test read")
                 try:
-                    rr = client.read_holding_registers(0, 1, unit=1)
+                    rr = client.read_holding_registers(1, 1, unit=1)
                     
                     # Check response
                     if rr is None:

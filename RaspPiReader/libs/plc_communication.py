@@ -110,7 +110,7 @@ class SimplifiedModbusTcp:
                     
                     # Perform a quick test read to verify connection is working
                     try:
-                        result = self.client.read_holding_registers(0, 1, unit=1)
+                        result = self.client.read_holding_registers(1, 1, unit=1)
                         if result is None:
                             logger.warning("Test read after connect returned None")
                         elif result.isError():
@@ -287,7 +287,7 @@ class PLCInitWorker(QThread):
                 t0 = time.time()
                 if client.connect():
                     logger.info(f"[PLCInitWorker] Connection established in {time.time()-t0:.3f} seconds")
-                    rr = client.read_holding_registers(0, 1, unit=1)
+                    rr = client.read_holding_registers(1, 1, unit=1)
                     if rr.isError():
                         error_msg = f"Test read error: {rr}"
                     else:
@@ -300,7 +300,7 @@ class PLCInitWorker(QThread):
                 t0 = time.time()
                 if client.connect():
                     logger.info(f"[PLCInitWorker] Connection established in {time.time()-t0:.3f} seconds")
-                    rr = client.read_holding_registers(0, 1, unit=1)
+                    rr = client.read_holding_registers(1, 1, unit=1)
                     if rr.isError():
                         error_msg = f"Test read error: {rr}"
                     else:
@@ -897,7 +897,7 @@ def test_connection(connection_type=None, simulation_mode=False, **params):
                 logger.info(f"Connection established in {time.time()-t0:.3f} seconds, performing test read")
                 try:
                     read_start = time.time()
-                    result = client.read_holding_registers(0, 1, unit=1)
+                    result = client.read_holding_registers(1, 1, unit=1)
                     read_time = time.time()-read_start
                     
                     if result is None:
