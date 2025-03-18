@@ -141,12 +141,14 @@ class MainFormHandler(QMainWindow):
         - temperature, pressure
         - vacuum: dict with keys 'CH1'..'CH8' (vacuum gauge values in KPa)
         - cycle_info: dict with keys such as 'maintain_vacuum', 'set_cure_temp', etc.
-        - plot: list of (time, value) pairs for plotting
+        - plot: list of records, each record is a dict with keys:
+                'channel': channel name as a string (e.g., "CH1")
+                'value'  : numeric value to be added for that channel
         
         Additionally, live channel values from the PLC (using read_holding_register)
         are read and can be used to update dedicated UI labels.
         """
-        from RaspPiReader.libs.plc_communication import read_holding_register
+        
         logger.info(f"MainForm received update: {new_data}")
         try:
             # Update Temperature and Pressure from simulation data
@@ -190,7 +192,9 @@ class MainFormHandler(QMainWindow):
                 self.form_obj.cycleStartTimeLabel.setText(cycle_info.get('cycle_start_time', 'N/A'))
                 self.form_obj.cycleEndTimeLabel.setText(cycle_info.get('cycle_end_time', 'N/A'))
             
-            # Update the plot if plot data is available
+            # Update the plot if plot data is available.
+            # The new_data['plot'] is expected to be a list of dictionaries,
+            # each with keys 'channel' and 'value'.
             plot_data = new_data.get('plot', [])
             if plot_data and self.plot:
                 self.plot.update_plot_data(plot_data)
@@ -358,30 +362,116 @@ class MainFormHandler(QMainWindow):
     def setup_plot_data_display(self):
         """
         Create a container for the plot widget, add it to the central widget layout,
-        and delay initialization by 100ms.
+        and initialize the plot widget with a short delay to ensure UI is ready.
         """
+        # Create a container widget for the plot
         self.plotWidgetContainer = QtWidgets.QWidget(self)
-        container_layout = QtWidgets.QVBoxLayout()
-        self.plotWidgetContainer.setLayout(container_layout)
-        # Get (or create) the central widget's layout.
+        self.plotWidgetContainer.setStyleSheet("background-color: white; border: 1px solid #cccccc;")  # Make it visible with border
+        container_layout = QtWidgets.QVBoxLayout(self.plotWidgetContainer)
+        container_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Create a container for the legend
+        self.legendContainer = QtWidgets.QWidget(self)
+        self.legendContainer.setStyleSheet("background-color: #f0f0f0; border: 1px solid #cccccc;")  # Light gray background with border
+        legend_layout = QtWidgets.QVBoxLayout(self.legendContainer)
+        legend_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Create a QFrame to hold both the plot and the legend (QFrame can have frame shapes)
+        plot_area_frame = QtWidgets.QFrame(self)
+        plot_area_frame.setFrameShape(QtWidgets.QFrame.StyledPanel)
+        plot_area_frame.setFrameShadow(QtWidgets.QFrame.Raised)
+        plot_area_layout = QtWidgets.QHBoxLayout(plot_area_frame)
+        plot_area_layout.setContentsMargins(5, 5, 5, 5)
+        
+        # Set size policies - plot should expand, legend should be fixed width
+        self.plotWidgetContainer.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, 
+            QtWidgets.QSizePolicy.Expanding
+        )
+        self.legendContainer.setSizePolicy(
+            QtWidgets.QSizePolicy.Fixed, 
+            QtWidgets.QSizePolicy.Preferred
+        )
+        self.legendContainer.setMinimumWidth(150)
+        self.legendContainer.setMaximumWidth(200)
+        
+        # Add plot and legend widgets to the horizontal layout
+        plot_area_layout.addWidget(self.plotWidgetContainer, 4)  # 80% of width
+        plot_area_layout.addWidget(self.legendContainer, 1)      # 20% of width
+        
+        # Get (or create) the central widget's layout
         central_widget = self.centralWidget()
         central_layout = central_widget.layout()
         if central_layout is None:
             central_layout = QtWidgets.QVBoxLayout(central_widget)
             central_widget.setLayout(central_layout)
-        central_layout.addWidget(self.plotWidgetContainer)
+        
+        # Add the combined plot area to the central widget's layout
+        central_layout.addWidget(plot_area_frame)
+        
+        # Ensure the plot area has sufficient height
+        plot_area_frame.setMinimumHeight(350)
+        
+        # Store references to the layouts for later use
+        self.plot_layout = container_layout
+        self.legend_layout = legend_layout
+        
+        # Debug info
+        logger.info(f"Plot container created with layout: {container_layout}")
+        
+        # Delay initialization to ensure UI is fully loaded
         QTimer.singleShot(100, self.initialize_plot_widget)
+        logger.info("Plot container setup complete, initialization scheduled")
 
     def initialize_plot_widget(self):
-        parent_layout = self.plotWidgetContainer.layout()
-        # Generate a dynamic list of channel names based on CHANNEL_COUNT:
-        channel_list = [f"CH{i}" for i in range(1, CHANNEL_COUNT + 1)]
-        self.plot = InitiatePlotWidget(
-            active_channels=channel_list,
-            parent_layout=parent_layout,
-            headers=["Time", "Value"]
-        )
-        self.plot.update_plot()  # Initialize updated plot data if needed.
+        """
+        Initialize the plot widget with the active channels and headers.
+        This is called after a short delay to ensure the UI is ready.
+        """
+        try:
+            # Load active channels from configuration
+            self.active_channels = self.load_active_channels()
+            if not self.active_channels:
+                # If no channels are active, use channels 1-8 as default
+                self.active_channels = list(range(1, CHANNEL_COUNT + 1))
+            
+            # Generate headers for the plot
+            headers = []
+            for i in range(1, CHANNEL_COUNT + 1):
+                # Get label from config or use default
+                header = pool.config(f'label{i}', str, f'CH{i}')
+                headers.append(header)
+            
+            # Debug info
+            logger.info(f"Active channels: {self.active_channels}")
+            logger.info(f"Plot layout exists: {self.plot_layout is not None}")
+            logger.info(f"Legend layout exists: {self.legend_layout is not None}")
+            
+            # Create the plot widget
+            self.plot = InitiatePlotWidget(
+                active_channels=self.active_channels,
+                parent_layout=self.plot_layout,
+                legend_layout=self.legend_layout,
+                headers=headers
+            )
+            
+            # Ensure the plot is visible in the UI by making the container opaque
+            if self.plotWidgetContainer:
+                self.plotWidgetContainer.setAutoFillBackground(True)
+            
+            # Show the plot area 
+            if hasattr(self, 'mainPlotGroupBox'):
+                self.mainPlotGroupBox.setVisible(True)
+            
+            logger.info(f"Plot widget initialized with {len(self.active_channels)} active channels")
+        except Exception as e:
+            logger.error(f"Error initializing plot widget: {e}")
+            # Show error in UI
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Plot Initialization Error",
+                f"Failed to initialize plot: {str(e)}"
+            )
 
     def init_custom_status_bar(self):
         """
@@ -722,7 +812,37 @@ class MainFormHandler(QMainWindow):
         self.cycle_infoGroupBox.setVisible(checked)
 
     def _show_plot(self, checked):
-        self.mainPlotGroupBox.setVisible(checked)
+        """
+        Show or hide the plot area based on the checked state.
+        Make sure the plot is visible and properly sized.
+        """
+        # Find all the relevant plot widgets
+        plot_widgets = []
+        if hasattr(self, 'mainPlotGroupBox'):
+            plot_widgets.append(self.mainPlotGroupBox)
+        if hasattr(self, 'plotWidgetContainer') and self.plotWidgetContainer:
+            plot_widgets.append(self.plotWidgetContainer)
+        
+        # Log what we're doing
+        action = "Showing" if checked else "Hiding"
+        logger.info(f"{action} plot area. Found {len(plot_widgets)} plot-related widgets")
+        
+        # Show/hide the plot widgets
+        for widget in plot_widgets:
+            widget.setVisible(checked)
+        
+        # If showing the plot, make sure it's properly set up
+        if checked:
+            # Ensure the plot widget exists
+            if not hasattr(self, 'plot') or self.plot is None:
+                logger.info("Creating plot as it doesn't exist")
+                self.initialize_plot_widget()
+            
+            # Force a layout update to ensure proper sizing
+            if hasattr(self, 'centralWidget'):
+                self.centralWidget().layout().activate()
+            
+            logger.info(f"Plot visibility set to {checked}")
 
     def _save(self):
         pass
@@ -769,18 +889,30 @@ class MainFormHandler(QMainWindow):
         return self.plot
 
     def update_plot(self):
-        # Don't use instance variables for locking state, use a proper lock
-        if not hasattr(self, '_plot_lock'):
-            from threading import Lock
-            self._plot_lock = Lock()
+        """
+        Update the plot with the latest data from data_stack.
+        This method is safer than the previous implementation.
+        """
+        if not hasattr(self, 'plot') or self.plot is None:
+            return
         
-        # Use with statement for proper lock management
-        if self._plot_lock.acquire(False):  # Non-blocking
-            try:
-                if hasattr(self, 'plot') and self.plot:
-                    self.plot.update_plot()
-            finally:
-                self._plot_lock.release()
+        try:
+            # Extract data from the data stack
+            data_points = []
+            for ch in self.active_channels:
+                if ch <= len(self.data_stack) - 2 and self.data_stack[ch]:
+                    # Get the latest value for this channel
+                    latest_value = self.data_stack[ch][-1]
+                    data_points.append({
+                        'channel': f'CH{ch}',
+                        'value': latest_value
+                    })
+            
+            # Update the plot with the new data points
+            if data_points:
+                self.plot.update_plot_data(data_points)
+        except Exception as e:
+            logger.error(f"Error updating plot: {e}")
     def cleanup(self):
         """Clean up all resources used by the plot"""
         # Remove any timers
@@ -906,12 +1038,25 @@ class MainFormHandler(QMainWindow):
         )
     
     def update_live_data(self):
+        """
+        Enhanced version of update_live_data that updates both UI spinboxes and the plot.
+        This version handles the data stack and plot updates correctly.
+        """
         try:
             if not plc_communication.is_connected():
                 return
-
-            # --- UPDATE VACUUM GAUGE VALUES (Channels 1-8) ---
-            for ch in range(1, 9):
+            
+            # Store data points to add to the plot
+            plot_data_points = []
+            
+            # Calculate current time index for the data stack
+            current_time = len(self.data_stack[0]) if self.data_stack and len(self.data_stack) > 0 and len(self.data_stack[0]) > 0 else 0
+            
+            # Flag to track if we've incremented the time already
+            time_incremented = False
+            
+            # --- UPDATE ALL CHANNELS (1-14) ---
+            for ch in range(1, 15):
                 try:
                     addr_key = f'channel_{ch}_address'
                     channel_addr = pool.config(addr_key, int, 0)
@@ -919,6 +1064,8 @@ class MainFormHandler(QMainWindow):
                         channel_value = read_holding_register(channel_addr, 1)
                         scale_enabled = pool.config(f'scale{ch}', bool, False)
                         decimal_places = pool.config(f'decimal_point{ch}', int, 0)
+                        
+                        # Process the value
                         if channel_value is not None:
                             if scale_enabled and decimal_places > 0:
                                 value = channel_value / (10 ** decimal_places)
@@ -929,103 +1076,62 @@ class MainFormHandler(QMainWindow):
                                     value = 0.0
                         else:
                             value = 0.0
+                        
+                        # Update UI spinbox
                         spinbox = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
                         if spinbox:
                             spinbox.setValue(value)
                         else:
-                            logger.error(f"Spinbox ch{ch}Value not found in UI.")
+                            logger.debug(f"Spinbox ch{ch}Value not found in UI.")
+                        
+                        # Check if this is an active channel
+                        is_active = hasattr(self, 'active_channels') and ch in self.active_channels
+                        
+                        if is_active:
+                            # Ensure data stack is initialized properly
+                            while len(self.data_stack) <= ch:
+                                self.data_stack.append([])
+                            
+                            # Add value to stack
+                            self.data_stack[ch].append(value)
+                            
+                            # Add to plot data points
+                            plot_data_points.append({
+                                'channel': f'CH{ch}',
+                                'value': value
+                            })
+                            
+                            # Only increment time once per update cycle
+                            if not time_incremented:
+                                # Ensure time stack exists
+                                if len(self.data_stack) == 0:
+                                    self.data_stack = [[]] + self.data_stack  # Ensure index 0 exists
+                                
+                                # Add to time stack (index 0)
+                                self.data_stack[0].append(current_time)
+                                
+                                # Add datetime stamp (index CHANNEL_COUNT+1)
+                                while len(self.data_stack) <= CHANNEL_COUNT + 1:
+                                    self.data_stack.append([])
+                                self.data_stack[CHANNEL_COUNT + 1].append(datetime.now())
+                                
+                                time_incremented = True
                     else:
                         logger.debug(f"Channel {ch} address not configured")
                 except Exception as e:
                     logger.error(f"Error reading CH{ch}: {e}")
-
-            # --- UPDATE TEMPERATURE VALUES (Channels 9-12) ---
-            for ch in range(9, 13):
+            
+            # Update the plot with all the data points (if we have a plot and data points)
+            if hasattr(self, 'plot') and self.plot and plot_data_points:
                 try:
-                    addr_key = f'channel_{ch}_address'
-                    channel_addr = pool.config(addr_key, int, 0)
-                    if channel_addr > 0:
-                        channel_value = read_holding_register(channel_addr, 1)
-                        scale_enabled = pool.config(f'scale{ch}', bool, False)
-                        decimal_places = pool.config(f'decimal_point{ch}', int, 0)
-                        if channel_value is not None:
-                            if scale_enabled and decimal_places > 0:
-                                value = channel_value / (10 ** decimal_places)
-                            else:
-                                try:
-                                    value = float(channel_value)
-                                except Exception:
-                                    value = 0.0
-                        else:
-                            value = 0.0
-                        spinbox = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
-                        if spinbox:
-                            spinbox.setValue(value)
-                        else:
-                            logger.error(f"Spinbox ch{ch}Value not found in UI.")
+                    # Make sure plot has the update_plot_data method
+                    if hasattr(self.plot, 'update_plot_data'):
+                        self.plot.update_plot_data(plot_data_points)
                     else:
-                        logger.debug(f"Channel {ch} address not configured")
-                except Exception as e:
-                    logger.error(f"Error reading CH{ch}: {e}")
-
-            # --- UPDATE CYLINDER PRESSURE (Channel 13) ---
-            try:
-                ch = 13
-                addr_key = f'channel_{ch}_address'
-                channel_addr = pool.config(addr_key, int, 0)
-                if channel_addr > 0:
-                    channel_value = read_holding_register(channel_addr, 1)
-                    scale_enabled = pool.config(f'scale{ch}', bool, False)
-                    decimal_places = pool.config(f'decimal_point{ch}', int, 0)
-                    if channel_value is not None:
-                        if scale_enabled and decimal_places > 0:
-                            value = channel_value / (10 ** decimal_places)
-                        else:
-                            try:
-                                value = float(channel_value)
-                            except Exception:
-                                value = 0.0
-                    else:
-                        value = 0.0
-                    spinbox = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
-                    if spinbox:
-                        spinbox.setValue(value)
-                    else:
-                        logger.error(f"Spinbox ch{ch}Value not found in UI.")
-                else:
-                    logger.debug(f"Channel {ch} address not configured")
-            except Exception as e:
-                logger.error(f"Error reading CH13: {e}")
-
-            # --- UPDATE SYSTEM VACUUM (Channel 14) ---
-            try:
-                ch = 14
-                addr_key = f'channel_{ch}_address'
-                channel_addr = pool.config(addr_key, int, 0)
-                if channel_addr > 0:
-                    channel_value = read_holding_register(channel_addr, 1)
-                    scale_enabled = pool.config(f'scale{ch}', bool, False)
-                    decimal_places = pool.config(f'decimal_point{ch}', int, 0)
-                    if channel_value is not None:
-                        if scale_enabled and decimal_places > 0:
-                            value = channel_value / (10 ** decimal_places)
-                        else:
-                            try:
-                                value = float(channel_value)
-                            except Exception:
-                                value = 0.0
-                    else:
-                        value = 0.0
-                    spinbox = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
-                    if spinbox:
-                        spinbox.setValue(value)
-                    else:
-                        logger.error(f"Spinbox ch{ch}Value not found in UI.")
-                else:
-                    logger.debug(f"Channel {ch} address not configured")
-            except Exception as e:
-                logger.error(f"Error reading CH14: {e}")
-
+                        logger.warning("Plot doesn't have update_plot_data method")
+                except Exception as plot_error:
+                    logger.error(f"Error updating plot: {plot_error}")
+            
         except Exception as e:
             logger.error(f"Error in update_live_data: {e}")
     def create_csv_file(self):
