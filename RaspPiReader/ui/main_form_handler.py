@@ -1523,3 +1523,66 @@ class MainFormHandler(QMainWindow):
             logger.info(f"Cycle start register at address {reg_addr} set to {value} (write result: {result}).")
         except Exception as e:
             logger.error(f"Error setting cycle start register: {e}")
+
+    def init_cycle_outcomes(self):
+        """
+        Initialize the Cycle Outcomes display in the main form.
+        The text for the core temperature threshold (e.g. 'CORE TEMP ≥ 2 C')
+        is set dynamically from the user configuration.
+        """
+        # Retrieve the dynamically set threshold; default to 2 if not configured
+        threshold = pool.config('core_temp_setpoint', int, 2)
+        self.labelCycleOutcomesTime = QLabel(f"TIME (min) CORE TEMP ≥ {threshold} C: N/A", self)
+        self.labelCycleOutcomesTime.setFont(QFont("Segoe UI", 10))
+        self.labelCycleOutcomesTime.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        
+        self.labelCycleOutcomesPressure = QLabel("CORE TEMP WHEN PRESSURE RELEASED (C): N/A", self)
+        self.labelCycleOutcomesPressure.setFont(QFont("Segoe UI", 10))
+        self.labelCycleOutcomesPressure.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+        
+        # Add labels to your designated layout (adjust as needed)
+        if hasattr(self, "outcomesLayout"):
+            self.outcomesLayout.addWidget(self.labelCycleOutcomesTime)
+            self.outcomesLayout.addWidget(self.labelCycleOutcomesPressure)
+        else:
+            self.mainLayout.addWidget(self.labelCycleOutcomesTime)
+            self.mainLayout.addWidget(self.labelCycleOutcomesPressure)
+        
+        # Start a timer to update these values periodically
+        self.cycleOutcomesTimer = QTimer(self)
+        self.cycleOutcomesTimer.timeout.connect(self.update_cycle_outcomes)
+        self.cycleOutcomesTimer.start(1000)  # update every second
+
+    def update_cycle_outcomes(self):
+        """
+        Update the Cycle Outcomes labels with the latest cycle data.
+        Uses properties from the new cycle handler:
+         - core_temp_above_setpoint_time (elapsed minutes core temp was above the threshold)
+         - pressure_drop_core_temp (the core temp value when a pressure drop occurred)
+        If no valid value exists, "N/A" is displayed.
+        """
+        # Retrieve the dynamic core temperature setpoint as a float (default: 100.0)
+        threshold = pool.config('core_temp_setpoint', float, 100.0)
+        logger.debug(f"Current core_temp_setpoint: {threshold}")
+
+        # Check for the accumulated time above setpoint
+        if hasattr(self.new_cycle_handler, 'core_temp_above_setpoint_time'):
+            time_value = self.new_cycle_handler.core_temp_above_setpoint_time
+            logger.debug(f"core_temp_above_setpoint_time: {time_value}")
+            time_str = f"{time_value:.2f}" if time_value and time_value > 0 else "N/A"
+        else:
+            logger.warning("new_cycle_handler is missing core_temp_above_setpoint_time attribute")
+            time_str = "N/A"
+
+        # Check for the pressure drop core temperature
+        if hasattr(self.new_cycle_handler, 'pressure_drop_core_temp'):
+            pressure_value = self.new_cycle_handler.pressure_drop_core_temp
+            logger.debug(f"pressure_drop_core_temp: {pressure_value}")
+            pressure_str = f"{pressure_value:.1f}" if pressure_value is not None else "N/A"
+        else:
+            logger.warning("new_cycle_handler is missing pressure_drop_core_temp attribute")
+            pressure_str = "N/A"
+
+        # Update the UI labels with formatted outputs
+        self.labelCycleOutcomesTime.setText(f"TIME (min) CORE TEMP ≥ {threshold:.1f} °C: {time_str}")
+        self.labelCycleOutcomesPressure.setText(f"CORE TEMP WHEN PRESSURE RELEASED (°C): {pressure_str}")

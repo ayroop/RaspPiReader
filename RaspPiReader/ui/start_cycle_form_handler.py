@@ -498,22 +498,46 @@ class StartCycleFormHandler(QMainWindow):
 
     @staticmethod
     def read_data(handler, data_stack, updated_signal, dt, process_data=True):
-        # Retrieve configuration values
-        # Set core_temp_channel default to 12 and set core_temp_setpoint default to 100 (°C)
+        # Retrieve configuration values:
+        #   - core_temp_channel: channel 12 (default)
+        #   - pressure_channel: channel 13 (default pressure measurement)
+        #   - core_temp_setpoint: default 100 °C
         core_temp_channel = pool.config('core_temp_channel', int, 12)
-        pressure_channel = pool.config('pressure_channel', int, 1)
+        pressure_channel = pool.config('pressure_channel', int, 13)
         core_temp_setpoint = pool.config('core_temp_setpoint', int, 100)
         active_channels = pool.get('active_channels')
-        # Defensive check for active_channels. If None, default to all channels.
         if active_channels is None:
             active_channels = list(range(1, CHANNEL_COUNT + 1))
-        # Ensure data_stack is valid (allocate if necessary) with CHANNEL_COUNT+2 slots.
+        # Ensure data_stack has CHANNEL_COUNT+2 slots
         if data_stack is None or not isinstance(data_stack, list) or len(data_stack) < (CHANNEL_COUNT + 2):
             data_stack = [[] for _ in range(CHANNEL_COUNT + 2)]
+        
         handler.pressure_drop_core_temp = None
         core_temp_above_setpoint_start_time = None
         handler.core_temp_above_setpoint_time = 0
-        pressure_drop_flag = False
+        pressure_drop_recorded = False  # To avoid multiple recordings for same drop event
+
+        # Helper function: perform pressure drop check.
+        # It looks back over the timestamp stack (index CHANNEL_COUNT+1) for a reading at least 5 seconds older.
+        # If the pressure drop from that reading to the current one is >=10 units, record the current core temp.
+        def check_pressure_drop():
+            nonlocal pressure_drop_recorded
+            current_time = datetime.now()
+            current_pressure = data_stack[pressure_channel][-1]
+            index_to_compare = None
+            timestamps = data_stack[CHANNEL_COUNT + 1]
+            # Look backward for the first timestamp at least 5 seconds old
+            for idx in range(len(timestamps) - 2, -1, -1):
+                if (current_time - timestamps[idx]).total_seconds() >= 5:
+                    index_to_compare = idx
+                    break
+            if index_to_compare is not None:
+                old_pressure = data_stack[pressure_channel][index_to_compare]
+                if (old_pressure - current_pressure) >= 10 and not pressure_drop_recorded:
+                    handler.pressure_drop_core_temp = data_stack[core_temp_channel][-1]
+                    pressure_drop_recorded = True
+                else:
+                    pressure_drop_recorded = False
 
         if pool.get('demo'):
             read_index = 0
@@ -531,8 +555,11 @@ class StartCycleFormHandler(QMainWindow):
                 for i in range(CHANNEL_COUNT):
                     data_stack[i + 1].append(temp_arr[i])
                 if process_data:
-                    data_stack[0].append(round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2))
+                    # Append elapsed time (in minutes) and current timestamp (to slot CHANNEL_COUNT+1)
+                    elapsed_minutes = round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2)
+                    data_stack[0].append(elapsed_minutes)
                     data_stack[CHANNEL_COUNT + 1].append(datetime.now())
+                    # Core temp setpoint logic
                     if (not core_temp_above_setpoint_start_time and 
                         data_stack[core_temp_channel][-1] >= core_temp_setpoint):
                         core_temp_above_setpoint_start_time = datetime.now()
@@ -540,12 +567,9 @@ class StartCycleFormHandler(QMainWindow):
                         handler.core_temp_above_setpoint_time += round(
                             (datetime.now() - core_temp_above_setpoint_start_time).total_seconds() / 60, 2)
                         core_temp_above_setpoint_start_time = None
-                    if len(data_stack[0]) > 1 and (data_stack[pressure_channel][-2] > data_stack[pressure_channel][-1]):
-                        if not pressure_drop_flag:
-                            handler.pressure_drop_core_temp = data_stack[core_temp_channel][-2]
-                            pressure_drop_flag = True
-                    else:
-                        pressure_drop_flag = False
+                    # Pressure drop check based on channel 13
+                    if len(data_stack[CHANNEL_COUNT + 1]) >= 2:
+                        check_pressure_drop()
                 new_data = {"data_stack": data_stack, "timestamp": datetime.now()}
                 logger.info(f"Emitting new_data: {new_data}")
                 updated_signal.emit(new_data)
@@ -559,7 +583,6 @@ class StartCycleFormHandler(QMainWindow):
                 for i in range(CHANNEL_COUNT):
                     if (i + 1) in active_channels:
                         try:
-                            # Fetch configuration values as strings then convert explicitly.
                             addr_str = pool.config('address' + str(i + 1), str, "0")
                             pv_str = pool.config('pv' + str(i + 1), str, "0")
                             address = int(addr_str, 10)
@@ -600,8 +623,8 @@ class StartCycleFormHandler(QMainWindow):
                     except Exception as ex:
                         print(f"Error appending to data_stack at index {i + 1}: {ex}")
                 if process_data:
-                    data_stack[0].append(round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2))
-                    # Use index CHANNEL_COUNT+1 for the timestamp slot.
+                    elapsed_minutes = round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2)
+                    data_stack[0].append(elapsed_minutes)
                     data_stack[CHANNEL_COUNT + 1].append(datetime.now())
                     if (not core_temp_above_setpoint_start_time and
                         data_stack[core_temp_channel][-1] >= core_temp_setpoint):
@@ -610,21 +633,17 @@ class StartCycleFormHandler(QMainWindow):
                         handler.core_temp_above_setpoint_time += round(
                             (datetime.now() - core_temp_above_setpoint_start_time).total_seconds() / 60, 2)
                         core_temp_above_setpoint_start_time = None
-                    if len(data_stack[0]) > 1 and (data_stack[pressure_channel][-2] > data_stack[pressure_channel][-1]):
-                        if not pressure_drop_flag:
-                            handler.pressure_drop_core_temp = data_stack[core_temp_channel][-2]
-                            pressure_drop_flag = True
-                    else:
-                        pressure_drop_flag = False
+                    if len(data_stack[CHANNEL_COUNT + 1]) >= 2:
+                        check_pressure_drop()
                 new_data = {"data_stack": data_stack, "timestamp": datetime.now()}
                 logger.info(f"Emitting new_data: {new_data}")
                 updated_signal.emit(new_data)
                 while (datetime.now() - iteration_start_time) < timedelta(seconds=dt):
                     sleep(0.001)
-        try:
-            dataReader.stop()
-        except Exception:
-            print('Unable to stop data reader')
+            try:
+                dataReader.stop()
+            except Exception:
+                print('Unable to stop data reader')
 
         def _start(self):
             if not plc_communication.is_connected():
