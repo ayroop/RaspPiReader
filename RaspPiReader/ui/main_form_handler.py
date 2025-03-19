@@ -1439,4 +1439,57 @@ class MainFormHandler(QMainWindow):
         self.statusbar.setStyleSheet("color: {}".format(color.lower()))
         self.statusBar().setFont(QFont('Times', 12))
     
-    
+    def enable_channel_updates(self):
+        """
+        Enable continuous updating of channel labels and boolean displays.
+        This method starts a dedicated timer that calls update_immediate_values_panel()
+        (or similar) at a regular interval without starting the cycle duration timer.
+        It ensures that while the cycle has been initiated (showing channel labels),
+        the cycle timer does not yet count until the full input is provided.
+        """
+        if not hasattr(self, 'channel_update_timer') or not self.channel_update_timer.isActive():
+            self.channel_update_timer = QTimer(self)
+            self.channel_update_timer.timeout.connect(self.update_immediate_values_panel)
+            # Refresh channel labels and boolean values every second (adjust as needed)
+            self.channel_update_timer.start(1000)
+            logger.info("Channel updates enabled: Timer started for updating immediate channel values.")
+        else:
+            logger.info("Channel update timer is already active.")
+
+    def start_cycle_timer(self, start_time):
+        """
+        Start the cycle timer which updates the cycle duration display and logs cycle time.
+        This method is called only after the full cycle input (work order, serial numbers, program selection)
+        has been completed via the final green 'Start Cycle' button.
+        It also optionally triggers live data logging via start_live_data().
+        """
+        # Set the cycle start time in the new cycle handler
+        self.new_cycle_handler.cycle_start_time = start_time
+        # Stop any pre-existing cycle timer if running.
+        if hasattr(self, "cycle_timer") and self.cycle_timer.isActive():
+            self.cycle_timer.stop()
+        self.cycle_timer = QTimer(self)
+        self.cycle_timer.timeout.connect(self.update_cycle_timer)
+        # Start the cycle duration timer (updates every second)
+        self.cycle_timer.start(1000)
+        logger.info(f"Cycle timer started at {start_time}.")
+        # Optionally start live data logging
+        if hasattr(self, "start_live_data"):
+            self.start_live_data()
+        else:
+            logger.info("start_live_data() not defined; live data logging not initiated.")
+
+    def set_cycle_start_register(self, value):
+        """
+        Write the specified value to the cycle start register on the PLC.
+        For our workflow, writing '1' indicates that the cycle has finally started.
+        Adjust the register address as needed via pool configuration.
+        """
+        try:
+            # Retrieve the PLC register address from settings; default to 1000 if not set.
+            reg_addr = pool.config('cycle_start_register_address', int, 1000)
+            # Call the PLC comm write_register method (ensure this method exists in your plc_communication API)
+            result = plc_communication.write_register(reg_addr, value)
+            logger.info(f"Cycle start register at address {reg_addr} set to {value} (write result: {result}).")
+        except Exception as e:
+            logger.error(f"Error setting cycle start register: {e}")

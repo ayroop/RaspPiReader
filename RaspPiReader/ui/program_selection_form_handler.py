@@ -188,13 +188,21 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         # Update the main form cycle info, and start the cycle timer now.
         main_form = pool.get("main_form")
         if main_form:
-            # Set cycle start time and start the timer now, which in turn starts live data reading
             from datetime import datetime
+            # Set the cycle start time (overwrite any previous timing)
             main_form.new_cycle_handler.cycle_start_time = datetime.now()
-            main_form.start_cycle_timer(main_form.new_cycle_handler.cycle_start_time)
+            # Start the cycle timer—which should begin counting time,
+            # trigger live data reading and log the cycle (and set the cycle start register to one)
+            if hasattr(main_form, "start_cycle_timer"):
+                main_form.start_cycle_timer(main_form.new_cycle_handler.cycle_start_time)
+            # Optionally, set the cycle start register to one (ensure this method exists)
+            if hasattr(main_form, "set_cycle_start_register"):
+                main_form.set_cycle_start_register(1)
             if hasattr(main_form, "update_cycle_info_pannel"):
                 main_form.update_cycle_info_pannel(default_program)
             logger.info("Cycle timer started after program selection.")
+        else:
+            logger.warning("Main form not available for finalizing cycle start.")
 
         QtWidgets.QMessageBox.information(self, "Success", "Cycle started successfully!")
         self.close()

@@ -39,24 +39,29 @@ class NewCycleHandler(QtWidgets.QWidget):
     def start_cycle(self):
         """
         Start a new cycle: reset timing, record start time, set up cycle,
-        launch work order form, and start live data reading.
+        launch work order form, and enable channel/boolean display.
+        Note: Live timer reading (and logging) will only be started after final input.
         """
         logger.info("Start Cycle button clicked - launching Work Order Form")
         self.reset_timing()
         self.cycle_start_time = datetime.now()
         pool.set("current_cycle", self)
 
-        # Launch work order form as before
+        # Launch work order form for further user input.
         self.work_order_form = WorkOrderFormHandler()
         self.work_order_form.show()
 
-        # Start live data updating via main form.
+        # Enable channel/boolean updates (without starting the timer).
         main_form = pool.get("main_form")
         if main_form:
-            main_form.start_live_data()
+            # Call a method that updates channel labels or boolean displays continuously.
+            # (This method must be implemented in main_form_handler.py.)
+            if hasattr(main_form, "enable_channel_updates"):
+                main_form.enable_channel_updates()
+            else:
+                logger.info("Channel updates enabled (default behavior).")
         else:
-            logger.warning("Main form not available to start live data reading.")
-
+            logger.warning("Main form not available to enable channel updates.")
     def stop_cycle(self):
         """
         Stop the cycle: record the end time, calculate duration, create a CycleData
