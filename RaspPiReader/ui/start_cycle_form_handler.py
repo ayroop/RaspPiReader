@@ -499,9 +499,10 @@ class StartCycleFormHandler(QMainWindow):
     @staticmethod
     def read_data(handler, data_stack, updated_signal, dt, process_data=True):
         # Retrieve configuration values
-        core_temp_channel = pool.config('core_temp_channel', int, 1)
+        # Set core_temp_channel default to 12 and set core_temp_setpoint default to 100 (°C)
+        core_temp_channel = pool.config('core_temp_channel', int, 12)
         pressure_channel = pool.config('pressure_channel', int, 1)
-        core_temp_setpoint = pool.config('core_temp_setpoint', int, 0)
+        core_temp_setpoint = pool.config('core_temp_setpoint', int, 100)
         active_channels = pool.get('active_channels')
         # Defensive check for active_channels. If None, default to all channels.
         if active_channels is None:
@@ -625,22 +626,22 @@ class StartCycleFormHandler(QMainWindow):
         except Exception:
             print('Unable to stop data reader')
 
-    def _start(self):
-        if not plc_communication.is_connected():
-            success = plc_communication.initialize_plc_communication()
-            if not success:
-                QMessageBox.critical(self, "Connection Error",
-                                    "Failed to connect to PLC. Please check your connection settings.")
-                return
-        dataReader.start()
-        main_form = pool.get('main_form')
-        if main_form is not None:
-            main_form.update_connection_status_display()
-        else:
-            import logging
-            logging.getLogger(__name__).error("Main form is not available; cannot update connection status.")
-        if not hasattr(self, "timer"):
-            from PyQt5.QtCore import QTimer
-            self.timer = QTimer(self)
-        self.timer.start(1000)
-        self.running = True
+        def _start(self):
+            if not plc_communication.is_connected():
+                success = plc_communication.initialize_plc_communication()
+                if not success:
+                    QMessageBox.critical(self, "Connection Error",
+                                        "Failed to connect to PLC. Please check your connection settings.")
+                    return
+            dataReader.start()
+            main_form = pool.get('main_form')
+            if main_form is not None:
+                main_form.update_connection_status_display()
+            else:
+                import logging
+                logging.getLogger(__name__).error("Main form is not available; cannot update connection status.")
+            if not hasattr(self, "timer"):
+                from PyQt5.QtCore import QTimer
+                self.timer = QTimer(self)
+            self.timer.start(1000)
+            self.running = True
