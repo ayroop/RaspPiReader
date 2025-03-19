@@ -718,13 +718,25 @@ class MainFormHandler(QMainWindow):
         self.setWindowTitle(f"Main Form - Logged in as: {self.user_record.username if self.user_record else 'N/A'}")
 
     def create_stack(self):
-    # Initialize data_stack: one list for process_time and one for each channel plus one for sampling time.
+        """
+        Create data stacks for channel readings and test data.
+        Initialize with empty lists for each channel to prevent index out of range errors.
+        """
+        # Initialize data_stack: one list for process_time and one for each channel plus one for sampling time.
         data_stack = [[] for _ in range(CHANNEL_COUNT + 2)]
         test_data_stack = [[] for _ in range(CHANNEL_COUNT + 2)]
+        
+        # Ensure we have at least CHANNEL_COUNT + 2 elements in each stack
+        while len(data_stack) < CHANNEL_COUNT + 2:
+            data_stack.append([])
+        while len(test_data_stack) < CHANNEL_COUNT + 2:
+            test_data_stack.append([])
+            
         pool.set("data_stack", data_stack)
         pool.set("test_data_stack", test_data_stack)
         self.data_stack = data_stack
         self.test_data_stack = test_data_stack
+        logger.debug(f"Data stacks initialized with {len(data_stack)} elements")
     def load_active_channels(self):
         self.active_channels = []
         for i in range(CHANNEL_COUNT):
@@ -972,22 +984,40 @@ class MainFormHandler(QMainWindow):
             self.test_data_stack[i] = []
 
     def update_immediate_values_panel(self):
+        """
+        Update the values displayed in the immediate values panel.
+        Called on a timer to keep the display up to date.
+        """
         if self.immediate_panel_update_locked:
             return
-        self.immediate_panel_update_locked = True
-        for i in range(CHANNEL_COUNT):
-            spin_widget = getattr(self, 'ch' + str(i + 1) + 'Value')
-            spin_widget.setValue(self.data_stack[i + 1][-1])
-        # Replace legacy values with new_cycle_handler attributes
-        if hasattr(self.new_cycle_handler, "core_temp_above_setpoint_time"):
-            self.o1.setText(str(self.new_cycle_handler.core_temp_above_setpoint_time or 'N/A'))
-        else:
-            self.o1.setText("N/A")
-        if hasattr(self.new_cycle_handler, "pressure_drop_core_temp"):
-            self.o2.setText(str(self.new_cycle_handler.pressure_drop_core_temp or 'N/A'))
-        else:
-            self.o2.setText("N/A")
-        self.immediate_panel_update_locked = False
+        
+        try:
+            self.immediate_panel_update_locked = True
+            for i in range(CHANNEL_COUNT):
+                try:
+                    spin_widget = getattr(self, 'ch' + str(i + 1) + 'Value')
+                    if spin_widget is None:
+                        continue
+                    
+                    # Only update if data is available for this channel
+                    if len(self.data_stack) > i + 1 and len(self.data_stack[i + 1]) > 0:
+                        spin_widget.setValue(self.data_stack[i + 1][-1])
+                except (AttributeError, IndexError) as e:
+                    logger.debug(f"Skipping update for channel {i+1}: {e}")
+                    
+            # Replace legacy values with new_cycle_handler attributes
+            if hasattr(self.new_cycle_handler, "core_temp_above_setpoint_time"):
+                self.o1.setText(str(self.new_cycle_handler.core_temp_above_setpoint_time or 'N/A'))
+            else:
+                self.o1.setText("N/A")
+            if hasattr(self.new_cycle_handler, "pressure_drop_core_temp"):
+                self.o2.setText(str(self.new_cycle_handler.pressure_drop_core_temp or 'N/A'))
+            else:
+                self.o2.setText("N/A")
+        except Exception as e:
+            logger.error(f"Error updating immediate values panel: {e}")
+        finally:
+            self.immediate_panel_update_locked = False
 
     def cycle_timer_update(self):
         if hasattr(self.new_cycle_handler, "cycle_start_time"):
