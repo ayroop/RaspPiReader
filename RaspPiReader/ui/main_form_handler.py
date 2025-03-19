@@ -1586,3 +1586,4 @@ class MainFormHandler(QMainWindow):
         # Update the UI labels with formatted outputs
         self.labelCycleOutcomesTime.setText(f"TIME (min) CORE TEMP ≥ {threshold:.1f} °C: {time_str}")
         self.labelCycleOutcomesPressure.setText(f"CORE TEMP WHEN PRESSURE RELEASED (°C): {pressure_str}")
+        
