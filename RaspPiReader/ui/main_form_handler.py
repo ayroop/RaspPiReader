@@ -22,7 +22,7 @@ from RaspPiReader.ui.one_drive_settings_form_handler import OneDriveSettingsForm
 from RaspPiReader.libs.onedrive_api import OneDriveAPI
 from .plc_comm_settings_form_handler import PLCCommSettingsFormHandler
 from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormHandler
-
+from PyQt5 import sip
 import pyqtgraph as pg
 
 # New imports for new cycle workflow
@@ -41,7 +41,7 @@ from RaspPiReader.ui.default_program_form import DefaultProgramForm
 from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler
 # Add Alarm settings
 from RaspPiReader.ui.alarm_settings_form_handler import AlarmSettingsFormHandler
-
+from RaspPiReader.libs.models import Alarm
 # Add PLC connection status
 from RaspPiReader.libs import plc_communication
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
@@ -59,64 +59,73 @@ def timedelta2str(td):
 
 class MainFormHandler(QMainWindow):
     update_status_bar_signal = pyqtSignal(str, int, str)
-
+    
     def __init__(self, user_record=None):
         super(MainFormHandler, self).__init__()
         self.user_record = user_record
-
-        # Setup UI. setupUi attaches widgets (e.g. run_duration, d6) to self.
+        
+        # Build an absolute path to the UI file in the 'qt' folder.
+        ui_path = os.path.join(os.path.dirname(__file__), "..", "qt", "main.ui")
+        ui_path = os.path.abspath(ui_path)
+        uic.loadUi(ui_path, self)
+        
+        # Setup UI via the MainForm class.
         self.form_obj = MainForm()
         self.form_obj.setupUi(self)
         self.immediate_panel_update_locked = False
-
-        # Immediately assign cycle timer labels using findChild.
+        
+        # Immediately assign cycle timer labels via findChild.
         self.run_duration = self.findChild(QtWidgets.QLabel, "run_duration")
         self.d6 = self.findChild(QtWidgets.QLabel, "d6")
         if self.run_duration is None or self.d6 is None:
             logger.warning("Cycle timer labels (run_duration and d6) not found on main window.")
         else:
             logger.info("Cycle timer labels successfully identified.")
-
-        # New code – initialize new cycle widget
+        
+        # Initialize the alarm label to None.
+        self.labelAlarm = None
+        
+        # New code – initialize new cycle widget.
+        from RaspPiReader.ui.new_cycle_handler import NewCycleHandler
         self.new_cycle_handler = NewCycleHandler(self)
         self.new_cycle_handler.show()
         logger.info("Initialized NewCycleHandler for new cycle workflow")
-
-        # Set main_form in the pool
+        
+        # Set main_form in the pool.
         pool.set("main_form", self)
-
-        # Define the headers used for CSV file creation.
+        
+        # Define headers used for CSV file creation.
         self.headers = ['Date', 'Time', 'Timer(min)', 'CycleID', 'OrderID', 'Quantity', 'CycleLocation']
         self.file_name = None
         self.folder_name = None
         self.csv_path = None
         self.pdf_path = None
-        self.plot = None   # Will be set by setup_plot_data_display
+        self.plot = None   # Will be set by setup_plot_data_display.
         self.username = self.user_record.username if self.user_record else ''
-
+        
         self.cycle_timer = QTimer()
-
+        
         # Initialize the data stacks (data_stack and test_data_stack)
         self.create_stack()
-
-        # Initialize connections, user display, and (optional) stacks
+        
+        # Initialize connections, user display, and (optional) stacks.
         self.set_connections()
         self.display_username()
         
-        # Setup additional menus
+        # Setup additional menus.
         self.setup_access_controls()
         self.connect_menu_actions()
         self.add_one_drive_menu()
         self.add_plc_comm_menu()
         self.add_database_menu()
         
-        # Initialize Boolean status area and plot area
+        # Initialize Boolean status area and plot area.
         self.db = Database("sqlite:///local_database.db")
         self.setup_bool_status_display()
-        self.setup_plot_data_display()  # creates plot widget and calls initialize_plot_widget
+        self.setup_plot_data_display()  # Creates plot widget and calls initialize_plot_widget.
         self.integrate_new_cycle_widget()
         
-        # Start timers
+        # Start timers.
         self.status_timer = QTimer(self)
         self.status_timer.timeout.connect(self.update_bool_status)
         self.status_timer.start(5000)
@@ -127,12 +136,16 @@ class MainFormHandler(QMainWindow):
         self.connectionTimer.start(5000)
         self.live_update_timer = QTimer(self)
         self.live_update_timer.timeout.connect(self.update_live_data)
-        # self.live_update_timer.start(2000)  # Update live data every 500ms (adjust as needed)
+        # self.live_update_timer.start(2000)  # Uncomment to update live data every 2000ms.
+        
+        # Start the alarm timer to update the alarm status.
+        self.alarmTimer = QTimer(self)
+        self.alarmTimer.timeout.connect(self.update_alarm_status)
+        self.alarmTimer.start(1000)
         
         logger.info("Live update timer started.")
         self.showMaximized()
         logger.info("MainFormHandler initialized.")
-
     def start_live_data(self):
         """Start reading live data every 2 seconds."""
         if not self.live_update_timer.isActive():
@@ -227,23 +240,36 @@ class MainFormHandler(QMainWindow):
         self.cycle_timer.timeout.connect(self.update_cycle_timer)
         self.cycle_timer.start(1000)
 
+    def safe_set_label_text(self, label, text):
+        """Safely update a label's text, checking if it exists first"""
+        if label is not None and not sip.isdeleted(label):
+            try:
+                label.setText(text)
+            except RuntimeError:
+                # Label was deleted, get a new reference
+                if label == self.d6:
+                    self.d6 = self.findChild(QtWidgets.QLabel, "d6")
+                    if self.d6:
+                        self.d6.setText(text)
+                elif label == self.run_duration:
+                    self.run_duration = self.findChild(QtWidgets.QLabel, "run_duration")
+                    if self.run_duration:
+                        self.run_duration.setText(text)
+
     def update_cycle_timer(self):
-        if self.run_duration is not None and self.d6 is not None:
-            start_time = self.new_cycle_handler.cycle_start_time
-            if start_time is not None:
-                if self.new_cycle_handler.cycle_end_time is not None:
-                    elapsed = self.new_cycle_handler.cycle_end_time - start_time
-                    end_time_str = self.new_cycle_handler.cycle_end_time.strftime("%H:%M:%S")
-                else:
-                    elapsed = datetime.now() - start_time
-                    end_time_str = "N/A"
-                self.run_duration.setText(str(elapsed).split('.')[0])
-                self.d6.setText(end_time_str)
+        start_time = self.new_cycle_handler.cycle_start_time
+        if start_time is not None:
+            if self.new_cycle_handler.cycle_end_time is not None:
+                elapsed = self.new_cycle_handler.cycle_end_time - start_time
+                end_time_str = self.new_cycle_handler.cycle_end_time.strftime("%H:%M:%S")
             else:
-                self.run_duration.setText("0:00:00")
-                self.d6.setText("N/A")
+                elapsed = datetime.now() - start_time
+                end_time_str = "N/A"
+            self.safe_set_label_text(self.run_duration, str(elapsed).split('.')[0])
+            self.safe_set_label_text(self.d6, end_time_str)
         else:
-            logger.warning("Cycle timer labels not found on main window. Cannot update cycle timer display.")
+            self.safe_set_label_text(self.run_duration, "0:00:00")
+            self.safe_set_label_text(self.d6, "N/A")
     def add_alarm_settings_menu(self):
         # Create a new menu called "Alarms" and add the alarm settings action.
         menubar = self.menuBar()
@@ -577,30 +603,35 @@ class MainFormHandler(QMainWindow):
         
     def update_alarm_status(self):
         """
-        Read a dedicated alarm address (holding register) from the PLC and update the UI.
-        
-        Alarm codes are interpreted as:
-        0 = No Alarm
-        1 = Low Pressure
-        2 = High Pressure
-        otherwise, the code is displayed.
-        
-        This method can be called independently or integrated inside update_connection_status_display.
+        Read the alarm code from the PLC holding register, map it to an alarm text via
+        the database, and update (or create, if needed) the alarm status label.
+        The label is added to gridLayout_11 (as defined in mainForm.ui) in the next free row.
         """
-        alarm_address = pool.config('alarm_address', int, 200)  # adjust as needed
-        alarm_value = read_holding_register(alarm_address, 1)
-        if alarm_value == 0:
-            alarm_text = "No Alarm"
-        elif alarm_value == 1:
-            alarm_text = "Low Pressure"
-        elif alarm_value == 2:
-            alarm_text = "High Pressure"
-        else:
-            alarm_text = f"Alarm Code {alarm_value}"
+        # Retrieve the dynamic alarm register address (default: 300)
+        alarm_reg_addr = pool.config('alarm_address', int, 300)
+        alarm_value = plc_communication.read_holding_register(alarm_reg_addr, 1)
+        db = Database("sqlite:///local_database.db")
         
-        if hasattr(self.form_obj, 'alarmStatusLabel'):
-            self.form_obj.alarmStatusLabel.setText(alarm_text)
-        logger.info(f"Alarm status updated: {alarm_text}")
+        if alarm_value is not None and 0 <= alarm_value <= 8:
+            alarm_obj = db.session.query(Alarm).filter_by(address=str(alarm_value)).first()
+            if alarm_obj:
+                alarm_text = alarm_obj.alarm_text
+            else:
+                alarm_text = f"Alarm {alarm_value}"
+        else:
+            alarm_text = "No Alarm"
+
+        # If the alarm label does not exist, create it and add it to gridLayout_11.
+        if self.labelAlarm is None:
+            self.labelAlarm = QLabel(f"Alarm: {alarm_text}", self)
+            self.labelAlarm.setFont(QFont("Segoe UI", 10))
+            self.labelAlarm.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+            # Insert the label in gridLayout_11 at the next available row.
+            # (gridLayout_11 is defined in mainForm.ui)
+            row = self.gridLayout_11.rowCount()
+            self.gridLayout_11.addWidget(self.labelAlarm, row, 0, 1, -1)
+        else:
+            self.labelAlarm.setText(f"Alarm: {alarm_text}")
 
     def check_alarms(self):
         """
@@ -1586,4 +1617,3 @@ class MainFormHandler(QMainWindow):
         # Update the UI labels with formatted outputs
         self.labelCycleOutcomesTime.setText(f"TIME (min) CORE TEMP ≥ {threshold:.1f} °C: {time_str}")
         self.labelCycleOutcomesPressure.setText(f"CORE TEMP WHEN PRESSURE RELEASED (°C): {pressure_str}")
-        

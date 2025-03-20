@@ -356,9 +356,8 @@ class StartCycleFormHandler(QMainWindow):
         self.cycle_record = pool.get("current_cycle")
         pool.set("start_cycle_form", self)
         self.start_cycle_signal()
-
         # Write to the start cycle coil so the PLC knows the cycle has started.
-        start_coil_addr = pool.config('cycle_start_coil_address', int, 100)  # example address, adjust as needed
+        start_coil_addr = pool.config('cycle_start_coil_address', int, 100)
         from RaspPiReader.libs.plc_communication import write_coil
         write_coil(start_coil_addr, True)
         
@@ -376,32 +375,24 @@ class StartCycleFormHandler(QMainWindow):
             self.read_thread.start()
         self.initiate_onedrive_update_thread()
         self.show()
+
     def stop_cycle(self):
-        # Ensure that the active cycle record exists
         if not hasattr(self, "cycle_record") or self.cycle_record is None:
             QMessageBox.critical(self, "Error", "No active cycle record found.")
             return
-
-        # Write 0 to the start cycle coil to signal the cycle is stopped.
         start_coil_addr = pool.config('cycle_start_coil_address', int, 100)
+        from RaspPiReader.libs.plc_communication import write_coil
         write_coil(start_coil_addr, False)
-
-        # Update the cycle record's stop time
         self.cycle_record.stop_time = datetime.now()
-
-        # Retrieve serial numbers (ensure your get_serial_numbers method returns a list)
         try:
             serial_numbers = self.get_serial_numbers() or []
         except Exception as e:
             logger.error(f"Error retrieving serial numbers: {e}")
             QMessageBox.critical(self, "Error", f"Error retrieving serial numbers: {e}")
             return
-
         supervisor_username = self.get_supervisor_override() or ""
         alarm_values = self.read_alarms() or {}
-
         try:
-            # Pass the actual CycleData record (not a dict) to finalize_cycle
             pdf_file, csv_file = finalize_cycle(
                 cycle_data=self.cycle_record,
                 serial_numbers=serial_numbers,
@@ -414,55 +405,42 @@ class StartCycleFormHandler(QMainWindow):
             logger.error(f"Error finalizing cycle: {e}")
             QMessageBox.critical(self, "Report Generation Error", f"Error finalizing cycle: {e}")
             return
-
         db = Database("sqlite:///local_database.db")
         order_id = getattr(self.cycle_record, "order_id", "unknown")
         if order_id == "unknown":
             logger.warning("No order_id found in cycle record; using default 'unknown'.")
-
         try:
             current_username = pool.get("current_user")
             user = db.session.query(User).filter_by(username=current_username).first()
             if not user:
                 QMessageBox.critical(self, "Database Error", "Logged-in user not found for finalizing cycle.")
                 return
-
-            # Update the cycle record with report file paths
             self.cycle_record.pdf_report_path = pdf_file
-            self.cycle_record.html_report_path = csv_file  # or whichever field is appropriate
+            self.cycle_record.html_report_path = csv_file
             db.session.commit()
             logger.info(f"Cycle record updated for order_id: {order_id}")
-
         except Exception as e:
             db.session.rollback()
             logger.error(f"Database error updating cycle record: {e}")
             QMessageBox.critical(self, "Database Error", f"Could not update cycle record: {e}")
             return
-
         QMessageBox.information(
             self,
             "Cycle Stopped",
             f"Cycle stopped successfully!\nPDF Report: {pdf_file}\nCSV Report: {csv_file}"
         )
-
-        # If MainFormHandler is supposed to have a csv_file attribute, ensure it’s set (or check before closing)
         if hasattr(self, "csv_file"):
             try:
                 self.csv_file.close()
             except Exception:
                 pass
-
-        self.running = False  # Mark the cycle as no longer running
+        self.running = False
         self.close()
-
-        # Stop the timers on the main form
         main_form = pool.get('main_form')
         if main_form:
             main_form.cycle_timer.stop()
             main_form.actionStart.setEnabled(True)
             main_form.actionStop.setEnabled(False)
-
-        # Remove the active cycle references from pool so stop cannot be called again on a non-existent cycle.
         pool.set("start_cycle_form", None)
         pool.set("current_cycle", None)
 

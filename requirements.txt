@@ -12,3 +12,4 @@ requests
 SQLAlchemy
 pyodbc
 pandas
+sip

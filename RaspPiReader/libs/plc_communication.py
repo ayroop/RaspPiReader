@@ -507,6 +507,12 @@ def is_connected():
 
 def ensure_connection():
     global modbus_comm, direct_client
+    # If demo mode is active, skip actual PLC connection.
+    if pool.config('demo', bool, False):
+        logger.info("Demo mode active; skipping PLC connection check.")
+        return True
+
+    # First, try using direct_client if available.
     if direct_client is not None:
         try:
             if direct_client.connect():
@@ -514,6 +520,8 @@ def ensure_connection():
                 return True
         except Exception as e:
             logger.error(f"Error during direct client reconnection: {e}")
+
+    # Now, use the modbus_comm with plc_lock.
     with plc_lock:
         if modbus_comm is None:
             logger.error("Modbus client not initialized; reinitializing now.")
@@ -628,26 +636,6 @@ def read_coils(address, count=1, device_id=1):
             logger.error(f"Error reading {count} coils from address {address}: {e}")
             return [False] * count
 
-def write_coil(address, value, device_id=1):
-    global modbus_comm, direct_client
-    device_id = validate_device_id(device_id)
-    if direct_client is not None:
-        try:
-            success = direct_client.write_coil(address, value, device_id)
-            if success:
-                return True
-        except Exception as e:
-            logger.debug(f"Direct client write_coil error: {e}")
-    with plc_lock:
-        if not ensure_connection():
-            logger.error("Cannot write coil: No connection to PLC")
-            return False
-        try:
-            return modbus_comm.write_bool_address(address, value, device_id)
-        except Exception as e:
-            logger.error(f"Error writing value {value} to coil at address {address}: {e}")
-            return False
-
 def read_holding_register(address, device_id=1):
     global modbus_comm, direct_client
     device_id = validate_device_id(device_id)
@@ -670,6 +658,26 @@ def read_holding_register(address, device_id=1):
         except Exception as e:
             logger.error(f"Error reading holding register at address {address}: {e}")
             return None
+
+def write_coil(address, value, device_id=1):
+    global modbus_comm, direct_client
+    device_id = validate_device_id(device_id)
+    if direct_client is not None:
+        try:
+            success = direct_client.write_coil(address, value, device_id)
+            if success:
+                return True
+        except Exception as e:
+            logger.debug(f"Direct client write_coil error: {e}")
+    with plc_lock:
+        if not ensure_connection():
+            logger.error("Cannot write coil: No connection to PLC")
+            return False
+        try:
+            return modbus_comm.write_bool_address(address, value, device_id)
+        except Exception as e:
+            logger.error(f"Error writing value {value} to coil at address {address}: {e}")
+            return False
 
 def read_holding_registers(address, count=1, device_id=1):
     global modbus_comm, direct_client

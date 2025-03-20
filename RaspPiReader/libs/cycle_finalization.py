@@ -80,29 +80,8 @@ def upload_to_onedrive(csv_path, pdf_path):
 
 def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_values={},
                    reports_folder="reports", template_file="RaspPiReader/ui/result_template.html"):
-    """
-    Finalizes a cycle:
-      - Writes a false (stop) signal to a designated Boolean address.
-      - Evaluates alarm conditions by matching live alarm values with texts from the Alarm table.
-      - Generates a PDF report using a Jinja2 HTML template and a CSV report listing the serial numbers.
-      - Uploads the generated reports to OneDrive.
-    
-    Parameters:
-         cycle_data         : Object with attributes (order_id, cycle_id, start_time, stop_time, etc.)
-         serial_numbers     : List of serial numbers (strings)
-         supervisor_username: Supervisor username if applicable, else None.
-         alarm_values       : Dict mapping alarm addresses to values (integer or "high"/"low")
-         reports_folder     : Local folder (relative to project root) to store the reports.
-         template_file      : Path to the HTML template file.
-    
-    Returns:
-         (pdf_filename, csv_filename)
-    """
-    # --- 1. Write the stop signal to PLC ---
     stop_bool_addr = pool.config("cycle_stop_bool", int, 1101)
     write_bool_address(stop_bool_addr, 0)
-    
-    # --- 2. Evaluate alarm conditions ---
     db = Database("sqlite:///local_database.db")
     alarm_mapping = {}
     db_alarms = db.session.query(Alarm).all()
@@ -120,7 +99,6 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     else:
         for alarm in db_alarms:
             alarm_mapping[str(alarm.address)] = alarm.alarm_text
-
     active_alarms = []
     for addr, value in alarm_values.items():
         try:
@@ -131,39 +109,39 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         except Exception as e:
             logger.error(f"Error converting alarm value for address {addr}: {e}")
     alarm_info = ", ".join(active_alarms) if active_alarms else "None"
-    
-    # --- 3. Create reports directory (absolute path) ---
     reports_dir = os.path.join(os.getcwd(), reports_folder)
     if not os.path.exists(reports_dir):
         os.makedirs(reports_dir)
-    
-    # --- 4. Generate filenames with timestamps ---
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     order_id = cycle_data.order_id if hasattr(cycle_data, 'order_id') else "unknown"
     base_filename = f"{order_id}_{timestamp}"
     csv_filename = f"{base_filename}.csv"
     pdf_filename = f"{base_filename}.pdf"
-    
     csv_path = os.path.join(reports_dir, csv_filename)
     pdf_path = os.path.join(reports_dir, pdf_filename)
-    
-    # --- 5. Generate CSV report with serial numbers ---
     try:
         generate_csv_report(serial_numbers, csv_path)
         logger.info(f"CSV report generated: {csv_path}")
     except Exception as e:
         logger.error(f"Error generating CSV report: {e}")
         raise
-
-    # --- 6. Generate PDF report ---
+    # Process serial numbers: for duplicates, append an "R" to subsequent occurrences.
+    final_serials = []
+    counts = {}
+    for sn in serial_numbers:
+        counts[sn] = counts.get(sn, 0) + 1
+        if counts[sn] > 1:
+            final_serials.append(f"{sn}R")
+        else:
+            final_serials.append(sn)
+    serial_list = ", ".join(final_serials)
     try:
         with open(template_file, 'r', encoding='utf-8') as file:
             template_content = file.read()
+        from jinja2 import Template
         template = Template(template_content)
         cycle_start_time = cycle_data.start_time.strftime("%Y-%m-%d %H:%M:%S") if hasattr(cycle_data, 'start_time') and cycle_data.start_time else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cycle_end_time = cycle_data.stop_time.strftime("%Y-%m-%d %H:%M:%S") if hasattr(cycle_data, 'stop_time') and cycle_data.stop_time else datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        serial_list = ", ".join(serial_numbers)
-        
         report_data = {
             'data': {
                 'order_id': cycle_data.order_id if hasattr(cycle_data, 'order_id') else "N/A",
@@ -188,13 +166,13 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
                 'generation_time': datetime.now().strftime("%H:%M:%S")
             }
         }
-        
         html_content = template.render(**report_data)
         options = {
             'page-size': 'A4',
             'encoding': "UTF-8",
             'enable-local-file-access': ""
         }
+        import pdfkit
         path_wkhtmltopdf = os.path.join(os.getcwd(), 'wkhtmltopdf.exe')
         config_pdfkit = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
         pdfkit.from_string(html_content, pdf_path, options=options, configuration=config_pdfkit)
@@ -210,15 +188,11 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
             logger.info(f"Fallback text report generated: {fallback_path}")
         except Exception as ex:
             logger.error(f"Failed to generate fallback report: {ex}")
-    
-    # --- 7. Update cycle record with report paths ---
     try:
         cycle_data.pdf_report_path = pdf_filename
         cycle_data.html_report_path = csv_filename
     except Exception as e:
         logger.error(f"Error updating cycle record with report paths: {e}")
-    
-    # --- 8. Store serial numbers in the normalized table ---
     try:
         db.session.query(CycleSerialNumber).filter(CycleSerialNumber.cycle_id == cycle_data.id).delete()
         for sn in serial_numbers:
@@ -229,11 +203,8 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     except Exception as e:
         logger.error(f"Error saving cycle serial numbers: {e}")
         db.session.rollback()
-    
-    # --- 9. Upload reports to OneDrive ---
     try:
         upload_to_onedrive(csv_path, pdf_path)
     except Exception as e:
         logger.error(f"Error during OneDrive upload: {e}")
-    
     return (pdf_filename, csv_filename)

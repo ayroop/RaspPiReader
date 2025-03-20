@@ -57,9 +57,10 @@ def initialize_components(logger, args):
                     connection_monitor = ConnectionMonitor(app)
                     connection_monitor.start(30000)  # check every 30 seconds
         else:
+            # Log the error but do not block the UI.
             logger.error(f"Failed to initialize PLC communication: {error}")
-
-    # Start initialization in background with the corrected callback signature
+            # Optionally, you could set a flag here to indicate PLC is offline.
+    # Start initialization asynchronously; errors in connecting are logged, and the UI continues.
     initialize_plc_communication_async(plc_init_callback)
 
     return db
