@@ -1,10 +1,10 @@
 PyQt5
-google-api-python-client
-google
+#google-api-python-client
+#google
 Jinja2
 pdfkit
 colorama
-google-auth-oauthlib
+#google-auth-oauthlib
 pyqtgraph
 pyserial
 pymodbus==2.5.3
@@ -13,3 +13,4 @@ SQLAlchemy
 pyodbc
 pandas
 sip
+matplotlib

@@ -883,37 +883,23 @@ class MainForm():
         parent.horizontalLayout_2.addLayout(parent.verticalLayout)
         parent.gridLayout_5.addLayout(parent.horizontalLayout_2, 0, 0, 1, 1)
         parent.gridLayout_11.addWidget(parent.groupBox_5, 0, 0, 1, 1)
-        parent.mainPlotGroupBox = QtWidgets.QGroupBox(parent.centralwidget)
+
         font = QtGui.QFont()
         font.setPointSize(10)
         font.setBold(True)
         font.setWeight(75)
-        parent.mainPlotGroupBox.setFont(font)
-        parent.mainPlotGroupBox.setObjectName("mainPlotGroupBox")
-        parent.gridLayout_9 = QtWidgets.QGridLayout(parent.mainPlotGroupBox)
+
         parent.gridLayout_9.setObjectName("gridLayout_9")
         parent.horizontalLayout_6 = QtWidgets.QHBoxLayout()
         parent.horizontalLayout_6.setObjectName("horizontalLayout_6")
         parent.verticalLayout_9 = QtWidgets.QVBoxLayout()
         parent.verticalLayout_9.setObjectName("verticalLayout_9")
-        # parent.ToolbarFrame = QtWidgets.QFrame(parent.mainPlotGroupBox)
+
         # parent.ToolbarFrame.setMaximumSize(QtCore.QSize(16777215, 30))
         # parent.ToolbarFrame.setFrameShape(QtWidgets.QFrame.StyledPanel)
         # parent.ToolbarFrame.setFrameShadow(QtWidgets.QFrame.Raised)
         # parent.ToolbarFrame.setObjectName("ToolbarFrame")
-        # parent.plotToolboxLayout = QtWidgets.QGridLayout(parent.ToolbarFrame)
-        # parent.plotToolboxLayout.setObjectName("plotToolboxLayout")
-        # parent.verticalLayout_9.addWidget(parent.ToolbarFrame)
-        parent.PlotAreaFrame = QtWidgets.QFrame(parent.mainPlotGroupBox)
-        parent.PlotAreaFrame.setMinimumSize(QtCore.QSize(500, 0))
-        parent.PlotAreaFrame.setFrameShape(QtWidgets.QFrame.StyledPanel)
-        parent.PlotAreaFrame.setFrameShadow(QtWidgets.QFrame.Raised)
-        parent.PlotAreaFrame.setObjectName("PlotAreaFrame")
-        parent.plotAreaLayout = QtWidgets.QGridLayout(parent.PlotAreaFrame)
-        parent.plotAreaLayout.setObjectName("plotAreaLayout")
 
-        parent.verticalLayout_9.addWidget(parent.PlotAreaFrame)
-        parent.plotAreaLayout.setContentsMargins(0, 0, 0, 0)
         parent.horizontalLayout_6.addLayout(parent.verticalLayout_9)
         parent.legendScroll = QtWidgets.QScrollArea()
         parent.legendScroll.setWidgetResizable(True)
@@ -925,7 +911,7 @@ class MainForm():
         parent.legendScrollWidget.setLayout(parent.formLayoutLegend)
         parent.horizontalLayout_6.addWidget(parent.legendScroll)
         parent.gridLayout_9.addLayout(parent.horizontalLayout_6, 0, 0, 1, 1)
-        parent.gridLayout_11.addWidget(parent.mainPlotGroupBox, 2, 0, 1, 1)
+
         parent.setCentralWidget(parent.centralwidget)
 
         parent.actionSetting = QtWidgets.QAction(parent)
@@ -944,10 +930,6 @@ class MainForm():
 
         parent.actionStop.setObjectName("actionStop")
 
-        parent.actionPlot_preview = QtWidgets.QAction(parent)
-
-        parent.actionPlot_preview.setObjectName("actionPlot_preview")
-
         parent.actionPrint_results = QtWidgets.QAction(parent)
 
         parent.actionPrint_results.setObjectName("actionPrint_results")
@@ -960,14 +942,9 @@ class MainForm():
 
         parent.actionSave_AS.setObjectName("actionSave_AS")
 
-        parent.actionPlot = QtWidgets.QAction(parent)
-
-        parent.actionPlot.setObjectName("actionPlot")
-
         parent.actionCycle_Info = QtWidgets.QAction(parent)
 
         parent.actionCycle_Info.setObjectName("actionCycle_Info")
-
 
         parent.actionSetting = QtWidgets.QAction(parent)
 
@@ -985,10 +962,6 @@ class MainForm():
 
         parent.actionStop.setObjectName("actionStop")
 
-        parent.actionPlot_preview = QtWidgets.QAction(parent)
-
-        parent.actionPlot_preview.setObjectName("actionPlot_preview")
-
         parent.actionPrint_results = QtWidgets.QAction(parent)
 
         parent.actionPrint_results.setObjectName("actionPrint_results")
@@ -1001,9 +974,6 @@ class MainForm():
 
         parent.actionSave_AS.setObjectName("actionSave_AS")
 
-        parent.actionPlot = QtWidgets.QAction(parent)
-
-        parent.actionPlot.setObjectName("actionPlot")
 
         parent.actionCycle_Info = QtWidgets.QAction(parent)
 
@@ -1049,28 +1019,9 @@ class MainForm():
 
         parent.actionStop.setEnabled(False)
 
-        parent.actionPlot_preview = QtWidgets.QAction(parent)
-
-        parent.actionPlot_preview.setObjectName("actionPlot_preview")
-
-        parent.actionPlot_preview.setEnabled(False)
-        #        parent.actionPrint_results = QtWidgets.QAction(parent)
-
         parent.actionPrint_results.setObjectName("actionPrint_results")
 
         parent.actionPrint_results.setEnabled(False)
-        # parent.actionSave = QtWidgets.QAction(parent)
-        # parent.actionSave.setObjectName("actionSave")
-        # parent.actionSave_AS = QtWidgets.QAction(parent)
-        # parent.actionSave_AS.setObjectName("actionSave_AS")
-
-        parent.actionPlot = QtWidgets.QAction(parent)
-
-        parent.actionPlot.setCheckable(True)
-
-        parent.actionPlot.setChecked(True)
-
-        parent.actionPlot.setObjectName("actionPlot")
 
         parent.actionCycle_Info = QtWidgets.QAction(parent)
 
@@ -1079,17 +1030,13 @@ class MainForm():
         parent.actionCycle_Info.setChecked(True)
 
         parent.actionCycle_Info.setObjectName("actionCycle_Info")
-        # parent.menuSetting.addAction(parent.actionSave)
-        # parent.menuSetting.addAction(parent.actionSave_AS)
+
         parent.menuSetting.addAction(parent.actionSetting)
         parent.menuSetting.addSeparator()
         parent.menuSetting.addAction(parent.actionExit)
         parent.menuAction.addAction(parent.actionStart)
         parent.menuAction.addAction(parent.actionStop)
-        parent.menuAction.addAction(parent.actionPlot_preview)
-        # parent.menuAction.addAction(        # parent.menuAction.addAction(        parent.menuAction.addAction(parent.actionPrint_results)
         parent.menuView.addAction(parent.actionCycle_Info)
-        parent.menuView.addAction(parent.actionPlot)
         parent.menubar.addAction(parent.menuSetting.menuAction())
         parent.menubar.addAction(parent.menuView.menuAction())
         parent.menubar.addAction(parent.menuAction.menuAction())
@@ -1154,7 +1101,6 @@ class MainForm():
         parent.chLabel13.setText(_translate("parent", "CH13"))
         parent.groupBox_4.setTitle(_translate("parent", "System Vacuum (KPa)"))
         parent.chLabel14.setText(_translate("parent", "CH14"))
-        parent.mainPlotGroupBox.setTitle(_translate("parent", "Plot"))
         parent.menuSetting.setTitle(_translate("parent", "File"))
         parent.menuAction.setTitle(_translate("parent", "Action"))
         parent.menuView.setTitle(_translate("parent", "View"))
@@ -1166,14 +1112,6 @@ class MainForm():
         parent.actionStart.setText(_translate("parent", "Start"))
 
         parent.actionStop.setText(_translate("parent", "Stop"))
-
-        parent.actionPlot_preview.setText(_translate("parent", "Export Plot"))
-
-        parent.actionPrint_results.setText(_translate("parent", "Print Results"))
-        # parent.actionSave.setText(_translate("parent", "Save"))
-        # parent.actionSave_AS.setText(_translate("parent", "Save As..."))
-
-        parent.actionPlot.setText(_translate("parent", "Plot"))
 
         parent.actionCycle_Info.setText(_translate("parent", "Cycle Info"))
         parent.Label_run_duration.setText(_translate("parent", "CYCLE DURATION:"))

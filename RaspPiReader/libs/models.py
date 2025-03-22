@@ -87,6 +87,16 @@ class ChannelConfigSettings(Base):
     min_scale_range = Column(Integer, nullable=False)
     max_scale_range = Column(Integer, nullable=False)
 
+class PlotData(Base):
+    __tablename__ = 'plot_data'
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    channel = Column(String, nullable=False)
+    value = Column(Float, nullable=False)
+    cycle_id = Column(Integer, ForeignKey('cycle_data.id'), nullable=True)
+    # Relationship with CycleData
+    cycle = relationship("CycleData", back_populates="plot_data")
+
 class CycleData(Base):
     __tablename__ = 'cycle_data'
     id = Column(Integer, primary_key=True)
@@ -111,6 +121,8 @@ class CycleData(Base):
     final_set_cure_temp = Column(Float, nullable=True)
     pdf_report_path = Column(String, nullable=True)
     html_report_path = Column(String, nullable=True)
+    plot_data = relationship("PlotData", back_populates="cycle")
+
 
 class CycleSerialNumber(Base):
     __tablename__ = 'cycle_serial_numbers'
@@ -143,12 +155,7 @@ class BooleanStatus(Base):
     address = Column(Integer, nullable=False)
     status = Column(Boolean, nullable=False)
 
-class PlotData(Base):
-    __tablename__ = 'plot_data'
-    id = Column(Integer, primary_key=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
-    channel = Column(String, nullable=False)
-    value = Column(Float, nullable=False)
+
 class DefaultProgram(Base):
     __tablename__ = 'default_programs'
     id = Column(Integer, primary_key=True)

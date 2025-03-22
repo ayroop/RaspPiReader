@@ -14,8 +14,6 @@ from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplicatio
 from RaspPiReader import pool
 from .mainForm import MainForm
 from RaspPiReader.ui.mainForm import MainForm
-from .plot_handler import InitiatePlotWidget
-from .plot_preview_form_handler import PlotPreviewFormHandler
 from .setting_form_handler import SettingFormHandler, CHANNEL_COUNT
 from .user_management_form_handler import UserManagementFormHandler
 from RaspPiReader.ui.one_drive_settings_form_handler import OneDriveSettingsFormHandler
@@ -29,7 +27,7 @@ import pyqtgraph as pg
 from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.configuration import config
 from .boolean_status import Ui_BooleanStatusWidget
-from RaspPiReader.libs.models import BooleanStatus, PlotData, BooleanAddress
+from RaspPiReader.libs.models import BooleanStatus, BooleanAddress
 from RaspPiReader.libs.database import Database
 from RaspPiReader.ui.new_cycle_handler import NewCycleHandler  # Use new cycle widget
 from RaspPiReader.ui.default_program_form import DefaultProgramForm
@@ -46,6 +44,7 @@ from RaspPiReader.libs.models import Alarm
 from RaspPiReader.libs import plc_communication
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
 from RaspPiReader.libs.plc_communication import read_holding_register, read_coils
+from RaspPiReader.libs.visualization_manager import VisualizationManager
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +99,6 @@ class MainFormHandler(QMainWindow):
         self.folder_name = None
         self.csv_path = None
         self.pdf_path = None
-        self.plot = None   # Will be set by setup_plot_data_display.
         self.username = self.user_record.username if self.user_record else ''
         
         self.cycle_timer = QTimer()
@@ -119,10 +117,9 @@ class MainFormHandler(QMainWindow):
         self.add_plc_comm_menu()
         self.add_database_menu()
         
-        # Initialize Boolean status area and plot area.
+        # Initialize Boolean status area.
         self.db = Database("sqlite:///local_database.db")
         self.setup_bool_status_display()
-        self.setup_plot_data_display()  # Creates plot widget and calls initialize_plot_widget.
         self.integrate_new_cycle_widget()
         
         # Start timers.
@@ -142,10 +139,51 @@ class MainFormHandler(QMainWindow):
         self.alarmTimer = QTimer(self)
         self.alarmTimer.timeout.connect(self.update_alarm_status)
         self.alarmTimer.start(1000)
-        
+
+        # UI visualization
+        self.init_visualization()
+
         logger.info("Live update timer started.")
         self.showMaximized()
         logger.info("MainFormHandler initialized.")
+
+    def init_visualization(self):
+        """Initialize visualization components"""
+        # Get visualization manager instance
+        self.viz_manager = VisualizationManager.instance()
+        
+        # Set up the dashboard with this form as parent
+        self.viz_manager.setup_dashboard(self)
+        
+        # Add visualization menu
+        self.add_visualization_menu()
+        logger.info("Visualization initialized in MainFormHandler")
+
+    def add_visualization_menu(self):
+        """Add visualization menu to the main form"""
+        # Create visualization menu
+        viz_menu = self.menuBar().addMenu("Visualization")
+        
+        # Add show/hide action
+        toggle_action = QtWidgets.QAction("Show/Hide Dashboard", self)
+        toggle_action.triggered.connect(self.toggle_visualization)
+        viz_menu.addAction(toggle_action)
+        
+        # Add reset action
+        reset_action = QtWidgets.QAction("Reset Visualization", self)
+        reset_action.triggered.connect(self.reset_visualization)
+        viz_menu.addAction(reset_action)
+        
+        logger.info("Visualization menu added")
+
+    def toggle_visualization(self):
+        """Toggle visualization dashboard visibility"""
+        self.viz_manager.toggle_dashboard_visibility()
+
+    def reset_visualization(self):
+        """Reset visualization dashboard"""
+        self.viz_manager.reset_visualization()
+
     def start_live_data(self):
         """Start reading live data every 2 seconds."""
         if not self.live_update_timer.isActive():
@@ -166,10 +204,7 @@ class MainFormHandler(QMainWindow):
         - temperature, pressure
         - vacuum: dict with keys 'CH1'..'CH8' (vacuum gauge values in KPa)
         - cycle_info: dict with keys such as 'maintain_vacuum', 'set_cure_temp', etc.
-        - plot: list of records, each record is a dict with keys:
-                'channel': channel name as a string (e.g., "CH1")
-                'value'  : numeric value to be added for that channel
-        
+
         Additionally, live channel values from the PLC (using read_holding_register)
         are read and can be used to update dedicated UI labels.
         """
@@ -217,12 +252,6 @@ class MainFormHandler(QMainWindow):
                 self.form_obj.cycleStartTimeLabel.setText(cycle_info.get('cycle_start_time', 'N/A'))
                 self.form_obj.cycleEndTimeLabel.setText(cycle_info.get('cycle_end_time', 'N/A'))
             
-            # Update the plot if plot data is available.
-            # The new_data['plot'] is expected to be a list of dictionaries,
-            # each with keys 'channel' and 'value'.
-            plot_data = new_data.get('plot', [])
-            if plot_data and self.plot:
-                self.plot.update_plot_data(plot_data)
         except Exception as e:
             logger.error(f"Error updating main form data: {e}")
 
@@ -397,119 +426,6 @@ class MainFormHandler(QMainWindow):
                 label.setText(display_text)
             else:
                 label.setText("N/A")
-    def setup_plot_data_display(self):
-        """
-        Create a container for the plot widget, add it to the central widget layout,
-        and initialize the plot widget with a short delay to ensure UI is ready.
-        """
-        # Create a container widget for the plot
-        self.plotWidgetContainer = QtWidgets.QWidget(self)
-        self.plotWidgetContainer.setStyleSheet("background-color: white; border: 1px solid #cccccc;")  # Make it visible with border
-        container_layout = QtWidgets.QVBoxLayout(self.plotWidgetContainer)
-        container_layout.setContentsMargins(5, 5, 5, 5)
-        
-        # Create a container for the legend
-        self.legendContainer = QtWidgets.QWidget(self)
-        self.legendContainer.setStyleSheet("background-color: #f0f0f0; border: 1px solid #cccccc;")  # Light gray background with border
-        legend_layout = QtWidgets.QVBoxLayout(self.legendContainer)
-        legend_layout.setContentsMargins(5, 5, 5, 5)
-        
-        # Create a QFrame to hold both the plot and the legend (QFrame can have frame shapes)
-        plot_area_frame = QtWidgets.QFrame(self)
-        plot_area_frame.setFrameShape(QtWidgets.QFrame.StyledPanel)
-        plot_area_frame.setFrameShadow(QtWidgets.QFrame.Raised)
-        plot_area_layout = QtWidgets.QHBoxLayout(plot_area_frame)
-        plot_area_layout.setContentsMargins(5, 5, 5, 5)
-        
-        # Set size policies - plot should expand, legend should be fixed width
-        self.plotWidgetContainer.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, 
-            QtWidgets.QSizePolicy.Expanding
-        )
-        self.legendContainer.setSizePolicy(
-            QtWidgets.QSizePolicy.Fixed, 
-            QtWidgets.QSizePolicy.Preferred
-        )
-        self.legendContainer.setMinimumWidth(150)
-        self.legendContainer.setMaximumWidth(200)
-        
-        # Add plot and legend widgets to the horizontal layout
-        plot_area_layout.addWidget(self.plotWidgetContainer, 4)  # 80% of width
-        plot_area_layout.addWidget(self.legendContainer, 1)      # 20% of width
-        
-        # Get (or create) the central widget's layout
-        central_widget = self.centralWidget()
-        central_layout = central_widget.layout()
-        if central_layout is None:
-            central_layout = QtWidgets.QVBoxLayout(central_widget)
-            central_widget.setLayout(central_layout)
-        
-        # Add the combined plot area to the central widget's layout
-        central_layout.addWidget(plot_area_frame)
-        
-        # Ensure the plot area has sufficient height
-        plot_area_frame.setMinimumHeight(350)
-        
-        # Store references to the layouts for later use
-        self.plot_layout = container_layout
-        self.legend_layout = legend_layout
-        
-        # Debug info
-        logger.info(f"Plot container created with layout: {container_layout}")
-        
-        # Delay initialization to ensure UI is fully loaded
-        QTimer.singleShot(100, self.initialize_plot_widget)
-        logger.info("Plot container setup complete, initialization scheduled")
-
-    def initialize_plot_widget(self):
-        """
-        Initialize the plot widget with the active channels and headers.
-        This is called after a short delay to ensure the UI is ready.
-        """
-        try:
-            # Load active channels from configuration
-            self.active_channels = self.load_active_channels()
-            if not self.active_channels:
-                # If no channels are active, use channels 1-8 as default
-                self.active_channels = list(range(1, CHANNEL_COUNT + 1))
-            
-            # Generate headers for the plot
-            headers = []
-            for i in range(1, CHANNEL_COUNT + 1):
-                # Get label from config or use default
-                header = pool.config(f'label{i}', str, f'CH{i}')
-                headers.append(header)
-            
-            # Debug info
-            logger.info(f"Active channels: {self.active_channels}")
-            logger.info(f"Plot layout exists: {self.plot_layout is not None}")
-            logger.info(f"Legend layout exists: {self.legend_layout is not None}")
-            
-            # Create the plot widget
-            self.plot = InitiatePlotWidget(
-                active_channels=self.active_channels,
-                parent_layout=self.plot_layout,
-                legend_layout=self.legend_layout,
-                headers=headers
-            )
-            
-            # Ensure the plot is visible in the UI by making the container opaque
-            if self.plotWidgetContainer:
-                self.plotWidgetContainer.setAutoFillBackground(True)
-            
-            # Show the plot area 
-            if hasattr(self, 'mainPlotGroupBox'):
-                self.mainPlotGroupBox.setVisible(True)
-            
-            logger.info(f"Plot widget initialized with {len(self.active_channels)} active channels")
-        except Exception as e:
-            logger.error(f"Error initializing plot widget: {e}")
-            # Show error in UI
-            QtWidgets.QMessageBox.critical(
-                self,
-                "Plot Initialization Error",
-                f"Failed to initialize plot: {str(e)}"
-            )
 
     def init_custom_status_bar(self):
         """
@@ -718,12 +634,9 @@ class MainFormHandler(QMainWindow):
     def set_connections(self):
         self.actionExit.triggered.connect(self.close)
         self.actionCycle_Info.triggered.connect(self._show_cycle_info)
-        self.actionPlot.triggered.connect(self._show_plot)
         self.actionSetting.triggered.connect(self.handle_settings)
         self.actionStart.triggered.connect(self._start)
-        self.actionStart.triggered.connect(lambda: self.actionPlot_preview.setEnabled(False))
         self.actionStop.triggered.connect(self._stop)
-        self.actionPlot_preview.triggered.connect(self.show_plot_preview)
         self.actionPrint_results.triggered.connect(self.open_pdf)
         self.cycle_timer.timeout.connect(self.cycle_timer_update)
         self.update_status_bar_signal.connect(self.update_status_bar)
@@ -780,7 +693,6 @@ class MainFormHandler(QMainWindow):
         self.create_stack()
         self.active_channels = self.load_active_channels()
         self.initialize_ui_panels()
-        QTimer.singleShot(50, self.setup_plot)
         # Start a new cycle using the new cycle handler
         self.new_cycle_handler.start_cycle()
   
@@ -788,16 +700,16 @@ class MainFormHandler(QMainWindow):
             self.actionStart.setEnabled(False)
         if hasattr(self, "actionStop"):
             self.actionStop.setEnabled(True)
+        # Start visualization with the current cycle ID
+        current_cycle_id = None
+        if hasattr(self.new_cycle_handler, "current_cycle") and self.new_cycle_handler.current_cycle:
+            current_cycle_id = self.new_cycle_handler.current_cycle.id
         
-    def setup_plot(self):
-        # Clean up old plot if it exists
-        if hasattr(self, 'plot') and self.plot:
-            self.plot.cleanup()  # Add a cleanup method to your plot class
+        # Start visualization
+        self.viz_manager.start_visualization(current_cycle_id)
         
-        self.plot = self.create_plot(
-            plot_layout=self.plotAreaLayout, 
-            legend_layout=self.formLayoutLegend
-        )
+        # Additional existing code...
+        logger.info("Cycle and visualization started")
 
     def _stop(self):
         try:
@@ -816,23 +728,12 @@ class MainFormHandler(QMainWindow):
             else:
                 logger.warning("No active new_cycle_handler found; unable to stop cycle properly.")
             
-            # Cleanup plot and update UI actions.
-            if hasattr(self, 'plot') and self.plot:
-                try:
-                    self.plot.cleanup()
-                except Exception as cleanup_error:
-                    logger.error(f"Error during plot cleanup: {cleanup_error}")
-                self.plot = None
-            
             if hasattr(self, 'actionStart'):
                 self.actionStart.setEnabled(True)
             if hasattr(self, 'actionStop'):
                 self.actionStop.setEnabled(False)
             if hasattr(self, 'actionPrint_results'):
                 self.actionPrint_results.setEnabled(True)
-            
-            if hasattr(self, 'show_plot_preview'):
-                self.show_plot_preview()
             
             if hasattr(self, 'close_csv_file'):
                 QTimer.singleShot(1000, self.close_csv_file)
@@ -845,59 +746,16 @@ class MainFormHandler(QMainWindow):
                 "Error",
                 f"Failed to stop cycle: {str(e)}"
             )
-
-    def show_plot_preview(self):
-        # Ensure headers is initialized
-        if not hasattr(self, 'headers') or not self.headers:
-            self.headers = ["Default Header 1", "Default Header 2"]
-            # Initialize headers with defaults if not already set.
-            self.headers = []
-            self.headers.append(pool.config('h_label'))
-            self.headers.append(pool.config('left_v_label'))
-            self.headers.append(pool.config('right_v_label'))
-            for i in range(1, CHANNEL_COUNT + 1):
-                self.headers.append(pool.config('label' + str(i)))
-        self.plot_preview_form = pool.set('plot_preview_form', PlotPreviewFormHandler())
-        self.plot_preview_form.initiate_plot(self.headers)
+        
+        # Stop visualization
+        self.viz_manager.stop_visualization()
+        logger.info("Cycle and visualization stopped")
 
     def _print_result(self):
         pass
 
     def _show_cycle_info(self, checked):
         self.cycle_infoGroupBox.setVisible(checked)
-
-    def _show_plot(self, checked):
-        """
-        Show or hide the plot area based on the checked state.
-        Make sure the plot is visible and properly sized.
-        """
-        # Find all the relevant plot widgets
-        plot_widgets = []
-        if hasattr(self, 'mainPlotGroupBox'):
-            plot_widgets.append(self.mainPlotGroupBox)
-        if hasattr(self, 'plotWidgetContainer') and self.plotWidgetContainer:
-            plot_widgets.append(self.plotWidgetContainer)
-        
-        # Log what we're doing
-        action = "Showing" if checked else "Hiding"
-        logger.info(f"{action} plot area. Found {len(plot_widgets)} plot-related widgets")
-        
-        # Show/hide the plot widgets
-        for widget in plot_widgets:
-            widget.setVisible(checked)
-        
-        # If showing the plot, make sure it's properly set up
-        if checked:
-            # Ensure the plot widget exists
-            if not hasattr(self, 'plot') or self.plot is None:
-                logger.info("Creating plot as it doesn't exist")
-                self.initialize_plot_widget()
-            
-            # Force a layout update to ensure proper sizing
-            if hasattr(self, 'centralWidget'):
-                self.centralWidget().layout().activate()
-            
-            logger.info(f"Plot visibility set to {checked}")
 
     def _save(self):
         pass
@@ -911,73 +769,12 @@ class MainFormHandler(QMainWindow):
     def _exit(self):
         pass
 
-    def create_plot(self, plot_layout=None, legend_layout=None):
-        # Read header labels
-        headers = [pool.config('label' + str(i), str, f'CH{i}') for i in range(1, CHANNEL_COUNT + 1)]
-        
-        # If plot already exists, clean it up and remove it from the layout
-        if hasattr(self, 'plot') and self.plot:
-            self.plot.cleanup()
-            # Optionally clear the layout:
-            if plot_layout is None and hasattr(self, 'plot_layout'):
-                plot_layout = self.plot_layout
-            if plot_layout:
-                for index in reversed(range(plot_layout.count())):
-                    widget = plot_layout.itemAt(index).widget()
-                    if widget:
-                        widget.setParent(None)
-            self.plot = None
-
-        # Use instance layout if none supplied
-        if plot_layout is None and hasattr(self, 'plot_layout'):
-            plot_layout = self.plot_layout
-
-        active_channels = pool.get('active_channels') or list(range(1, CHANNEL_COUNT + 1))
-        
-        # Create new plot widget
-        self.plot = InitiatePlotWidget(
-            active_channels=active_channels,
-            parent_layout=plot_layout,
-            legend_layout=legend_layout,
-            headers=headers
-        )
-        return self.plot
-
-    def update_plot(self):
-        """
-        Update the plot with the latest data from data_stack.
-        This method is safer than the previous implementation.
-        """
-        if not hasattr(self, 'plot') or self.plot is None:
-            return
-        
-        try:
-            # Extract data from the data stack
-            data_points = []
-            for ch in self.active_channels:
-                if ch <= len(self.data_stack) - 2 and self.data_stack[ch]:
-                    # Get the latest value for this channel
-                    latest_value = self.data_stack[ch][-1]
-                    data_points.append({
-                        'channel': f'CH{ch}',
-                        'value': latest_value
-                    })
-            
-            # Update the plot with the new data points
-            if data_points:
-                self.plot.update_plot_data(data_points)
-        except Exception as e:
-            logger.error(f"Error updating plot: {e}")
     def cleanup(self):
         """Clean up all resources used by the plot"""
         # Remove any timers
         if hasattr(self, 'update_timer') and self.update_timer:
             self.update_timer.stop()
-            
-        # Clear all plot items
-        if hasattr(self, 'plot') and self.plot:
-            self.plot.clear()
-            
+
         # Any other cleanup needed
     def initialize_ui_panels(self):
         self.immediate_panel_update_locked = False
@@ -1002,7 +799,6 @@ class MainFormHandler(QMainWindow):
         # Update UI elements in a way that maintains responsiveness
         def update_ui():
             self.update_immediate_values_panel()
-            self.update_plot()
         
         # Use a short timer instead of processEvents()
         QTimer.singleShot(10, update_ui)
@@ -1112,8 +908,8 @@ class MainFormHandler(QMainWindow):
     
     def update_live_data(self):
         """
-        Enhanced version of update_live_data that updates both UI spinboxes and the plot.
-        This version handles the data stack and plot updates correctly.
+        Enhanced version of update_live_data that updates both UI spinboxes.
+        This version handles the data stack updates correctly.
         """
         try:
             if not plc_communication.is_connected():
@@ -1192,19 +988,7 @@ class MainFormHandler(QMainWindow):
                     else:
                         logger.debug(f"Channel {ch} address not configured")
                 except Exception as e:
-                    logger.error(f"Error reading CH{ch}: {e}")
-            
-            # Update the plot with all the data points (if we have a plot and data points)
-            if hasattr(self, 'plot') and self.plot and plot_data_points:
-                try:
-                    # Make sure plot has the update_plot_data method
-                    if hasattr(self.plot, 'update_plot_data'):
-                        self.plot.update_plot_data(plot_data_points)
-                    else:
-                        logger.warning("Plot doesn't have update_plot_data method")
-                except Exception as plot_error:
-                    logger.error(f"Error updating plot: {plot_error}")
-            
+                    logger.error(f"Error reading CH{ch}: {e}")            
         except Exception as e:
             logger.error(f"Error in update_live_data: {e}")
     def create_csv_file(self):

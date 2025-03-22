@@ -4,9 +4,9 @@ import threading
 from threading import Thread, Lock
 from time import sleep
 import logging
-
+from PyQt5 import QtWidgets, QtCore
 from PyQt5.QtCore import pyqtSignal, Qt, QTimer
-from PyQt5.QtWidgets import QMainWindow, QMessageBox, QLineEdit, QSpinBox, QDoubleSpinBox
+from PyQt5.QtWidgets import QMainWindow, QMessageBox, QLineEdit, QSpinBox, QDoubleSpinBox, QDockWidget
 
 from RaspPiReader import pool
 from RaspPiReader.libs.communication import dataReader
@@ -21,7 +21,127 @@ from RaspPiReader.libs.models import CycleData, User, Alarm, DefaultProgram, Cyc
 from RaspPiReader.libs import plc_communication
 from RaspPiReader.libs.plc_communication import write_coil
 
+# Import here to avoid circular imports
+from RaspPiReader.ui.visualization_dashboard import VisualizationDashboard       
+from ..ui.visualization_dashboard import VisualizationDashboard
+
+
 logger = logging.getLogger(__name__)
+
+class VisualizationIntegrator:
+    """
+    Integrates the visualization dashboard with PLC communication
+    and cycle start/stop events.
+    """
+    
+    def __init__(self, main_window, plc_comm):
+        """
+        Initialize the visualization integrator.
+        
+        Args:
+            main_window: The main application window
+            plc_comm: The PLC communication instance
+        """
+        self.main_window = main_window
+        self.plc_comm = plc_comm
+        self.dashboard = None
+        self.dock_widget = None
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update_visualization)
+        logger.info("VisualizationIntegrator initialized")
+        
+    def setup_visualization(self):
+        """Set up the visualization dashboard as a dock widget"""
+        logger.info("Setting up visualization dashboard")
+        
+        # Create the dashboard
+        self.dashboard = VisualizationDashboard()
+        
+        # Create a dock widget to host the dashboard
+        self.dock_widget = QtWidgets.QDockWidget("Live Data Visualization", self.main_window)
+        self.dock_widget.setWidget(self.dashboard)
+        self.dock_widget.setFeatures(
+            QtWidgets.QDockWidget.DockWidgetMovable | 
+            QtWidgets.QDockWidget.DockWidgetFloatable
+        )
+        
+        # Add the dock widget to the main window
+        self.main_window.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.dock_widget)
+        
+        # Hide dock widget initially (will show when cycle starts)
+        self.dock_widget.hide()
+        
+        logger.info("Visualization dashboard setup complete")
+        
+    def on_cycle_start(self):
+        """Handle cycle start event"""
+        logger.info("Cycle start detected - initializing visualization")
+        
+        if not self.dashboard:
+            self.setup_visualization()
+            
+        # Show the visualization dashboard
+        self.dock_widget.show()
+        
+        # Start the visualization
+        self.dashboard.start_visualization()
+        
+        # Start the update timer
+        self.timer.start(100)  # Update every 100ms
+        
+        logger.info("Visualization started")
+        
+    def on_cycle_stop(self):
+        """Handle cycle stop event"""
+        logger.info("Cycle stop detected - stopping visualization")
+        
+        if self.dashboard:
+            # Stop the visualization
+            self.dashboard.stop_visualization()
+            
+            # Stop the update timer
+            self.timer.stop()
+            
+            logger.info("Visualization stopped")
+            
+    def update_visualization(self):
+        """Update the visualization with the latest PLC data"""
+        if not self.dashboard or not self.plc_comm:
+            return
+            
+        # Get the latest data from PLC
+        try:
+            plc_data = self.plc_comm.get_latest_data()
+            
+            # Update the visualization dashboard with each parameter
+            for param_name, value in plc_data.items():
+                self.dashboard.update_data(param_name, value)
+        except AttributeError:
+            # If get_latest_data method doesn't exist, use alternative approach
+            try:
+                # Try to get data from individual registers based on your system
+                from RaspPiReader.libs.plc_communication import read_holding_register
+                
+                # Read example registers that might be relevant
+                temperature = read_holding_register(100, 1)  # Adjust address as needed
+                pressure = read_holding_register(102, 1)     # Adjust address as needed
+                flow = read_holding_register(104, 1)         # Adjust address as needed
+                
+                # Update visualization with the data if available
+                if temperature is not None:
+                    self.dashboard.update_data("temperature", temperature)
+                if pressure is not None:
+                    self.dashboard.update_data("pressure", pressure)
+                if flow is not None:
+                    self.dashboard.update_data("flow_rate", flow)
+            except Exception as e:
+                logger.error(f"Error updating visualization data: {e}")
+            
+    def reset_visualization(self):
+        """Reset the visualization"""
+        if self.dashboard:
+            self.dashboard.reset()
+            logger.info("Visualization reset")
 
 cycle_settings = {
     "orderNumberLineEdit": "order_number",  # Updated name
@@ -60,6 +180,10 @@ class StartCycleFormHandler(QMainWindow):
         self.reading_thread = None
         self.running = False
         self.data_reader_lock = Lock()
+        
+        # Initialize visualization integrator
+        main_form = pool.get('main_form')
+        self.visualization = VisualizationIntegrator(main_form if main_form else self)
 
     def on_start_cycle(self):
         self.start_cycle()
@@ -374,6 +498,10 @@ class StartCycleFormHandler(QMainWindow):
         if self.read_thread:
             self.read_thread.start()
         self.initiate_onedrive_update_thread()
+        
+        # Start visualization dashboard
+        self.visualization.on_cycle_start()
+        
         self.show()
 
     def stop_cycle(self):
@@ -435,6 +563,10 @@ class StartCycleFormHandler(QMainWindow):
             except Exception:
                 pass
         self.running = False
+        
+        # Stop visualization dashboard
+        self.visualization.on_cycle_stop()
+        
         self.close()
         main_form = pool.get('main_form')
         if main_form:
