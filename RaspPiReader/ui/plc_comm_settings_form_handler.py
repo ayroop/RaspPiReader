@@ -505,35 +505,96 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             return False
     
     def save_and_close(self):
-        if self._save_settings_simple(test_only=False):
+        """Save settings and close the form in a thread-safe way that prevents UI freezing"""
+        try:
+            # Disable buttons to prevent multiple clicks
             self.saveButton.setEnabled(False)
             self.cancelButton.setEnabled(False)
             self.testButton.setEnabled(False)
-            self.statusLabel.setText("Connecting...")
+            
+            # Show status
+            self.statusLabel.setText("Saving settings...")
             self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
-            self.progressBar = QtWidgets.QProgressBar(self)
-            self.progressBar.setRange(0, 0)
-            self.progressBar.setTextVisible(False)
-            self.statusLayout.addWidget(self.progressBar)
+            
+            # Show progress bar
+            if not hasattr(self, 'progressBar') or self.progressBar is None:
+                self.progressBar = QtWidgets.QProgressBar(self)
+                self.progressBar.setRange(0, 0)  # Indeterminate progress
+                self.progressBar.setTextVisible(False)
+                self.statusLayout.addWidget(self.progressBar)
+            
+            # Process events to update UI
             QApplication.processEvents()
             
-            self.connection_timeout_timer = QTimer(self)
-            self.connection_timeout_timer.setSingleShot(True)
-            self.connection_timeout_timer.timeout.connect(self._handle_connection_timeout)
+            # Use a timer to delay the actual save operation to give UI a chance to update
+            QTimer.singleShot(100, self._delayed_save_and_close)
             
-            def init_callback(success, error):
-                if not success:
-                    logger.error(f"PLC initialization error: {error}")
-                QTimer.singleShot(0, lambda: self._handle_init_result(success))
-                QTimer.singleShot(0, self.connection_timeout_timer.stop)
-            
-            logger.info("Initializing PLC communication with new settings (async)")
-            self.plc_init_worker = plc_communication.initialize_plc_communication_async(callback=init_callback)
-            
-            timeout_value = self.timeoutSpinBox.value()
-            connection_timeout = max(int(timeout_value * 1000) + 2000, 5000)
-            self.connection_timeout_timer.start(connection_timeout)
+        except Exception as e:
+            logger.error(f"Error preparing to save settings: {str(e)}")
+            self._handle_save_error(str(e))
     
+    def _delayed_save_and_close(self):
+        """Perform the actual save operation after UI has been updated"""
+        try:
+            # Save settings
+            if not self._save_settings_simple(test_only=False):
+                # If saving failed, re-enable buttons and return
+                self._cleanup_save_ui()
+                return
+            
+            # Update the connection status
+            self._update_connection_status()
+            
+            # Create a timer to wait for any asynchronous operations to complete
+            # This helps prevent freezing when initializing the PLC with new settings
+            complete_timer = QTimer(self)
+            complete_timer.setSingleShot(True)
+            complete_timer.timeout.connect(self._finalize_save_and_close)
+            complete_timer.start(500)  # Wait half a second to ensure settings are applied
+            
+        except Exception as e:
+            logger.error(f"Error in delayed save: {str(e)}")
+            self._handle_save_error(str(e))
+    
+    def _finalize_save_and_close(self):
+        """Finalize the save operation and close the dialog"""
+        try:
+            # Clean up UI elements
+            self._cleanup_save_ui()
+            
+            # Finally, close the dialog with success
+            logger.info("Settings saved successfully, closing dialog")
+            self.accept()
+            
+        except Exception as e:
+            logger.error(f"Error finalizing save: {str(e)}")
+            self._handle_save_error(str(e))
+    
+    def _handle_save_error(self, error_msg):
+        """Handle errors during the save process"""
+        self._cleanup_save_ui()
+        QtWidgets.QMessageBox.critical(
+            self, 
+            "Settings Error",
+            f"An error occurred while saving settings: {error_msg}"
+        )
+    
+    def _cleanup_save_ui(self):
+        """Clean up UI elements after save operation completes or fails"""
+        # Re-enable buttons
+        self.saveButton.setEnabled(True)
+        self.cancelButton.setEnabled(True)
+        self.testButton.setEnabled(True)
+        
+        # Remove progress bar if it exists
+        if hasattr(self, 'progressBar') and self.progressBar is not None:
+            self.progressBar.setParent(None)
+            self.progressBar = None
+            
+        # Update status
+        self.statusLabel.setText("Ready")
+        self.statusLabel.setStyleSheet("")
+        
     def _handle_connection_timeout(self):
         logger.error("PLC connection initialization timed out")
         self.saveButton.setEnabled(True)
@@ -569,28 +630,35 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         )
     
     def _handle_init_result(self, success):
+        # Schedule the actual UI update on the main thread
+        QTimer.singleShot(0, lambda: self._handle_init_result_impl(success))
+
+    def _handle_init_result_impl(self, success):
         self.saveButton.setEnabled(True)
         self.cancelButton.setEnabled(True)
         self.testButton.setEnabled(True)
         if hasattr(self, 'progressBar') and self.progressBar is not None:
+            # Remove and delete the progress bar on the main thread
             self.progressBar.setParent(None)
+            self.progressBar.deleteLater()
             self.progressBar = None
         self.plc_init_worker = None
         if success:
-            logger.info("PLC communication initialized successfully")
+            logging.getLogger(__name__).info("PLC communication initialized successfully")
             from RaspPiReader.libs import plc_communication
             if plc_communication.connection_monitor is None:
                 plc_communication.connection_monitor = plc_communication.ConnectionMonitor(self)
             plc_communication.connection_monitor.start(30000)
             self.accept()
         else:
-            logger.error("Failed to initialize PLC communication")
+            logging.getLogger(__name__).error("Failed to initialize PLC communication")
             self.statusLabel.setText("Connection Failed")
             self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
             QtWidgets.QMessageBox.warning(
                 self,
                 "PLC Communication Error",
-                "Failed to initialize PLC communication with new settings. Check your connection parameters and ensure the PLC is properly connected."
+                ("Failed to initialize PLC communication with new settings. "
+                "Check your connection parameters and ensure the PLC is properly connected.")
             )
             
 if __name__ == "__main__":

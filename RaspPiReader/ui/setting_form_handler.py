@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QSettings, Qt
+from PyQt5.QtCore import QSettings, Qt, QTimer, QThreadPool, QRunnable
 from PyQt5.QtWidgets import (
     QMainWindow,
     QSpinBox,
@@ -26,6 +26,8 @@ READ_INPUT_REGISTERS = "Read Input Registers"
 READ_HOLDING_REGISTERS = "Read Holding Registers"
 
 logging.basicConfig(level=logging.DEBUG)
+
+# ---- Removed Worker class in favor of timer-based approach ----
 
 class SettingFormHandler(QMainWindow):
     def __init__(self) -> object:
@@ -64,6 +66,7 @@ class SettingFormHandler(QMainWindow):
             if hasattr(self, 'serial_manager'):
                 # Force reload of the serial numbers
                 self.serial_manager.load_all_serials()
+
     def add_boolean_addresses_tab(self):
         boolean_tab = self.create_boolean_tab(config)
         self.form_obj.tabWidget.addTab(boolean_tab, "Boolean Addresses")
@@ -113,7 +116,15 @@ class SettingFormHandler(QMainWindow):
             self.form_obj.serialNumbersButton.clicked.connect(self.open_serial_number_management)
 
     def save_settings(self):
+        """
+        Save settings in a way that prevents UI freezing, using a timer-based approach
+        instead of threading which can cause Qt parent/child thread issues.
+        """
         try:
+            # Disable save button to prevent multiple clicks
+            if hasattr(self.form_obj, "buttonSave"):
+                self.form_obj.buttonSave.setEnabled(False)
+                
             # Retrieve general settings from the UI (using get_val, with defaults)
             baudrate_val = self.get_val("baudrateLineEdit") or "9600"
             parity_val = self.get_val("parityLineEdit") or "N"
@@ -129,11 +140,11 @@ class SettingFormHandler(QMainWindow):
             scale_range_val = self.get_val("editScaleRange") or "1000"
             file_path_val = self.get_val("filePathLineEdit") or ""
             delimiter_val = self.get_val("delimiterLineEdit") or ","
-            gdrive_update_interval_val = self.get_val("gdriveSpinBox") or "60"
+            # gdrive_update_interval_val = self.get_val("gdriveSpinBox") or "60"
             core_temp_channel_val = self.get_val("CoreTempChannelSpinBox") or "1"
             pressure_channel_val = self.get_val("pressureChannelSpinBox") or "1"
-            signin_status_val = bool(int(self.get_val("signinStatus") or "0"))
-            signin_email_val = self.get_val("signinEmail") if hasattr(self.form_obj, "signinEmail") else ""
+            # signin_status_val = bool(int(self.get_val("signinStatus") or "0"))
+            # signin_email_val = self.get_val("signinEmail") if hasattr(self.form_obj, "signinEmail") else ""
             panel_time_interval_val = self.get_val("panelTimeIntervalLineEdit") or "1.0"
             accurate_data_time_val = self.get_val("accurateDataTimeLineEdit") or "1.0"
 
@@ -154,11 +165,11 @@ class SettingFormHandler(QMainWindow):
                 settings.scale_range = int(scale_range_val)
                 settings.csv_file_path = file_path_val
                 settings.csv_delimiter = delimiter_val
-                settings.gdrive_update_interval = int(gdrive_update_interval_val)
+                # settings.gdrive_update_interval = int(gdrive_update_interval_val)
                 settings.core_temp_channel = int(core_temp_channel_val)
                 settings.pressure_channel = int(pressure_channel_val)
-                settings.signin_status = signin_status_val
-                settings.signin_email = signin_email_val
+                #settings.signin_status = signin_status_val
+                #settings.signin_email = signin_email_val
                 settings.panel_time_interval = float(panel_time_interval_val)
                 settings.accuarate_data_time = float(accurate_data_time_val)
             else:
@@ -177,11 +188,11 @@ class SettingFormHandler(QMainWindow):
                     scale_range = int(scale_range_val),
                     csv_file_path = file_path_val,
                     csv_delimiter = delimiter_val,
-                    gdrive_update_interval = int(gdrive_update_interval_val),
+                    # gdrive_update_interval = int(gdrive_update_interval_val),
                     core_temp_channel = int(core_temp_channel_val),
                     pressure_channel = int(pressure_channel_val),
-                    signin_status = signin_status_val,
-                    signin_email = signin_email_val,
+                    #signin_status = signin_status_val,
+                    #signin_email = signin_email_val,
                     panel_time_interval = float(panel_time_interval_val),
                     accuarate_data_time = float(accurate_data_time_val)
                 )
@@ -243,9 +254,15 @@ class SettingFormHandler(QMainWindow):
             self.db.session.commit()
 
             logging.info("Settings saved successfully.")
-            self.write_to_device()
+
+            # Instead of using a worker thread, use a timer to delay the write_to_device call
+            # This prevents UI freezing while avoiding thread-related issues
+            QTimer.singleShot(100, self._delayed_write_to_device)
         except Exception as e:
             logging.error(f"Error saving settings: {e}")
+            # Re-enable save button if there was an error
+            if hasattr(self.form_obj, "buttonSave"):
+                self.form_obj.buttonSave.setEnabled(True)
 
     def load_settings(self):
         try:
@@ -417,32 +434,81 @@ class SettingFormHandler(QMainWindow):
                 logging.error(f"Error setting {name}: {e}")
         else:
             logging.warning(f"Widget {name} not found in form_obj")
-    def write_to_device(self):
+    def _delayed_write_to_device(self):
+        """
+        Perform device write operations after a short delay to prevent UI freezing.
+        This method is called via QTimer instead of directly or via a worker thread.
+        """
         from RaspPiReader.libs.communication import dataReader
         try:
+            # Show a status message if possible
+            if hasattr(self.form_obj, "statusBar"):
+                self.form_obj.statusBar().showMessage("Writing settings to device...")
+            
+            # Start the data reader
             dataReader.start()
+            
+            # Process each channel
+            for ch in range(CHANNEL_COUNT):
+                # Skip inactive channels
+                if not pool.config("active" + str(ch + 1), bool):
+                    continue
+                try:
+                    address = pool.config("address" + str(ch + 1), int)
+                    sp = pool.config("sp" + str(ch + 1), int)
+                    sv_value = pool.config("sv" + str(ch + 1), str)
+                    if sv_value is None or str(sv_value).strip().lower() == "none":
+                        logging.warning(f"sv{ch+1} is missing, using default value 0")
+                        sv_value = "0"
+                    sv_int = int(sv_value, 14)
+
+
+                    
+                    # Write the settings data to the device
+                    dataReader.writeData(address, sv_int, sp)
+                except Exception as e:
+                    error_dialog = QErrorMessage(self)
+                    error_dialog.showMessage(f"Failed to write settings to device: {e}")
+                    break
+
+            
+            # Stop the data reader
+            dataReader.stop()
+            
+            # Update status and re-enable save button
+            if hasattr(self.form_obj, "statusBar"):
+                self.form_obj.statusBar().showMessage("Settings applied successfully", 3000)
+            if hasattr(self.form_obj, "buttonSave"):
+                self.form_obj.buttonSave.setEnabled(True)
+                
+            # Close the form if this was triggered from save_and_close
+            if not self.close_prompt:
+                self.close()
+                
         except Exception as e:
-            logging.error(f"Failed to start data reader or it is already started: {e}")
-        for ch in range(CHANNEL_COUNT):
-            # Example: if an 'active' flag exists in the configuration.
-            if not pool.config("active" + str(ch + 1), bool):
-                continue
-            try:
-                dataReader.writeData(
-                    pool.config("address" + str(ch + 1), int),
-                    int(pool.config("sv" + str(ch + 1), str), 16),
-                    pool.config("sp" + str(ch + 1), int)
-                )
-            except Exception as e:
-                error_dialog = QErrorMessage(self)
-                error_dialog.showMessage(f"Failed to write settings to device: {e}")
-                break
-        dataReader.stop()
+            logging.error(f"Error in delayed write to device: {e}")
+            # Show error message
+            error_dialog = QErrorMessage(self)
+            error_dialog.showMessage(f"Error writing to device: {e}")
+            # Re-enable save button
+            if hasattr(self.form_obj, "buttonSave"):
+                self.form_obj.buttonSave.setEnabled(True)
+    
+    def write_to_device(self):
+        """
+        Legacy method maintained for compatibility.
+        Now uses the timer-based approach to prevent UI freezing.
+        """
+        QTimer.singleShot(100, self._delayed_write_to_device)
 
     def save_and_close(self):
-        self.save_settings()
+        """
+        Save settings and close the form.
+        Uses the timer-based approach to prevent UI freezing.
+        """
         self.close_prompt = False
-        self.close()
+        self.save_settings()
+        # The form will be closed in _delayed_write_to_device after settings are saved
 
     def close(self):
         self.close_prompt = False

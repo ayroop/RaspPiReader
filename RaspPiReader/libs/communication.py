@@ -1,7 +1,9 @@
+
 import logging, os, time, socket, threading
 from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient
 from pymodbus.exceptions import ConnectionException, ModbusException
-from PyQt5.QtCore import QSettings
+from PyQt5.QtCore import QSettings, QObject, pyqtSignal, QThread, QTimer
+from PyQt5 import QtCore
 from RaspPiReader import pool
 from RaspPiReader.ui.setting_form_handler import READ_HOLDING_REGISTERS, READ_INPUT_REGISTERS
 
@@ -9,6 +11,29 @@ logger = logging.getLogger(__name__)
 
 # Global lock for PLC communication to prevent multiple simultaneous connections
 plc_lock = threading.RLock()
+
+class ConnectionWorker(QObject):
+    """Worker class to handle PLC connection in a separate thread"""
+    connectionFinished = pyqtSignal(bool, str)
+    
+    def __init__(self, modbus_comm):
+        super().__init__()
+        self.modbus_comm = modbus_comm
+        
+    def connect(self):
+        """Perform the connection process in a background thread"""
+        success = False
+        error_msg = ""
+        
+        try:
+            success = self.modbus_comm._connect_internal()
+            if not success:
+                error_msg = self.modbus_comm.last_error
+        except Exception as e:
+            error_msg = f"Exception during connection: {str(e)}"
+            logger.error(f"[{self.modbus_comm.name}] {error_msg}")
+            
+        self.connectionFinished.emit(success, error_msg)
 
 class ModbusCommunication:
     def __init__(self, name="unnamed"):
@@ -18,6 +43,9 @@ class ModbusCommunication:
         self.connection_type = None  # Should be 'tcp' or 'rtu'
         self._configured = False
         self.name = name  # Identifier for logging
+        self._connection_thread = None
+        self._connection_worker = None
+        self._connection_timeout = 10  # Default timeout in seconds
         logger.info(f"ModbusCommunication instance '{name}' created")
 
     def configure(self, connection_type=None, **kwargs):
@@ -46,6 +74,7 @@ class ModbusCommunication:
             parity = kwargs.get('parity', 'N')
             stopbits = kwargs.get('stopbits', 1)
             timeout = kwargs.get('timeout', 1)
+            self._connection_timeout = float(timeout)
             
             logger.info(f"[{self.name}] Configuring RTU client on port {port} with baudrate {baudrate}")
             
@@ -78,6 +107,7 @@ class ModbusCommunication:
                 
             port = kwargs.get('port', 502)
             timeout = kwargs.get('timeout', 1)
+            self._connection_timeout = float(timeout)
             
             logger.info(f"[{self.name}] Configuring TCP client with host {host} and port {port}")
             
@@ -103,7 +133,8 @@ class ModbusCommunication:
             
         return True
 
-    def connect(self):
+    def _connect_internal(self):
+        """Internal method to perform the actual connection process"""
         if (not self._configured) or (not self.client):
             self.connection_type = pool.config("plc/comm_mode", str, "tcp").lower()
             if self.connection_type == "tcp":
@@ -112,6 +143,7 @@ class ModbusCommunication:
                 timeout = pool.config("plc/timeout", float, 6.0)
                 self.client = ModbusTcpClient(host, port=port, timeout=timeout)
                 self._configured = True
+                self._connection_timeout = timeout
                 logger.info(f"[{self.name}] Client configured with host={host}, port={port}, timeout={timeout}")
             elif self.connection_type == "rtu":
                 port = pool.config("plc/com_port", str, "COM1")
@@ -119,6 +151,7 @@ class ModbusCommunication:
                 timeout = pool.config("plc/timeout", float, 6.0)
                 self.client = ModbusSerialClient(method='rtu', port=port, baudrate=baudrate, timeout=timeout)
                 self._configured = True
+                self._connection_timeout = timeout
                 logger.info(f"[{self.name}] Client configured for RTU with port={port}, baudrate={baudrate}, timeout={timeout}")
             else:
                 self.last_error = "Unsupported communication type"
@@ -180,7 +213,17 @@ class ModbusCommunication:
                         try:
                             logger.info(f"[{self.name}] Performing test read to verify connection")
                             start_read = time.time()
+                            
+                            # Set a timeout for test read
+                            read_timeout = min(5.0, self._connection_timeout)  # No more than 5 seconds for test read
+                            original_timeout = self.client.timeout
+                            self.client.timeout = read_timeout
+                            
                             result = self.client.read_holding_registers(1, 1, unit=1)
+                            
+                            # Restore original timeout
+                            self.client.timeout = original_timeout
+                            
                             logger.info(f"[{self.name}] Test read completed in {time.time()-start_read:.3f} seconds")
                             if result is None or result.isError():
                                 self.last_error = f"Test read error: {result}"
@@ -209,6 +252,88 @@ class ModbusCommunication:
                 return False
             finally:
                 logger.debug(f"[{self.name}] Releasing PLC connection lock")
+
+    def connect(self):
+        """Connect to the Modbus device, with option to use async mode"""
+        # For synchronous operation, just call the internal connect method
+        return self._connect_internal()
+
+    def connect_async(self, callback=None):
+        """
+        Connect to the Modbus device asynchronously in a separate thread.
+        
+        Args:
+            callback: Optional function to call when connection is complete
+            
+        Returns:
+            bool: True if connection process was started, False otherwise
+        """
+        if self._connection_thread and self._connection_thread.isRunning():
+            logger.warning(f"[{self.name}] Connection already in progress")
+            return False
+            
+        # Create a new thread
+        self._connection_thread = QThread()
+        
+        # Create the worker (must be created after the thread but before moving to thread)
+        self._connection_worker = ConnectionWorker(self)
+        
+        # Store callback before moving worker to thread
+        self._connection_callback = callback
+        
+        # Move worker to thread - all signals should be connected AFTER this
+        self._connection_worker.moveToThread(self._connection_thread)
+        
+        # Connect signals AFTER moving to thread
+        self._connection_thread.started.connect(self._connection_worker.connect)
+        self._connection_worker.connectionFinished.connect(self._on_connection_finished)
+        self._connection_worker.connectionFinished.connect(self._connection_thread.quit)
+        self._connection_thread.finished.connect(self._cleanup_connection_thread)
+        
+        # Start the thread
+        logger.info(f"[{self.name}] Starting async connection thread")
+        self._connection_thread.start()
+        return True
+        
+    def _on_connection_finished(self, success, error_msg):
+        """Handle connection completion"""
+        self.connected = success
+        if not success:
+            self.last_error = error_msg
+            
+        logger.info(f"[{self.name}] Async connection finished: {'success' if success else 'failed'}")
+        
+        # Call the callback if provided
+        if hasattr(self, '_connection_callback') and self._connection_callback:
+            try:
+                self._connection_callback(success)
+            except Exception as e:
+                logger.error(f"[{self.name}] Error in connection callback: {str(e)}")
+                
+    def _cleanup_connection_thread(self):
+        """Clean up thread resources"""
+        # We need to be careful about thread cleanup to prevent Qt threading issues
+        if hasattr(self, '_connection_thread') and self._connection_thread:
+            if hasattr(self, '_connection_worker') and self._connection_worker:
+                # Disconnect all signals before deletion
+                try:
+                    self._connection_thread.started.disconnect(self._connection_worker.connect)
+                    self._connection_worker.connectionFinished.disconnect()
+                except (TypeError, RuntimeError):
+                    # Signals might already be disconnected
+                    pass
+                
+                self._connection_worker.deleteLater()
+                self._connection_worker = None
+                
+            self._connection_thread.quit()
+            if not self._connection_thread.wait(3000):  # Wait up to 3 seconds
+                logger.warning(f"[{self.name}] Thread did not terminate properly, forcing termination")
+                self._connection_thread.terminate()
+                
+            self._connection_thread.deleteLater()
+            self._connection_thread = None
+
     def disconnect(self):
         """Disconnect from the Modbus device."""
         if self.client and self.connected:
@@ -391,13 +516,39 @@ class DataReader:
         self.read_type = None
         self.connected = False
         self.client = None
+        self._connection_in_progress = False
+        self._connection_attempt_count = 0
+        self._max_connection_attempts = 3
+        self._reload_in_progress = False
+        
+    def _on_connection_completed(self, success):
+        """Handle connection completion callback - this runs in the main thread"""
+        self._connection_in_progress = False
+        self.connected = success
+        if success:
+            logger.info("DataReader successfully connected to PLC")
+            self._connection_attempt_count = 0
+        else:
+            logger.error(f"DataReader failed to connect: {self.modbus_comm.get_error()}")
+            self._connection_attempt_count += 1
+            
+            # If we've tried multiple times and still failed, implement a delay
+            # before the next attempt to prevent rapid connection attempts
+            if self._connection_attempt_count >= self._max_connection_attempts:
+                logger.warning(f"DataReader reached maximum connection attempts ({self._max_connection_attempts}), will delay further attempts")
+                
+                # We could implement a timer here to delay next connection attempt
+                # but for now we'll just reset the counter
+                self._connection_attempt_count = 0
 
     def start(self):
         """Start the data reader."""
         # Only start if not already running
         if not self.running:
             self.running = True
-            self.reload()
+            # We'll use a small delay to ensure the UI thread isn't blocked
+            # by any initialization work
+            QTimer.singleShot(0, self.reload)
             logger.info("Data reader started")
 
     def stop(self):
@@ -405,60 +556,139 @@ class DataReader:
         if self.running:
             self.running = False
             self.connected = False
+            self._connection_in_progress = False
+            
             # Ensure we disconnect the modbus client
             if self.modbus_comm:
-                self.modbus_comm.disconnect()
+                # Use a try-except to prevent any errors during disconnection
+                try:
+                    self.modbus_comm.disconnect()
+                except Exception as e:
+                    logger.error(f"Error during modbus disconnection: {str(e)}")
+                    
             logger.info("Data reader stopped")
 
     def reload(self):
-        """Reload configuration and reconnect."""
-        # Ensure we disconnect any existing connection
-        if self.modbus_comm:
-            self.modbus_comm.disconnect()
-            
-        # Get configuration settings
-        self.read_type = pool.config('read_type', str, READ_HOLDING_REGISTERS)
-        demo_mode = pool.config('demo', bool, False)
-        
-        if demo_mode:
-            logger.info("DataReader reloading in DEMO mode")
-            self.connected = True
+        """
+        Reload configuration and reconnect.
+        This version includes better handling for multiple reload calls.
+        """
+        # Prevent multiple simultaneous reload operations
+        if self._reload_in_progress:
+            logger.debug("Reload already in progress, skipping")
             return
             
-        # Configure the communication object with settings from pool
-        connection_type = pool.config('plc/connection_type', str, 'rtu')
-        logger.info(f"DataReader reloading with connection type: {connection_type}")
+        self._reload_in_progress = True
         
-        config_params = {}
-        if connection_type == 'rtu':
-            config_params.update({
-                'port': pool.config('plc/port', str, None),
-                'baudrate': pool.config('plc/baudrate', int, 9600),
-                'bytesize': pool.config('plc/bytesize', int, 8),
-                'parity': pool.config('plc/parity', str, 'N'),
-                'stopbits': pool.config('plc/stopbits', float, 1),
-                'timeout': pool.config('plc/timeout', float, 1.0)
-            })
-        else:  # TCP
-            config_params.update({
-                'host': pool.config('plc/host', str, None),
-                'port': pool.config('plc/tcp_port', int, 502),
-                'timeout': pool.config('plc/timeout', float, 1.0)
-            })
+        try:
+            # Ensure we disconnect any existing connection
+            if self.modbus_comm:
+                try:
+                    self.modbus_comm.disconnect()
+                except Exception as e:
+                    logger.error(f"Error disconnecting during reload: {str(e)}")
+                
+            # Get configuration settings
+            self.read_type = pool.config('read_type', str, READ_HOLDING_REGISTERS)
+            demo_mode = pool.config('demo', bool, False)
             
-        logger.info(f"Configuring DataReader with: {config_params}")
-        
-        # Configure and connect
-        if self.modbus_comm.configure(connection_type, **config_params):
+            if demo_mode:
+                logger.info("DataReader reloading in DEMO mode")
+                self.connected = True
+                self._reload_in_progress = False
+                return
+                
+            # Configure the communication object with settings from pool
+            connection_type = pool.config('plc/connection_type', str, 'rtu')
+            logger.info(f"DataReader reloading with connection type: {connection_type}")
+            
+            config_params = {}
+            if connection_type == 'rtu':
+                config_params.update({
+                    'port': pool.config('plc/port', str, None),
+                    'baudrate': pool.config('plc/baudrate', int, 9600),
+                    'bytesize': pool.config('plc/bytesize', int, 8),
+                    'parity': pool.config('plc/parity', str, 'N'),
+                    'stopbits': pool.config('plc/stopbits', float, 1),
+                    'timeout': pool.config('plc/timeout', float, 1.0)
+                })
+            else:  # TCP
+                config_params.update({
+                    'host': pool.config('plc/host', str, None),
+                    'port': pool.config('plc/tcp_port', int, 502),
+                    'timeout': pool.config('plc/timeout', float, 1.0)
+                })
+                
+            logger.info(f"Configuring DataReader with: {config_params}")
+            
+            # Configure and connect with proper error handling
+            try:
+                if self.modbus_comm.configure(connection_type, **config_params):
+                    # Use asynchronous connection to prevent UI freezing for TCP
+                    if connection_type == 'tcp':
+                        self._connection_in_progress = True
+                        # Delay the actual connection to avoid UI freezing
+                        QTimer.singleShot(10, self._start_async_connection)
+                    else:
+                        # For RTU connections, we can use synchronous connection
+                        # but still with a small delay
+                        QTimer.singleShot(10, self._start_sync_connection)
+                else:
+                    logger.error(f"DataReader failed to configure: {self.modbus_comm.get_error()}")
+                    self.connected = False
+            except Exception as e:
+                logger.error(f"Exception during DataReader configuration: {str(e)}")
+                self.connected = False
+        finally:
+            # Clear the reload flag after a slight delay to prevent rapid
+            # multiple reloads that might happen if there are multiple
+            # settings being saved in quick succession
+            QTimer.singleShot(500, self._clear_reload_flag)
+    
+    def _clear_reload_flag(self):
+        """Clear the reload in progress flag after a delay"""
+        self._reload_in_progress = False
+            
+    def _start_async_connection(self):
+        """Start the asynchronous connection process"""
+        try:
+            # Check if we still should connect (might have been stopped)
+            if not self.running:
+                self._connection_in_progress = False
+                logger.debug("DataReader no longer running, skipping async connection")
+                return
+                
+            logger.debug("Starting async connection for DataReader")
+            success = self.modbus_comm.connect_async(callback=self._on_connection_completed)
+            if not success:
+                logger.error("Failed to start async connection")
+                self._connection_in_progress = False
+                self.connected = False
+        except Exception as e:
+            logger.error(f"Exception starting async connection: {str(e)}")
+            self._connection_in_progress = False
+            self.connected = False
+    
+    def _start_sync_connection(self):
+        """Start synchronous connection for RTU"""
+        try:
+            # Check if we still should connect (might have been stopped)
+            if not self.running:
+                logger.debug("DataReader no longer running, skipping sync connection")
+                return
+                
+            logger.debug("Starting synchronous connection for DataReader")
             self.connected = self.modbus_comm.connect()
             if self.connected:
                 logger.info("DataReader successfully connected to PLC")
             else:
                 logger.error(f"DataReader failed to connect: {self.modbus_comm.get_error()}")
-        else:
-            logger.error(f"DataReader failed to configure: {self.modbus_comm.get_error()}")
+        except Exception as e:
+            logger.error(f"Exception during synchronous connection: {str(e)}")
             self.connected = False
 
+    # ... other methods remain the same ...
+    
     def _read_holding_registers(self, dev, addr):
         """Read holding registers."""
         return self.modbus_comm.read_registers(addr, 1, dev, 'holding')
@@ -476,22 +706,33 @@ class DataReader:
         if not self.running:
             return None
             
+        # If connection is still in progress, don't try to read yet
+        if self._connection_in_progress:
+            logger.debug("DataReader connection in progress, deferring read operation")
+            return None
+            
         # Make sure we're connected before attempting to read
         if not self.connected:
             logger.debug("DataReader not connected during readData, attempting to reconnect...")
-            self.reload()
-            if not self.connected:
-                return None
+            # Don't trigger a reload if one is already in progress
+            if not self._reload_in_progress:
+                # Use a timer to reload in the background to avoid blocking the UI
+                QTimer.singleShot(0, self.reload)
+            return None
                 
         if not self.read_type:
             self.read_type = pool.config('read_type', str, READ_HOLDING_REGISTERS)
             
-        if self.read_type == READ_HOLDING_REGISTERS:
-            return self._read_holding_registers(dev, addr)
-        elif self.read_type == READ_INPUT_REGISTERS:
-            return self._read_input_registers(dev, addr)
-        else:
-            logger.error(f"Invalid register read type: {self.read_type}")
+        try:
+            if self.read_type == READ_HOLDING_REGISTERS:
+                return self._read_holding_registers(dev, addr)
+            elif self.read_type == READ_INPUT_REGISTERS:
+                return self._read_input_registers(dev, addr)
+            else:
+                logger.error(f"Invalid register read type: {self.read_type}")
+                return None
+        except Exception as e:
+            logger.error(f"Exception during readData: {str(e)}")
             return None
 
     def read_bool_address(self, address, dev=1):
@@ -499,45 +740,78 @@ class DataReader:
         # Make sure we're connected before attempting to read
         if not self.running:
             return None
+        
+        # If connection is still in progress, don't try to read yet
+        if self._connection_in_progress:
+            logger.debug("DataReader connection in progress, deferring bool read operation")
+            return None
             
         if not self.connected:
             logger.debug("DataReader not connected during read_bool_address, attempting to reconnect...")
-            self.reload()
-            if not self.connected:
-                return None
-                
-        values = self.modbus_comm.read_bool_addresses(address, count=1, dev=dev)
-        if values and len(values) > 0:
-            return values[0]
-        return None
+            # Don't trigger a reload if one is already in progress
+            if not self._reload_in_progress:
+                # Use a timer to reload in the background to avoid blocking the UI
+                QTimer.singleShot(0, self.reload)
+            return None
+        
+        try:
+            values = self.modbus_comm.read_bool_addresses(address, count=1, dev=dev)
+            if values and len(values) > 0:
+                return values[0]
+            return None
+        except Exception as e:
+            logger.error(f"Exception during read_bool_address: {str(e)}")
+            return None
         
     def writeData(self, addr, value, dev=1):
         """Write data to a register."""
         if not self.running:
             return False
+        
+        # If connection is still in progress, don't try to write yet
+        if self._connection_in_progress:
+            logger.debug("DataReader connection in progress, deferring write operation")
+            return False
             
         # Make sure we're connected before attempting to write
         if not self.connected:
             logger.debug("DataReader not connected during writeData, attempting to reconnect...")
-            self.reload()
-            if not self.connected:
-                return False
-                
-        return self.modbus_comm.write_register(addr, value, dev)
+            # Don't trigger a reload if one is already in progress
+            if not self._reload_in_progress:
+                # Use a timer to reload in the background to avoid blocking the UI
+                QTimer.singleShot(0, self.reload)
+            return False
+        
+        try:
+            return self.modbus_comm.write_register(addr, value, dev)
+        except Exception as e:
+            logger.error(f"Exception during writeData: {str(e)}")
+            return False
         
     def write_bool_address(self, addr, value, dev=1):
         """Write a boolean value to a coil."""
         if not self.running:
             return False
+        
+        # If connection is still in progress, don't try to write yet
+        if self._connection_in_progress:
+            logger.debug("DataReader connection in progress, deferring bool write operation")
+            return False
             
         # Make sure we're connected before attempting to write
         if not self.connected:
             logger.debug("DataReader not connected during write_bool_address, attempting to reconnect...")
-            self.reload()
-            if not self.connected:
-                return False
-                
-        return self.modbus_comm.write_bool_address(addr, value, dev)
+            # Don't trigger a reload if one is already in progress
+            if not self._reload_in_progress:
+                # Use a timer to reload in the background to avoid blocking the UI
+                QTimer.singleShot(0, self.reload)
+            return False
+        
+        try:
+            return self.modbus_comm.write_bool_address(addr, value, dev)
+        except Exception as e:
+            logger.error(f"Exception during write_bool_address: {str(e)}")
+            return False
         
     def is_connected(self):
         """Check if the data reader is connected to the PLC."""
@@ -547,6 +821,10 @@ class DataReader:
         # For demo mode, always return True
         if pool.config('demo', bool, False):
             return True
+            
+        # If connection is in progress, report as not yet connected
+        if self._connection_in_progress:
+            return False
             
         # Check the connection status
         return self.connected and (self.modbus_comm and self.modbus_comm.connected)
