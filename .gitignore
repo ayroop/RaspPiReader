@@ -45,3 +45,4 @@ reports
 wkhtmltopdf.exe
 wkhtmltopdf.zip
 setup.iss
+*.zip

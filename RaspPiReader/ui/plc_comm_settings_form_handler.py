@@ -42,6 +42,20 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         
         logger.info("PLC Communication Settings dialog initialized")
     
+    def closeEvent(self, event):
+        """Ensure all threads are stopped before closing the dialog"""
+        if hasattr(self, 'test_worker') and self.test_worker is not None:
+            self.test_worker.quit()
+            self.test_worker.wait()
+            self.test_worker = None
+
+        if hasattr(self, 'status_worker') and self.status_worker is not None:
+            self.status_worker.quit()
+            self.status_worker.wait()
+            self.status_worker = None
+
+        super(PLCCommSettingsFormHandler, self).closeEvent(event)
+
     def _create_ui_elements(self):
         """Create all UI elements (organized into groups and stacked widgets)."""
         self.layout = QtWidgets.QVBoxLayout(self)
@@ -378,7 +392,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             logger.info(f"Saving settings - Connection Type: {connection_type}")
             settings = QSettings('RaspPiHandler', 'RaspPiModbusReader')
             settings.setValue('plc/connection_type', connection_type)
-            
+
             if connection_type == 'rtu':
                 port_value = self.portComboBox.currentText()
                 settings.setValue('plc/port', port_value)
@@ -389,12 +403,19 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             else:
                 tcp_host = self.hostLineEdit.text().strip()
                 tcp_port = self.tcpPortSpinBox.value()
+
+                # Add validation for TCP settings here
+                if not tcp_host:
+                    raise ValueError("IP Address cannot be empty.")
+                if not (1 <= tcp_port <= 65535):
+                    raise ValueError("Port must be between 1 and 65535.")
+
                 settings.setValue('plc/host', tcp_host)
                 settings.setValue('plc/tcp_port', tcp_port)
-            
+
             settings.setValue('plc/timeout', self.timeoutSpinBox.value())
             settings.sync()
-            
+
             pool.set_config('plc/connection_type', connection_type)
             if connection_type == 'rtu':
                 pool.set_config('plc/port', self.portComboBox.currentText())
@@ -405,9 +426,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             else:
                 pool.set_config('plc/host', self.hostLineEdit.text().strip())
                 pool.set_config('plc/tcp_port', self.tcpPortSpinBox.value())
-                
-            pool.set_config('plc/timeout', self.timeoutSpinBox.value())
-            
+
             if not test_only:
                 try:
                     conn = sqlite3.connect("local_database.db")
@@ -430,7 +449,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                         """)
                     cursor.execute("SELECT id FROM plc_comm_settings LIMIT 1")
                     record = cursor.fetchone()
-                    
+
                     if connection_type == 'rtu':
                         port_value = self.portComboBox.currentText()
                         baudrate = int(self.baudrateComboBox.currentText())
@@ -438,7 +457,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                         parity = self.parityComboBox.currentText()
                         stopbits = float(self.stopbitsComboBox.currentText())
                         timeout = self.timeoutSpinBox.value()
-                        
+
                         if record:
                             cursor.execute("""
                                 UPDATE plc_comm_settings SET 
@@ -452,15 +471,15 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                             cursor.execute("""
                                 INSERT INTO plc_comm_settings 
                                 (comm_mode, tcp_host, tcp_port, com_port, baudrate, 
-                                 bytesize, parity, stopbits, timeout)
-                                VALUES (?, NULL, NULL, ?, ?, ?, ?, ?)
+                                bytesize, parity, stopbits, timeout)
+                                VALUES (?, NULL, NULL, ?, ?, ?, ?, ?, ?)
                             """, (connection_type, port_value, baudrate, bytesize, 
                                 parity, stopbits, timeout))
                     else:
                         tcp_host = self.hostLineEdit.text().strip()
                         tcp_port = self.tcpPortSpinBox.value()
                         timeout = self.timeoutSpinBox.value()
-                        
+
                         if record:
                             cursor.execute("""
                                 UPDATE plc_comm_settings SET 
@@ -473,14 +492,14 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                             cursor.execute("""
                                 INSERT INTO plc_comm_settings 
                                 (comm_mode, tcp_host, tcp_port, com_port, baudrate, 
-                                 bytesize, parity, stopbits, timeout)
+                                bytesize, parity, stopbits, timeout)
                                 VALUES (?, ?, ?, NULL, NULL, NULL, NULL, NULL, ?)
                             """, (connection_type, tcp_host, tcp_port, timeout))
-                    
+
                     conn.commit()
                     conn.close()
                     logger.info("PLC communication settings saved to database")
-                    
+
                 except Exception as e:
                     logger.error(f"Database error: {e}")
                     QtWidgets.QMessageBox.warning(
@@ -488,12 +507,9 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                         "Database Error", 
                         f"Failed to save settings to database: {str(e)}"
                     )
-            
-            if not test_only:
-                self._update_connection_status()
-            
+
             return True
-            
+
         except Exception as e:
             logger.error(f"Error in _save_settings_simple: {e}")
             if not test_only:
@@ -561,11 +577,22 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         try:
             # Clean up UI elements
             self._cleanup_save_ui()
-            
+
+            # Ensure all threads are stopped before closing
+            if hasattr(self, 'test_worker') and self.test_worker is not None:
+                self.test_worker.quit()
+                self.test_worker.wait()
+                self.test_worker = None
+
+            if hasattr(self, 'status_worker') and self.status_worker is not None:
+                self.status_worker.quit()
+                self.status_worker.wait()
+                self.status_worker = None
+
             # Finally, close the dialog with success
             logger.info("Settings saved successfully, closing dialog")
             self.accept()
-            
+
         except Exception as e:
             logger.error(f"Error finalizing save: {str(e)}")
             self._handle_save_error(str(e))
@@ -585,12 +612,24 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         self.saveButton.setEnabled(True)
         self.cancelButton.setEnabled(True)
         self.testButton.setEnabled(True)
-        
+
+        # Stop and clean up the test worker if it exists
+        if hasattr(self, 'test_worker') and self.test_worker is not None:
+            self.test_worker.quit()
+            self.test_worker.wait()
+            self.test_worker = None
+
+        # Stop and clean up the status worker if it exists
+        if hasattr(self, 'status_worker') and self.status_worker is not None:
+            self.status_worker.quit()
+            self.status_worker.wait()
+            self.status_worker = None
+
         # Remove progress bar if it exists
         if hasattr(self, 'progressBar') and self.progressBar is not None:
             self.progressBar.setParent(None)
             self.progressBar = None
-            
+
         # Update status
         self.statusLabel.setText("Ready")
         self.statusLabel.setStyleSheet("")

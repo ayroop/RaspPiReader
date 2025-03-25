@@ -116,16 +116,11 @@ class SettingFormHandler(QMainWindow):
             self.form_obj.serialNumbersButton.clicked.connect(self.open_serial_number_management)
 
     def save_settings(self):
-        """
-        Save settings in a way that prevents UI freezing, using a timer-based approach
-        instead of threading which can cause Qt parent/child thread issues.
-        """
         try:
-            # Disable save button to prevent multiple clicks
             if hasattr(self.form_obj, "buttonSave"):
                 self.form_obj.buttonSave.setEnabled(False)
                 
-            # Retrieve general settings from the UI (using get_val, with defaults)
+            # Retrieve general settings from the UI
             baudrate_val = self.get_val("baudrateLineEdit") or "9600"
             parity_val = self.get_val("parityLineEdit") or "N"
             databits_val = self.get_val("databitsLineEdit") or "8"
@@ -140,13 +135,10 @@ class SettingFormHandler(QMainWindow):
             scale_range_val = self.get_val("editScaleRange") or "1000"
             file_path_val = self.get_val("filePathLineEdit") or ""
             delimiter_val = self.get_val("delimiterLineEdit") or ","
-            # gdrive_update_interval_val = self.get_val("gdriveSpinBox") or "60"
-            core_temp_channel_val = self.get_val("CoreTempChannelSpinBox") or "1"
-            pressure_channel_val = self.get_val("pressureChannelSpinBox") or "1"
-            # signin_status_val = bool(int(self.get_val("signinStatus") or "0"))
-            # signin_email_val = self.get_val("signinEmail") if hasattr(self.form_obj, "signinEmail") else ""
             panel_time_interval_val = self.get_val("panelTimeIntervalLineEdit") or "1.0"
             accurate_data_time_val = self.get_val("accurateDataTimeLineEdit") or "1.0"
+            core_temp_channel_val = self.get_val("CoreTempChannelSpinBox") or "1"
+            pressure_channel_val = self.get_val("pressureChannelSpinBox") or "1"
 
             # Retrieve (or create) the general settings record.
             settings = self.db.session.query(GeneralConfigSettings).first()
@@ -165,11 +157,8 @@ class SettingFormHandler(QMainWindow):
                 settings.scale_range = int(scale_range_val)
                 settings.csv_file_path = file_path_val
                 settings.csv_delimiter = delimiter_val
-                # settings.gdrive_update_interval = int(gdrive_update_interval_val)
                 settings.core_temp_channel = int(core_temp_channel_val)
                 settings.pressure_channel = int(pressure_channel_val)
-                #settings.signin_status = signin_status_val
-                #settings.signin_email = signin_email_val
                 settings.panel_time_interval = float(panel_time_interval_val)
                 settings.accuarate_data_time = float(accurate_data_time_val)
             else:
@@ -188,31 +177,27 @@ class SettingFormHandler(QMainWindow):
                     scale_range = int(scale_range_val),
                     csv_file_path = file_path_val,
                     csv_delimiter = delimiter_val,
-                    # gdrive_update_interval = int(gdrive_update_interval_val),
                     core_temp_channel = int(core_temp_channel_val),
                     pressure_channel = int(pressure_channel_val),
-                    #signin_status = signin_status_val,
-                    #signin_email = signin_email_val,
                     panel_time_interval = float(panel_time_interval_val),
                     accuarate_data_time = float(accurate_data_time_val)
                 )
                 self.db.session.add(settings)
             self.db.session.commit()
 
-            # Dynamic channel settings mapping, including ColorLabel
-            
+            # Dynamic channel settings mapping (ensure load and save use consistent keys, especially "editSP")
             channel_fields = {
                 "editAd": ("address", 0),
                 "editLabel": ("label", ""),
                 "editPV": ("pv", 0),
                 "editSV": ("sv", 0),
-                "editSP": ("sp", 0),
+                "editSP": ("set_point", 0),  # maps the editSP widget to the "set_point" field
                 "editLimitLow": ("limit_low", 0),
                 "editLimitHigh": ("limit_high", 0),
-                "editDecPoint": ("decimal_point", 0),
+                "editDecPoint": ("dec_point", 0),
                 "checkScale": ("scale", False),
-                "comboAxis": ("axis_direction", ""),
-                "labelColor": ("color", "#FFFFFF"),  # Use ColorLabel widget for color
+                "comboAxis": ("axis_direction", "L"),
+                "labelColor": ("color", "#FFFFFF"),
                 "active": ("active", False),
                 "min_scale_range": ("min_scale_range", 0),
                 "max_scale_range": ("max_scale_range", 0)
@@ -226,6 +211,8 @@ class SettingFormHandler(QMainWindow):
                     widget_name = f"{prefix}{ch}"
                     if hasattr(self.form_obj, widget_name):
                         value = self.get_val(widget_name)
+                        if value in [None, ""]:
+                            value = default_val
                         if prefix in ["checkScale", "active"]:
                             try:
                                 value = bool(int(value))
@@ -233,12 +220,11 @@ class SettingFormHandler(QMainWindow):
                                 value = default_val
                     else:
                         value = default_val
-                    setattr(channel_settings, attribute, value)  # Save updated value, including color from ColorLabel
+                    setattr(channel_settings, attribute, value)
             self.db.session.commit()
-            
+                
             # Save Boolean Address settings to the database.
             numRows = self.boolTable.rowCount()
-            # Remove existing BooleanAddress entries.
             self.db.session.query(BooleanAddress).delete()
             for row in range(numRows):
                 addr_item = self.boolTable.item(row, 0)
@@ -254,13 +240,9 @@ class SettingFormHandler(QMainWindow):
             self.db.session.commit()
 
             logging.info("Settings saved successfully.")
-
-            # Instead of using a worker thread, use a timer to delay the write_to_device call
-            # This prevents UI freezing while avoiding thread-related issues
             QTimer.singleShot(100, self._delayed_write_to_device)
         except Exception as e:
             logging.error(f"Error saving settings: {e}")
-            # Re-enable save button if there was an error
             if hasattr(self.form_obj, "buttonSave"):
                 self.form_obj.buttonSave.setEnabled(True)
 
@@ -334,8 +316,8 @@ class SettingFormHandler(QMainWindow):
                     self.set_val("panelTimeIntervalLineEdit", 1.0)
                 if hasattr(self.form_obj, "accurateDataTimeLineEdit"):
                     self.set_val("accurateDataTimeLineEdit", 1.0)
-    
-            # Load dynamic channel settings.
+
+            # Load dynamic channel settings with consistent keys.
             for ch in range(1, CHANNEL_COUNT + 1):
                 channel_settings = self.db.session.query(ChannelConfigSettings).filter_by(id=ch).first()
                 if channel_settings:
@@ -344,12 +326,12 @@ class SettingFormHandler(QMainWindow):
                         "editLabel": ("label", ""),
                         "editPV": ("pv", 0),
                         "editSV": ("sv", 0),
-                        "editSP": ("sp", 0),
+                        "editSP": ("set_point", 0),         # updated to "set_point"
                         "editLimitLow": ("limit_low", 0),
                         "editLimitHigh": ("limit_high", 0),
-                        "editDecPoint": ("decimal_point", 0),
+                        "editDecPoint": ("dec_point", 0),     # updated to "dec_point"
                         "checkScale": ("scale", False),
-                        "comboAxis": ("axis_direction", ""),
+                        "comboAxis": ("axis_direction", "L"),
                         "labelColor": ("color", "#FFFFFF"),
                         "active": ("active", False),
                         "min_scale_range": ("min_scale_range", 0),
@@ -358,6 +340,7 @@ class SettingFormHandler(QMainWindow):
                         widget_name = f"{prefix}{ch}"
                         if hasattr(self.form_obj, widget_name):
                             self.set_val(widget_name, getattr(channel_settings, attribute))
+            logging.info("Settings loaded successfully.")
         except Exception as e:
             logging.error(f"Error loading settings: {e}")
 

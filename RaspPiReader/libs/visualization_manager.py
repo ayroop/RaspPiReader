@@ -4,7 +4,7 @@ from PyQt5 import QtWidgets, QtCore
 from RaspPiReader.ui.visualization_dashboard import VisualizationDashboard
 from RaspPiReader.libs.visualization import LiveDataVisualization
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import PlotData
+from RaspPiReader.libs.models import PlotData, ChannelConfigSettings
 from RaspPiReader import pool
 
 logger = logging.getLogger(__name__)
@@ -14,6 +14,7 @@ class VisualizationManager:
     Manages visualization integration with the main application.
     This class coordinates visualization start/stop with cycle actions,
     handles data collection and storage, and manages the visualization dashboard.
+    Now supports all 14 PLC channels with database configuration.
     """
     
     _instance = None
@@ -39,7 +40,63 @@ class VisualizationManager:
         self.is_active = False
         self.db = Database("sqlite:///local_database.db")
         self.cycle_id = None
+        self.channel_configs = {}
+        self.load_channel_configs()
         logger.info("VisualizationManager initialized")
+    
+    def load_channel_configs(self):
+        """Load all channel configurations from the database"""
+        try:
+            for i in range(1, 15):  # 14 channels
+                channel = self.db.session.query(ChannelConfigSettings).filter_by(id=i).first()
+                if channel:
+                    self.channel_configs[i] = {
+                        'id': i,
+                        'label': channel.label,
+                        'address': channel.address,
+                        'pv': channel.pv,
+                        'sv': channel.sv,
+                        'sp': channel.set_point,
+                        'limit_low': channel.limit_low,  # Ensure this is used correctly
+                        'limit_high': channel.limit_high,  # Ensure this is used correctly
+                        'decimal_point': channel.dec_point,
+                        'scale': channel.scale,
+                        'axis_direction': channel.axis_direction,
+                        'color': channel.color,
+                        'active': channel.active,
+                        'min_scale_range': channel.min_scale_range,
+                        'max_scale_range': channel.max_scale_range
+                    }
+                    logger.debug(f"Loaded config for CH{i} - Address: {channel.address}")
+                else:
+                    logger.warning(f"No configuration found for CH{i}")
+        except Exception as e:
+            logger.error(f"Error loading channel configurations: {e}")
+    
+    def read_channel_data(self, channel_config):
+        """
+        Read channel data using dictionary access for configuration
+        """
+        try:
+            value = self.plc_comm.read_value(channel_config['address'])
+            
+            # Apply scaling if needed
+            if channel_config['scale']:
+                # Convert using dictionary access
+                scaled_value = self.scale_value(
+                    value, 
+                    channel_config['min_scale_range'], 
+                    channel_config['max_scale_range'],
+                    channel_config['limit_low'],
+                    channel_config['limit_high']
+                )
+                return scaled_value
+            else:
+                return value
+                
+        except Exception as e:
+            logger.error(f"Error reading {channel_config['label']}: {str(e)}")
+            return None
     
     def setup_dashboard(self, parent_window):
         """
@@ -80,6 +137,9 @@ class VisualizationManager:
         
         self.cycle_id = cycle_id
         self.is_active = True
+        
+        # Reload channel configurations in case they've changed
+        self.load_channel_configs()
         
         # Show the dashboard
         self.dock_widget.show()
@@ -122,56 +182,68 @@ class VisualizationManager:
     
     def collect_data(self):
         """
-        Collect data from PLC and update visualization.
+        Collect data from PLC for all 14 channels and update visualization.
         This method is called by the data collection timer.
         """
         if not self.is_active or self.dashboard is None:
             return
         
         try:
-            # Get PLC communication instance from pool
+            # Get PLC communication functionality
             from RaspPiReader.libs.plc_communication import read_holding_register
             
-            # Define channels to read (addresses for temperature, pressure, etc.)
-            # These should match the parameter names used in the visualization dashboard
-            channels = {
-                "temperature": pool.config('temperature_address', int, 100),
-                "pressure": pool.config('pressure_address', int, 102),
-                "flow_rate": pool.config('flow_rate_address', int, 104),
-                "position": pool.config('position_address', int, 106)
-            }
-            
-            # Read values from PLC
-            for channel_name, address in channels.items():
+            # Read values for all 14 channels
+            for channel_number in range(1, 15):
                 try:
-                    # Read value from PLC
-                    value = read_holding_register(address, 1)
+                    channel_config = self.channel_configs.get(channel_number)
                     
-                    if value is not None:
-                        # Update visualization
-                        self.dashboard.update_data(channel_name, value)
+                    if channel_config and 'address' in channel_config and channel_config['address']:
+                        # Read value from PLC using the configured address
+                        value = read_holding_register(channel_config['address'], 1)
                         
-                        # Store in database
-                        self.store_plot_data(channel_name, value)
+                        if value is not None:
+                            # Apply decimal point and scaling if configured
+                            if channel_config['decimal_point'] > 0:
+                                value = value / (10 ** channel_config['decimal_point'])
+                            
+                            if channel_config['scale']:
+                                # Apply custom scaling logic if needed
+                                # Example: Map raw value to a specified range
+                                if 'limit_low' in channel_config and 'limit_high' in channel_config:
+                                    # This is a basic linear scaling example
+                                    raw_min = 0
+                                    raw_max = 32767  # Typical for 16-bit registers
+                                    value = channel_config['limit_low'] + (value - raw_min) * (
+                                        channel_config['limit_high'] - channel_config['limit_low']) / (raw_max - raw_min)
+                            
+                            # Update visualization dashboard
+                            self.dashboard.update_data(channel_number, value)
+                            
+                            # Store in database
+                            self.store_plot_data(f"ch{channel_number}", value)
+                    else:
+                        logger.warning(f"No address configured for CH{channel_number}")
+                        
                 except Exception as e:
-                    logger.error(f"Error reading {channel_name} at address {address}: {e}")
+                    logger.error(f"Error reading CH{channel_number}: {str(e)}")
             
         except Exception as e:
-            logger.error(f"Error collecting visualization data: {e}")
+            logger.error(f"Error collecting visualization data: {str(e)}")
     
     def store_plot_data(self, channel, value):
         """
         Store plot data in the database.
         
         Args:
-            channel: Channel name
+            channel: Channel name/identifier
             value: Channel value
         """
         try:
             plot_data = PlotData(
                 timestamp=datetime.now(),
                 channel=channel,
-                value=value
+                value=value,
+                cycle_id=self.cycle_id  # Associate with current cycle if available
             )
             self.db.session.add(plot_data)
             self.db.session.commit()

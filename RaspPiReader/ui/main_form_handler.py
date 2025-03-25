@@ -7,7 +7,7 @@ from colorama import Fore
 import webbrowser
 import tempfile 
 import jinja2 
-from PyQt5 import QtWidgets, uic
+from PyQt5 import QtWidgets, uic, QtCore
 from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction, QSizePolicy
@@ -28,6 +28,7 @@ from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.configuration import config
 from .boolean_status import Ui_BooleanStatusWidget
 from RaspPiReader.libs.models import BooleanStatus, BooleanAddress
+from RaspPiReader.ui.main_form_boolean_updates import BooleanValueUpdater
 from RaspPiReader.libs.database import Database
 from RaspPiReader.ui.new_cycle_handler import NewCycleHandler  # Use new cycle widget
 from RaspPiReader.ui.default_program_form import DefaultProgramForm
@@ -146,6 +147,43 @@ class MainFormHandler(QMainWindow):
         logger.info("Live update timer started.")
         self.showMaximized()
         logger.info("MainFormHandler initialized.")
+
+    def setup_boolean_indicators(self):
+        """
+        Set up the boolean indicators on the main form
+        This method should be called after the UI is initialized
+        """
+        # Create UI elements for boolean indicators if they don't exist
+        self._create_boolean_indicators()
+        
+        # Create and initialize the boolean value updater
+        self.bool_updater = BooleanValueUpdater(self)
+        self.bool_updater.initialize()
+
+    def _create_boolean_indicators(self):
+        """
+        Create UI elements for boolean indicators if they don't exist
+        """
+        # Get a reference to the form layout where the indicators should be placed
+        indicator_layout = self.boolStatusWidgetContainer.layout()
+        
+        # Check if we already have the indicators
+        if hasattr(self, 'boolIndicator1'):
+            return  # Already initialized
+        
+        # Create boolean indicators
+        for i in range(1, 7):
+            # Create a QLabel for each boolean indicator
+            indicator = QtWidgets.QLabel(f"Bool {i}: N/A")
+            indicator.setStyleSheet("background-color: gray; color: white; border-radius: 5px; padding: 2px;")
+            indicator.setAlignment(QtCore.Qt.AlignCenter)
+            indicator.setMinimumHeight(25)
+            
+            # Save reference to the indicator
+            setattr(self, f"boolIndicator{i}", indicator)
+            
+            # Add to layout
+            indicator_layout.addWidget(indicator)
 
     def init_visualization(self):
         """Initialize visualization components"""
@@ -1278,7 +1316,11 @@ class MainFormHandler(QMainWindow):
             event.accept()
         elif reply == QMessageBox.Cancel:
             event.ignore()
-
+        # Stop the boolean updater if it exists
+        if hasattr(self, 'bool_updater'):
+            self.bool_updater.stop()
+        # Call the original closeEvent implementation
+        super().closeEvent(event)
     def update_status_bar(self, msg, ms_timeout, color):
         self.statusbar.showMessage(msg, ms_timeout)
         self.statusbar.setStyleSheet("color: {}".format(color.lower()))
