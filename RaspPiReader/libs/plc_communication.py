@@ -826,6 +826,67 @@ def write_registers(address, values, device_id=1):
             logger.error(f"Error writing values {values} to registers starting at address {address}: {e}")
             return False
 
+def read_boolean(address, device_id=1):
+    """
+    Read a boolean value (coil) from the PLC using direct ModbusTcpClient approach.
+    This method is optimized for reliability when reading boolean values.
+    
+    Args:
+        address (int): Address of the coil (1-based addressing)
+        device_id (int): Unit ID of the slave
+        
+    Returns:
+        bool or None: The boolean value, or None if error
+    """
+    device_id = validate_device_id(device_id)
+    
+    # First try with direct_client if available
+    if direct_client is not None:
+        try:
+            coils = direct_client.read_coils(address, 1, device_id)
+            if coils and len(coils) > 0:
+                logger.debug(f"Successfully read boolean from address {address}: {coils[0]}")
+                return coils[0]
+        except Exception as e:
+            logger.debug(f"Direct client read_boolean error: {e}")
+    
+    # If direct client failed or isn't available, try with a fresh ModbusTcpClient
+    try:
+        from RaspPiReader import pool
+        host = pool.config('plc/host', str, '127.0.0.1')
+        port = pool.config('plc/tcp_port', int, 502)
+        timeout = pool.config('plc/timeout', float, 3.0)
+        
+        # Create a fresh client for this specific read
+        try:
+            # Try to import from the new path structure (pymodbus 2.5.0+)
+            from pymodbus.client import ModbusTcpClient
+        except ImportError:
+            # Fall back to old import path for backward compatibility
+            from pymodbus.client.sync import ModbusTcpClient
+            
+        client = ModbusTcpClient(host=host, port=port, timeout=timeout)
+        if not client.connect():
+            logger.error(f"Failed to connect to Modbus server when reading boolean {address}")
+            return None
+        
+        try:
+            logger.debug(f"Reading boolean from address {address}")
+            response = client.read_coils(address, count=1, unit=device_id)
+            
+            if response and not response.isError():
+                value = response.bits[0]
+                logger.debug(f"Successfully read boolean from address {address}: {value}")
+                return value
+            else:
+                logger.error(f"Error reading boolean from address {address}: {response}")
+                return None
+        finally:
+            client.close()
+    except Exception as e:
+        logger.exception(f"Exception reading boolean from address {address}: {e}")
+        return None
+
 def disconnect():
     """Disconnect from the PLC"""
     global modbus_comm, direct_client, connection_monitor
@@ -856,6 +917,85 @@ def disconnect():
 def write_bool_address(address, value, unit=1):
     """Write a boolean value to a coil (compatibility function)"""
     return write_coil(address, value, unit)
+
+def read_bool_address(address, unit=1):
+    """Read a boolean value from a coil (compatibility function)"""
+    return read_boolean(address, unit)
+
+def read_multiple_booleans(addresses, device_id=1):
+    """
+    Read multiple boolean values from the PLC in a single call.
+    
+    Args:
+        addresses (list): List of addresses to read
+        device_id (int): Unit ID of the slave
+        
+    Returns:
+        dict: Dictionary mapping addresses to boolean values
+    """
+    device_id = validate_device_id(device_id)
+    results = {}
+    
+    # If addresses are not sequential, read them individually
+    if not all(addresses[i+1] == addresses[i]+1 for i in range(len(addresses)-1)):
+        for address in addresses:
+            results[address] = read_boolean(address, device_id)
+        return results
+    
+    # For sequential addresses, try to read them in one request
+    try:
+        start_address = min(addresses)
+        count = max(addresses) - start_address + 1
+        
+        # Try with direct_client first
+        if direct_client is not None:
+            try:
+                coils = direct_client.read_coils(start_address, count, device_id)
+                if coils and len(coils) >= count:
+                    for i, address in enumerate(range(start_address, start_address + count)):
+                        if address in addresses:
+                            results[address] = coils[i]
+                    return results
+            except Exception as e:
+                logger.debug(f"Direct client read_multiple_booleans error: {e}")
+        
+        # If direct client failed, try with a fresh ModbusTcpClient
+        from RaspPiReader import pool
+        host = pool.config('plc/host', str, '127.0.0.1')
+        port = pool.config('plc/tcp_port', int, 502)
+        timeout = pool.config('plc/timeout', float, 3.0)
+        
+        try:
+            # Try to import from the new path structure (pymodbus 2.5.0+)
+            from pymodbus.client import ModbusTcpClient
+        except ImportError:
+            # Fall back to old import path for backward compatibility
+            from pymodbus.client.sync import ModbusTcpClient
+            
+        client = ModbusTcpClient(host=host, port=port, timeout=timeout)
+        if not client.connect():
+            logger.error(f"Failed to connect to Modbus server when reading multiple booleans")
+            return {addr: None for addr in addresses}
+        
+        try:
+            response = client.read_coils(start_address, count=count, unit=device_id)
+            
+            if response and not response.isError():
+                for i, address in enumerate(range(start_address, start_address + count)):
+                    if address in addresses:
+                        results[address] = response.bits[i]
+                return results
+            else:
+                logger.error(f"Error reading multiple booleans: {response}")
+                return {addr: None for addr in addresses}
+        finally:
+            client.close()
+    except Exception as e:
+        logger.exception(f"Exception reading multiple booleans: {e}")
+        # Fall back to individual reads if batch read fails
+        for address in addresses:
+            results[address] = read_boolean(address, device_id)
+        return results
 
 def test_connection(connection_type=None, simulation_mode=False, **params):
     global modbus_comm, direct_client

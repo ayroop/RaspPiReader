@@ -222,53 +222,26 @@ class PLCConfigHelper(QMainWindow):
                     scale_array = self.pressure_scale_inputs
                     decimals_array = self.pressure_decimals_inputs
                     idx = i - 13
-                
+
                 # Set values with error handling
                 try:
                     address_value = int(channel.address) if channel.address is not None else 0
                     address_array[idx].setValue(address_value)
                 except (ValueError, TypeError):
                     address_array[idx].setValue(0)
-                
+
                 try:
                     scale_value = bool(channel.scale) if channel.scale is not None else False
                     scale_array[idx].setChecked(scale_value)
                 except (ValueError, TypeError):
                     scale_array[idx].setChecked(False)
-                
+
                 try:
-                    decimal_value = int(channel.decimal_point) if channel.decimal_point is not None else 0
+                    # Updated attribute from 'decimal_point' to 'dec_point'
+                    decimal_value = int(channel.dec_point) if channel.dec_point is not None else 0
                     decimals_array[idx].setValue(decimal_value)
                 except (ValueError, TypeError):
                     decimals_array[idx].setValue(0)
-        
-        # Load boolean addresses
-        boolean_entries = self.db.session.query(BooleanAddress).all()
-        for i, entry in enumerate(boolean_entries[:6]):  # Only show first 6 entries
-            try:
-                self.bool_table.setItem(i, 0, QTableWidgetItem(str(entry.address)))
-                self.bool_table.setItem(i, 1, QTableWidgetItem(str(entry.label)))
-            except Exception:
-                self.bool_table.setItem(i, 0, QTableWidgetItem("0"))
-                self.bool_table.setItem(i, 1, QTableWidgetItem(f"Bool Addr {i+1}"))
-        
-        # Fill remaining rows with default values
-        for i in range(len(boolean_entries), 6):
-            self.bool_table.setItem(i, 0, QTableWidgetItem(str(1000 + i)))
-            self.bool_table.setItem(i, 1, QTableWidgetItem(f"Bool Addr {1000 + i}"))
-        
-        # Load control addresses
-        try:
-            cycle_addr = int(pool.config('cycle_control_address', int, 0))
-            self.cycle_start_address.setValue(cycle_addr)
-        except (ValueError, TypeError):
-            self.cycle_start_address.setValue(0)
-        
-        try:
-            alarm_addr = int(pool.config('alarm_address', int, 0))
-            self.alarm_address.setValue(alarm_addr)
-        except (ValueError, TypeError):
-            self.alarm_address.setValue(0)
     
     def save_all(self):
         try:
@@ -290,24 +263,24 @@ class PLCConfigHelper(QMainWindow):
                     scale_array = self.pressure_scale_inputs
                     decimals_array = self.pressure_decimals_inputs
                     idx = i - 13
-                
-                # Get values
+
+                # Get values from UI inputs
                 address = address_array[idx].value()
                 scale = scale_array[idx].isChecked()
                 decimals = decimals_array[idx].value()
-                
+
                 # Update or create channel settings
                 channel = self.db.session.query(ChannelConfigSettings).filter_by(id=i).first()
                 if not channel:
                     channel = ChannelConfigSettings(id=i)
                     self.db.session.add(channel)
-                
-                # Ensure we're setting integer values
+
+                # Ensure integer values are set
                 channel.address = int(address)
                 channel.scale = bool(scale)
                 channel.decimal_point = int(decimals)
                 channel.active = bool(address > 0)  # Set active if address is specified
-                
+
                 # Default values for other required fields if they're missing
                 if channel.label is None:
                     channel.label = f"Channel {i}"
@@ -315,8 +288,9 @@ class PLCConfigHelper(QMainWindow):
                     channel.pv = 0
                 if channel.sv is None:
                     channel.sv = 0
-                if channel.sp is None:
-                    channel.sp = 0
+                
+                if not hasattr(channel, 'set_point') or channel.set_point is None:
+                    channel.set_point = 0
                 if channel.limit_low is None:
                     channel.limit_low = 0
                 if channel.limit_high is None:
@@ -329,8 +303,8 @@ class PLCConfigHelper(QMainWindow):
                     channel.min_scale_range = 0
                 if channel.max_scale_range is None:
                     channel.max_scale_range = 1000
-                
-                # Also update pool config
+
+                # Also update pool configuration
                 pool.set_config(f'channel_{i}_address', int(address))
                 pool.set_config(f'scale{i}', bool(scale))
                 pool.set_config(f'decimal_point{i}', int(decimals))
@@ -358,13 +332,12 @@ class PLCConfigHelper(QMainWindow):
             alarm_addr = self.alarm_address.value()
             pool.set_config('alarm_address', int(alarm_addr))
             
-            # Commit changes
+            # Commit changes to the database
             self.db.session.commit()
             
             QMessageBox.information(self, "Success", "All PLC configurations saved successfully!")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save settings: {str(e)}")
-
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = PLCConfigHelper()

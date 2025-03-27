@@ -194,7 +194,8 @@ class SettingFormHandler(QMainWindow):
                 "editSP": ("set_point", 0),  # maps the editSP widget to the "set_point" field
                 "editLimitLow": ("limit_low", 0),
                 "editLimitHigh": ("limit_high", 0),
-                "editDecPoint": ("dec_point", 0),
+                # Updated mapping: use "decimal_point" to match the database schema and load_settings method.
+                "editDecPoint": ("decimal_point", 0),
                 "checkScale": ("scale", False),
                 "comboAxis": ("axis_direction", "L"),
                 "labelColor": ("color", "#FFFFFF"),
@@ -213,13 +214,11 @@ class SettingFormHandler(QMainWindow):
                         value = self.get_val(widget_name)
                         if value in [None, ""]:
                             value = default_val
-                        if prefix in ["checkScale", "active"]:
-                            try:
-                                value = bool(int(value))
-                            except Exception:
-                                value = default_val
                     else:
                         value = default_val
+                    # Ensure decimal_point is not None
+                    if attribute == "decimal_point" and value is None:
+                        value = 0
                     setattr(channel_settings, attribute, value)
             self.db.session.commit()
                 
@@ -326,10 +325,10 @@ class SettingFormHandler(QMainWindow):
                         "editLabel": ("label", ""),
                         "editPV": ("pv", 0),
                         "editSV": ("sv", 0),
-                        "editSP": ("set_point", 0),         # updated to "set_point"
+                        "editSP": ("set_point", 0),
                         "editLimitLow": ("limit_low", 0),
                         "editLimitHigh": ("limit_high", 0),
-                        "editDecPoint": ("dec_point", 0),     # updated to "dec_point"
+                        "editDecPoint": ("decimal_point", 0),  # Ensure default value
                         "checkScale": ("scale", False),
                         "comboAxis": ("axis_direction", "L"),
                         "labelColor": ("color", "#FFFFFF"),
@@ -339,7 +338,9 @@ class SettingFormHandler(QMainWindow):
                     }.items():
                         widget_name = f"{prefix}{ch}"
                         if hasattr(self.form_obj, widget_name):
-                            self.set_val(widget_name, getattr(channel_settings, attribute))
+                            self.set_val(widget_name, getattr(channel_settings, attribute, default_val))
+                        else:
+                            logging.warning(f"Widget {widget_name} not found in form.")
             logging.info("Settings loaded successfully.")
         except Exception as e:
             logging.error(f"Error loading settings: {e}")
@@ -438,7 +439,7 @@ class SettingFormHandler(QMainWindow):
                     continue
                 try:
                     address = pool.config("address" + str(ch + 1), int)
-                    sp = pool.config("sp" + str(ch + 1), int)
+                    set_point = pool.config("set_point" + str(ch + 1), int)
                     sv_value = pool.config("sv" + str(ch + 1), str)
                     if sv_value is None or str(sv_value).strip().lower() == "none":
                         logging.warning(f"sv{ch+1} is missing, using default value 0")
@@ -448,7 +449,7 @@ class SettingFormHandler(QMainWindow):
 
                     
                     # Write the settings data to the device
-                    dataReader.writeData(address, sv_int, sp)
+                    dataReader.writeData(address, sv_int, set_point)
                 except Exception as e:
                     error_dialog = QErrorMessage(self)
                     error_dialog.showMessage(f"Failed to write settings to device: {e}")

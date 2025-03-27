@@ -37,7 +37,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
                         'address': channel.address,
                         'pv': channel.pv or 0,
                         'sv': channel.sv or 0,
-                        'sp': channel.sp or 0,
+                        'set_point': channel.set_point or 0,
                         'limit_low': channel.limit_low or 0,
                         'limit_high': channel.limit_high or 100,
                         'decimal_point': channel.decimal_point or 0,
@@ -58,7 +58,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
                     'address': 100 + i,
                     'pv': 0,
                     'sv': 0,
-                    'sp': 0,
+                    'set_point': 0,
                     'limit_low': 0,
                     'limit_high': 100,
                     'decimal_point': 0,
@@ -250,7 +250,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
             row_layout.addWidget(sv_label)
             
             # Set Point
-            setpoint_label = QtWidgets.QLabel(str(channel_config.get('sp', 0)))
+            setpoint_label = QtWidgets.QLabel(str(channel_config.get('set_point', 0)))
             row_layout.addWidget(setpoint_label)
             
             # Low Limit
@@ -286,7 +286,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
                 'label': label_label,
                 'pv': pv_label,
                 'sv': sv_label,
-                'sp': setpoint_label,
+                'set_point': setpoint_label,
                 'limit_low': low_label,
                 'limit_high': high_label,
                 'decimal_point': decimal_label,
@@ -335,7 +335,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
             self.data_table.setItem(i-1, 4, sv_item)
             
             # Set Point
-            setpoint_item = QtWidgets.QTableWidgetItem(str(channel_config.get('sp', 0)))
+            setpoint_item = QtWidgets.QTableWidgetItem(str(channel_config.get('set_point', 0)))
             self.data_table.setItem(i-1, 5, setpoint_item)
             
             # Low Limit
@@ -472,8 +472,8 @@ class VisualizationDashboard(QtWidgets.QWidget):
                     channel.address = settings['address']
                 if 'sv' in settings:
                     channel.sv = settings['sv']
-                if 'sp' in settings:
-                    channel.sp = settings['sp']
+                if 'set_point' in settings:
+                    channel.set_point = settings['set_point']
                 if 'limit_low' in settings:
                     channel.limit_low = settings['limit_low']
                 if 'limit_high' in settings:
@@ -553,7 +553,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
         # Set Point
         sp_item = self.data_table.item(row, 5)
         if sp_item:
-            sp_item.setText(str(channel_config.get('sp', 0)))
+            sp_item.setText(str(channel_config.get('set_point', 0)))
         
         # Low Limit
         low_item = self.data_table.item(row, 6)
@@ -680,7 +680,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
                 # Map the field names used in the UI to the database model field names
                 field_mapping = {
                     'name': 'label',
-                    'set_point': 'sp',
+                    'set_point': 'set_point',
                     'low_limit': 'limit_low',
                     'high_limit': 'limit_high',
                     'dec_point': 'decimal_point'

@@ -159,6 +159,12 @@ class MainFormHandler(QMainWindow):
         # Create and initialize the boolean value updater
         self.bool_updater = BooleanValueUpdater(self)
         self.bool_updater.initialize()
+        
+        # Initialize the update boolean indicators timer
+        self.bool_update_timer = QTimer(self)
+        self.bool_update_timer.timeout.connect(self.update_boolean_indicators)
+        self.bool_update_timer.start(2000)  # Update every 2 seconds
+        logger.info("Boolean indicator update timer started")
 
     def _create_boolean_indicators(self):
         """
@@ -184,7 +190,100 @@ class MainFormHandler(QMainWindow):
             
             # Add to layout
             indicator_layout.addWidget(indicator)
+    def update_boolean_indicator(self, address, ui_element):
+        """
+        Update a UI element with the boolean value read from the PLC
+        
+        Args:
+            address (int): The PLC address to read from (1-based addressing)
+            ui_element: The UI element to update (likely a label, indicator, etc.)
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        
+        try:
+            # Use the direct Modbus approach that works in your test script
+            from pymodbus.client.sync import ModbusTcpClient
+            from RaspPiReader import pool
+            
+            # Get connection parameters
+            host = pool.config('plc/host', str, '127.0.0.1')
+            port = pool.config('plc/tcp_port', int, 502)
+            
+            # Create a client for this specific read
+            client = ModbusTcpClient(host, port=port)
+            if not client.connect():
+                logger.error(f"Failed to connect to Modbus server when reading boolean {address}")
+                ui_element.setText("N/A - Connection Error")
+                ui_element.setStyleSheet("color: gray;")
+                return
+            
+            try:
+                # Convert to 0-based addressing for Modbus
+                modbus_address = address - 1
+                logger.debug(f"Reading boolean from address {address} (Modbus address {modbus_address})")
+                
+                # Read the coil directly
+                response = client.read_coils(address=modbus_address, count=1, unit=1)
+                
+                if response and not response.isError():
+                    value = response.bits[0]
+                    logger.debug(f"Read Boolean from address {address}: {value}")
+                    
+                    # Update the UI element based on the value
+                    if value is True:
+                        ui_element.setText("ON")
+                        ui_element.setStyleSheet("color: green;")
+                    else:
+                        ui_element.setText("OFF")
+                        ui_element.setStyleSheet("color: red;")
+                else:
+                    logger.error(f"Error reading boolean from address {address}: {response}")
+                    ui_element.setText("N/A - Read Error")
+                    ui_element.setStyleSheet("color: gray;")
+                    
+            except Exception as e:
+                logger.exception(f"Error reading boolean from address {address}: {e}")
+                ui_element.setText("ERROR")
+                ui_element.setStyleSheet("color: red;")
+            finally:
+                # Always close the client
+                client.close()
+                
+        except Exception as e:
+            logger.exception(f"Error updating boolean indicator for address {address}: {e}")
+            ui_element.setText("ERROR")
+            ui_element.setStyleSheet("color: red;")
 
+    # Add this method to update all boolean indicators
+    def update_boolean_indicators(self):
+        """Update all boolean indicators on the main form"""
+        try:
+            # Make sure we have UI elements to update
+            if not hasattr(self, 'boolIndicator1'):
+                self._create_boolean_indicators()
+            
+            # Define the addresses we want to read (the ones that work in your test script)
+            boolean_addresses = [464, 465, 466, 467, 468, 469]
+            
+            # Update each indicator
+            for i, address in enumerate(boolean_addresses):
+                if i < 6:  # We only have 6 indicators
+                    indicator_name = f"boolIndicator{i+1}"
+                    if hasattr(self, indicator_name):
+                        indicator = getattr(self, indicator_name)
+                        # Use the fixed method to update the indicator
+                        self.update_boolean_indicator(address, indicator)
+        
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.exception(f"Error updating boolean indicators: {e}")
+
+    # Add this to your __init__ method after self.setup_bool_status_display()
+    # self.bool_update_timer = QTimer(self)
+    # self.bool_update_timer.timeout.connect(self.update_boolean_indicators)
+    # self.bool_update_timer.start(2000)  # Update every 2 seconds
     def init_visualization(self):
         """Initialize visualization components"""
         # Get visualization manager instance
@@ -426,44 +525,45 @@ class MainFormHandler(QMainWindow):
         self.new_cycle_handler.show()
         container.show()
 
+    
     def update_bool_status(self):
-        """
-        Update the Boolean status labels with the latest PLC status.
-        
-        Each label displays:
-        "Bool Address X: <Address> - <Label> - <Status>"
-        
-        The dynamic PLC value for each boolean (read via dataReader) is shown in green if True,
-        red if False, or black if unavailable.
-        """
-      
-        db = Database("sqlite:///local_database.db")
-        boolean_entries = db.session.query(BooleanAddress).all()
-        fixed_color = "#832116"
-        for i, label in enumerate(self.boolStatusLabels):
-            if i < len(boolean_entries):
-                entry = boolean_entries[i]
-                try:
-                    plc_status = dataReader.read_bool_address(entry.address, dev=1)
-                except Exception as ex:
-                    plc_status = None
-                if plc_status is None:
-                    status_text = "N/A"
-                    status_color = "black"
-                elif plc_status:
-                    status_text = "True"
-                    status_color = "green"
+        try:
+            db = Database("sqlite:///local_database.db")
+            boolean_entries = db.session.query(BooleanAddress).all()
+            fixed_color = "#832116"
+
+            for i, label in enumerate(self.boolStatusLabels):
+                if i < len(boolean_entries):
+                    entry = boolean_entries[i]
+                    try:
+                        plc_status = dataReader.read_bool_address(entry.address, dev=1)
+                        logger.debug(f"Read Boolean from address {entry.address}: {plc_status}")
+                    except Exception as ex:
+                        logger.error(f"Error reading boolean address {entry.address}: {ex}")
+                        plc_status = None
+
+                    if plc_status is None:
+                        status_text = "N/A"
+                        status_color = "gray"
+                    elif plc_status:
+                        status_text = "ON"
+                        status_color = "green"
+                    else:
+                        status_text = "OFF"
+                        status_color = "red"
+
+                    display_text = (
+                        f"Bool Address {i+1}: "
+                        f"<span style='color:{fixed_color};'>{entry.address} - {entry.label}</span> - "
+                        f"<span style='color:{status_color};'>{status_text}</span>"
+                    )
+                    label.setText(display_text)
                 else:
-                    status_text = "False"
-                    status_color = "red"
-                display_text = (
-                    f"Bool Address {i+1}: "
-                    f"<span style='color:{fixed_color};'>{entry.address} - {entry.label}</span> - "
-                    f"<span style='color:{status_color};'>{status_text}</span>"
-                )
-                label.setText(display_text)
-            else:
-                label.setText("N/A")
+                    label.setText("N/A")
+        except Exception as e:
+            logger.error(f"Error updating boolean status: {e}")
+
+
 
     def init_custom_status_bar(self):
         """
@@ -1443,3 +1543,5 @@ class MainFormHandler(QMainWindow):
         # Update the UI labels with formatted outputs
         self.labelCycleOutcomesTime.setText(f"TIME (min) CORE TEMP ≥ {threshold:.1f} °C: {time_str}")
         self.labelCycleOutcomesPressure.setText(f"CORE TEMP WHEN PRESSURE RELEASED (°C): {pressure_str}")
+
+    

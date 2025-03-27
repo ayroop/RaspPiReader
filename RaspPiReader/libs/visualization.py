@@ -23,6 +23,7 @@ class LiveDataVisualization:
         self.active = False
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update_plots)
+        self.max_points = 1000  # maximum number of data points to store per channel
         
     def start_visualization(self):
         """Start the visualization and data collection"""
@@ -60,6 +61,7 @@ class LiveDataVisualization:
         # Configure plot
         plot_widget.setBackground('w')
         plot_widget.showGrid(x=True, y=True, alpha=0.3)
+        plot_widget.enableAutoRange()  # enable auto-ranging for dynamic updates
         
         if title:
             plot_widget.setTitle(title)
@@ -113,8 +115,14 @@ class LiveDataVisualization:
             self.data_buffers[parameter_name] = {'timestamps': [], 'values': []}
             
         current_time = time.time() - self.start_time
-        self.data_buffers[parameter_name]['timestamps'].append(current_time)
-        self.data_buffers[parameter_name]['values'].append(value)
+        buffer = self.data_buffers[parameter_name]
+        buffer['timestamps'].append(current_time)
+        buffer['values'].append(value)
+        
+        # Limit buffer size to self.max_points
+        if len(buffer['timestamps']) > self.max_points:
+            buffer['timestamps'] = buffer['timestamps'][-self.max_points:]
+            buffer['values'] = buffer['values'][-self.max_points:]
         
     def update_plots(self):
         """Update all plot visualizations with the latest data"""
@@ -167,7 +175,6 @@ class LiveDataVisualization:
                 row = [timestamp]
                 for param_name in self.data_buffers.keys():
                     param_data = self.data_buffers[param_name]
-                    # Find the closest value for this timestamp
                     try:
                         idx = param_data['timestamps'].index(timestamp)
                         value = param_data['values'][idx]

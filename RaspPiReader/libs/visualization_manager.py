@@ -5,9 +5,47 @@ from RaspPiReader.ui.visualization_dashboard import VisualizationDashboard
 from RaspPiReader.libs.visualization import LiveDataVisualization
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import PlotData, ChannelConfigSettings
-from RaspPiReader import pool
+from RaspPiReader.libs.plc_communication import modbus_comm
 
 logger = logging.getLogger(__name__)
+
+def safe_int(val, default=0):
+    """
+    Safely converts a value to an integer.
+    If the value is already an int, it is returned directly.
+    Otherwise, it is converted to a string, unwanted characters like '<' and '>' are removed,
+    and then cast to int. On failure, the default value is returned.
+    """
+    try:
+        if isinstance(val, int):
+            return val
+        if isinstance(val, float):
+            return int(val)
+        s = str(val)
+        for ch in ['<', '>']:
+            s = s.replace(ch, '')
+        s = s.strip()
+        return int(s)
+    except (ValueError, TypeError):
+        return default
+
+def safe_float(val, default=0.0):
+    """
+    Safely converts a value to a float.
+    If the value is already a float/int, it is converted accordingly.
+    Otherwise, it is converted to a string, unwanted characters are removed,
+    and then cast to float. On failure, the default value is returned.
+    """
+    try:
+        if isinstance(val, (int, float)):
+            return float(val)
+        s = str(val)
+        for ch in ['<', '>']:
+            s = s.replace(ch, '')
+        s = s.strip()
+        return float(s)
+    except (ValueError, TypeError):
+        return default
 
 class VisualizationManager:
     """
@@ -33,6 +71,9 @@ class VisualizationManager:
     
     def __init__(self):
         """Initialize the visualization manager"""
+        # Initialize PLC communication for use in read_channel_data
+        self.plc_comm = modbus_comm
+
         self.dashboard = None
         self.dock_widget = None
         self.data_collection_timer = QtCore.QTimer()
@@ -42,10 +83,14 @@ class VisualizationManager:
         self.cycle_id = None
         self.channel_configs = {}
         self.load_channel_configs()
+        if self.dashboard is not None:
+            self.dashboard.update()
+        else:
+            logger.warning("Visualization dashboard is not set. Skipping dashboard update.")
         logger.info("VisualizationManager initialized")
     
     def load_channel_configs(self):
-        """Load all channel configurations from the database"""
+        """Load all channel configurations from the database and convert numeric fields safely"""
         try:
             for i in range(1, 15):  # 14 channels
                 channel = self.db.session.query(ChannelConfigSettings).filter_by(id=i).first()
@@ -53,47 +98,85 @@ class VisualizationManager:
                     self.channel_configs[i] = {
                         'id': i,
                         'label': channel.label,
-                        'address': channel.address,
-                        'pv': channel.pv,
-                        'sv': channel.sv,
-                        'sp': channel.set_point,
-                        'limit_low': channel.limit_low,  # Ensure this is used correctly
-                        'limit_high': channel.limit_high,  # Ensure this is used correctly
-                        'decimal_point': channel.dec_point,
-                        'scale': channel.scale,
+                        'address': safe_int(channel.address, 0),
+                        'pv': safe_float(channel.pv, 0),
+                        'sv': safe_float(channel.sv, 0),
+                        'set_point': safe_float(channel.set_point, 0),
+                        'limit_low': safe_float(channel.limit_low, 0),
+                        'limit_high': safe_float(channel.limit_high, 0),
+                        'decimal_point': safe_int(channel.decimal_point, 0),
+                        'scale': bool(channel.scale),
                         'axis_direction': channel.axis_direction,
                         'color': channel.color,
-                        'active': channel.active,
-                        'min_scale_range': channel.min_scale_range,
-                        'max_scale_range': channel.max_scale_range
+                        'active': bool(channel.active),
+                        'min_scale_range': safe_float(channel.min_scale_range, 0),
+                        'max_scale_range': safe_float(channel.max_scale_range, 0)
                     }
-                    logger.debug(f"Loaded config for CH{i} - Address: {channel.address}")
+                    logger.debug(f"Loaded channel config: {self.channel_configs[i]}")
                 else:
                     logger.warning(f"No configuration found for CH{i}")
         except Exception as e:
             logger.error(f"Error loading channel configurations: {e}")
     
+    def scale_value(self, value, min_scale, max_scale, limit_low, limit_high):
+        """
+        Scales the raw value read from PLC to a new range based on provided limits.
+        
+        Args:
+            value: The raw integer value.
+            min_scale: The minimum value of the source scale.
+            max_scale: The maximum value of the source scale.
+            limit_low: The lower limit of the target scale.
+            limit_high: The upper limit of the target scale.
+        
+        Returns:
+            Scaled value as a float.
+        """
+        value = safe_float(value, 0.0)
+        limit_low = safe_float(limit_low, 0.0)
+        limit_high = safe_float(limit_high, 0.0)
+        raw_min = 0.0
+        raw_max = 32767.0
+        # Only scale if the range is non-zero
+        if (limit_high - limit_low) != 0:
+            try:
+                scaled = limit_low + (value - raw_min) * (limit_high - limit_low) / (raw_max - raw_min)
+                return scaled
+            except Exception as e:
+                logger.error(f"Error scaling value: {e}")
+                return value
+        else:
+            # If limits are not set (or equal), skip scaling
+            logger.debug("Scaling skipped because limit_high equals limit_low")
+            return value
+           
     def read_channel_data(self, channel_config):
         """
-        Read channel data using dictionary access for configuration
+        Read channel data using dictionary access for configuration.
+        Uses the same reading functions as in collect_data so that real PLC values are retrieved.
         """
         try:
-            value = self.plc_comm.read_value(channel_config['address'])
-            
-            # Apply scaling if needed
-            if channel_config['scale']:
-                # Convert using dictionary access
-                scaled_value = self.scale_value(
-                    value, 
-                    channel_config['min_scale_range'], 
-                    channel_config['max_scale_range'],
-                    channel_config['limit_low'],
-                    channel_config['limit_high']
-                )
-                return scaled_value
+            address = safe_int(channel_config['address']) - 1
+            if channel_config.get('label', '').upper().startswith("LA"):
+                from RaspPiReader.libs.plc_communication import read_coil
+                value = read_coil(address, 1)
             else:
-                return value
+                from RaspPiReader.libs.plc_communication import read_holding_register
+                value = read_holding_register(address, 1)
                 
+            if value is not None:
+                if isinstance(value, list) and len(value) > 0:
+                    value = value[0]
+                if channel_config.get('scale'):
+                    value = self.scale_value(
+                        value, 
+                        channel_config['min_scale_range'], 
+                        channel_config['max_scale_range'],
+                        channel_config['limit_low'],
+                        channel_config['limit_high']
+                    )
+                return value
+            return None
         except Exception as e:
             logger.error(f"Error reading {channel_config['label']}: {str(e)}")
             return None
@@ -106,21 +189,14 @@ class VisualizationManager:
             parent_window: The main window that will host the dashboard
         """
         if self.dashboard is None:
-            # Create the dashboard
             self.dashboard = VisualizationDashboard()
-            
-            # Create a dock widget to host the dashboard
             self.dock_widget = QtWidgets.QDockWidget("Live PLC Data Visualization", parent_window)
             self.dock_widget.setWidget(self.dashboard)
             self.dock_widget.setFeatures(
                 QtWidgets.QDockWidget.DockWidgetMovable | 
                 QtWidgets.QDockWidget.DockWidgetFloatable
             )
-            
-            # Add the dock widget to the main window
             parent_window.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.dock_widget)
-            
-            # Hide dock widget initially (will show when cycle starts)
             self.dock_widget.hide()
             logger.info("Visualization dashboard created")
     
@@ -137,40 +213,24 @@ class VisualizationManager:
         
         self.cycle_id = cycle_id
         self.is_active = True
-        
-        # Reload channel configurations in case they've changed
         self.load_channel_configs()
-        
-        # Show the dashboard
         self.dock_widget.show()
-        
-        # Start the dashboard visualization
         self.dashboard.start_visualization()
-        
-        # Start data collection timer
         self.start_data_collection()
-        
         logger.info(f"Visualization started for cycle ID: {cycle_id}")
     
     def stop_visualization(self):
         """Stop the visualization"""
         if self.dashboard is None:
             return
-        
         self.is_active = False
-        
-        # Stop data collection
         self.stop_data_collection()
-        
-        # Stop the dashboard visualization
         self.dashboard.stop_visualization()
-        
         logger.info("Visualization stopped")
     
     def start_data_collection(self):
         """Start the data collection timer"""
         if not self.data_collection_timer.isActive():
-            # Collect data every 500ms
             self.data_collection_timer.start(500)
             logger.info("Data collection started")
     
@@ -181,52 +241,43 @@ class VisualizationManager:
             logger.info("Data collection stopped")
     
     def collect_data(self):
-        """
-        Collect data from PLC for all 14 channels and update visualization.
-        This method is called by the data collection timer.
-        """
         if not self.is_active or self.dashboard is None:
             return
-        
         try:
-            # Get PLC communication functionality
-            from RaspPiReader.libs.plc_communication import read_holding_register
-            
-            # Read values for all 14 channels
+            from RaspPiReader.libs.plc_communication import read_holding_register, read_coil
             for channel_number in range(1, 15):
                 try:
                     channel_config = self.channel_configs.get(channel_number)
-                    
-                    if channel_config and 'address' in channel_config and channel_config['address']:
-                        # Read value from PLC using the configured address
-                        value = read_holding_register(channel_config['address'], 1)
-                        
+                    if channel_config and channel_config.get('address', 0):
+                        address = safe_int(channel_config['address']) - 1
+                        if channel_config.get('label', '').upper().startswith("LA"):
+                            value = read_coil(address, 1)
+                        else:
+                            value = read_holding_register(address, 1)
+                        logger.debug(f"Raw value read from PLC for CH{channel_number}: {value}")
                         if value is not None:
-                            # Apply decimal point and scaling if configured
-                            if channel_config['decimal_point'] > 0:
-                                value = value / (10 ** channel_config['decimal_point'])
-                            
-                            if channel_config['scale']:
-                                # Apply custom scaling logic if needed
-                                # Example: Map raw value to a specified range
-                                if 'limit_low' in channel_config and 'limit_high' in channel_config:
-                                    # This is a basic linear scaling example
+                            if isinstance(value, list) and len(value) > 0:
+                                value = value[0]
+                            numeric_value = safe_int(value)
+                            if not channel_config.get('label', '').upper().startswith("LA"):
+                                decimal_point = safe_int(channel_config.get('decimal_point', 0))
+                                if decimal_point > 0:
+                                    numeric_value = safe_float(numeric_value) / (10 ** decimal_point)
+                                if channel_config.get('scale', False):
                                     raw_min = 0
-                                    raw_max = 32767  # Typical for 16-bit registers
-                                    value = channel_config['limit_low'] + (value - raw_min) * (
-                                        channel_config['limit_high'] - channel_config['limit_low']) / (raw_max - raw_min)
-                            
-                            # Update visualization dashboard
-                            self.dashboard.update_data(channel_number, value)
-                            
-                            # Store in database
-                            self.store_plot_data(f"ch{channel_number}", value)
+                                    raw_max = 32767
+                                    limit_low = safe_float(channel_config.get('limit_low', 0))
+                                    limit_high = safe_float(channel_config.get('limit_high', 0))
+                                    if (limit_high - limit_low) != 0:
+                                        numeric_value = limit_low + (numeric_value - raw_min) * (limit_high - limit_low) / (raw_max - raw_min)
+                                    else:
+                                        logger.debug(f"Scaling skipped for CH{channel_number} because limit_high equals limit_low")
+                            self.dashboard.update_data(channel_number, numeric_value)
+                            self.store_plot_data(f"ch{channel_number}", numeric_value)
                     else:
                         logger.warning(f"No address configured for CH{channel_number}")
-                        
                 except Exception as e:
                     logger.error(f"Error reading CH{channel_number}: {str(e)}")
-            
         except Exception as e:
             logger.error(f"Error collecting visualization data: {str(e)}")
     
@@ -243,7 +294,7 @@ class VisualizationManager:
                 timestamp=datetime.now(),
                 channel=channel,
                 value=value,
-                cycle_id=self.cycle_id  # Associate with current cycle if available
+                cycle_id=self.cycle_id
             )
             self.db.session.add(plot_data)
             self.db.session.commit()
