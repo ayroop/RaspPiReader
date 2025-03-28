@@ -18,31 +18,15 @@ class Pool:
         return True
 
     def config(self, key, return_type=str, default_val=None, base=10):
-        """
-        Get configuration value with proper type conversion.
-        
-        Args:
-            key: The configuration key.
-            return_type: Type to convert value to.
-            default_val: Default value if key doesn't exist.
-            base: Base for int conversion (if return_type is int).
-            
-        Returns:
-            Converted value or default value if conversion fails.
-        """
         if key in self._registry:
             return self._registry[key]
-        
         val = self._setting.value(key, default_val)
-        # Ensure we work with a string representation for checking
         val_str = str(val).strip()
         if val is None or val_str.lower() == "none" or val_str == "":
             return default_val
-
         try:
             if return_type == int:
                 if base != 10:
-                    # Use the stripped string for conversion
                     return int(val_str, base)
                 else:
                     return int(val_str)
@@ -55,5 +39,16 @@ class Pool:
     def set_config(self, key, value):
         self._registry[key] = value
         self._setting.setValue(key, value)
+    
+    def reload_config(self):
+        """Reload configuration settings from QSettings into the internal registry."""
+        # Retrieve all keys stored in QSettings
+        keys = self._setting.allKeys()
+        for key in keys:
+            val = self._setting.value(key)
+            if val is not None:
+                self._registry[key] = val
+        # Ensure any required defaults are in place (for example, active channels)
+        self._registry["active_channels"] = list(range(1, 15))
 
 pool = Pool()

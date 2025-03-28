@@ -371,55 +371,6 @@ class ModbusCommunication:
             return self.connect()
             
         return True
-
-    def read_bool_addresses(self, addr, count=1, dev=1):
-        """Read boolean coil values."""
-        with plc_lock:  # Use the global lock for all operations
-            if not self._ensure_connected():
-                return None
-                
-            try:
-                result = self.client.read_coils(addr, count, unit=dev)
-                if result and not result.isError():
-                    return result.bits[:count]
-                else:
-                    self.last_error = f"Error reading coils: {result}"
-                    logger.error(f"[{self.name}] {self.last_error}")
-                    return None
-            except ModbusException as me:
-                self.last_error = f"Modbus exception during coil read: {str(me)}"
-                logger.error(f"[{self.name}] {self.last_error}")
-                self.connected = False  # Mark as disconnected to trigger reconnect on next attempt
-                return None
-            except Exception as e:
-                self.last_error = f"Exception during coil read: {str(e)}"
-                logger.error(f"[{self.name}] {self.last_error}")
-                return None
-
-    def write_bool_address(self, addr, value, dev=1):
-        """Write a boolean value to a coil."""
-        with plc_lock:  # Use the global lock for all operations
-            if not self._ensure_connected():
-                return False
-                
-            try:
-                result = self.client.write_coil(addr, value, unit=dev)
-                if result and not result.isError():
-                    return True
-                else:
-                    self.last_error = f"Error writing coil: {result}"
-                    logger.error(f"[{self.name}] {self.last_error}")
-                    return False
-            except ModbusException as me:
-                self.last_error = f"Modbus exception during coil write: {str(me)}"
-                logger.error(f"[{self.name}] {self.last_error}")
-                self.connected = False  # Mark as disconnected to trigger reconnect on next attempt
-                return False
-            except Exception as e:
-                self.last_error = f"Exception during coil write: {str(e)}"
-                logger.error(f"[{self.name}] {self.last_error}")
-                return False
-
     def read_registers(self, addr, count=1, dev=1, read_type='holding'):
         """Read registers (holding or input)."""
         with plc_lock:  # Use the global lock for all operations
@@ -431,6 +382,14 @@ class ModbusCommunication:
                     result = self.client.read_holding_registers(addr, count, unit=dev)
                 elif read_type == 'input':
                     result = self.client.read_input_registers(addr, count, unit=dev)
+                elif read_type == 'coil':
+                    result = self.client.read_coils(addr - 1, count, unit=dev)
+                    if result and not result.isError():
+                        return result.bits
+                    else:
+                        self.last_error = f"Error reading coils: {result}"
+                        logger.error(f"[{self.name}] {self.last_error}")
+                        return None
                 else:
                     self.last_error = f"Invalid register read type: {read_type}"
                     logger.error(f"[{self.name}] {self.last_error}")
@@ -451,7 +410,6 @@ class ModbusCommunication:
                 self.last_error = f"Exception during register read: {str(e)}"
                 logger.error(f"[{self.name}] {self.last_error}")
                 return None
-
     def write_register(self, addr, value, dev=1):
         """Write a value to a holding register."""
         with plc_lock:  # Use the global lock for all operations
@@ -697,9 +655,28 @@ class DataReader:
         """Read input registers."""
         return self.modbus_comm.read_registers(addr, 1, dev, 'input')
 
-    def read_bool_addresses(self, dev, addr, count=6):
-        """Read boolean addresses (coils)."""
-        return self.modbus_comm.read_bool_addresses(addr, count, dev)
+    def read_bool_addresses(self, start_address, quantity, unit=1):
+        """Read multiple boolean addresses (coils) from the PLC."""
+        with plc_lock:  # Use the global lock for all operations
+            if not self._ensure_connected():
+                return None
+            try:
+                result = self.client.read_coils(start_address -1, quantity, unit=unit)
+                if result and not result.isError():
+                    return result.bits
+                else:
+                    self.last_error = f"Error reading coils: {result}"
+                    logger.error(f"[{self.name}] {self.last_error}")
+                    return None
+            except ModbusException as me:
+                self.last_error = f"Modbus exception during coil read: {str(me)}"
+                logger.error(f"[{self.name}] {self.last_error}")
+                self.connected = False  # Mark as disconnected to trigger reconnect on next attempt
+                return None
+            except Exception as e:
+                self.last_error = f"Exception during coil read: {str(e)}"
+                logger.error(f"[{self.name}] {self.last_error}")
+                return None
 
     def readData(self, dev, addr):
         """Read data based on configured read type."""

@@ -5,8 +5,8 @@ from datetime import datetime
 import logging
 from colorama import Fore
 import webbrowser
-import tempfile 
-import jinja2 
+import tempfile
+import jinja2
 from PyQt5 import QtWidgets, uic, QtCore
 from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
 from PyQt5.QtGui import QFont
@@ -26,11 +26,9 @@ import pyqtgraph as pg
 # New imports for new cycle workflow
 from RaspPiReader.libs.communication import dataReader
 from RaspPiReader.libs.configuration import config
-from .boolean_status import Ui_BooleanStatusWidget
-from RaspPiReader.libs.models import BooleanStatus, BooleanAddress
-from RaspPiReader.ui.main_form_boolean_updates import BooleanValueUpdater
+
 from RaspPiReader.libs.database import Database
-from RaspPiReader.ui.new_cycle_handler import NewCycleHandler  # Use new cycle widget
+from RaspPiReader.ui.new_cycle_handler import NewCycleHandler
 from RaspPiReader.ui.default_program_form import DefaultProgramForm
 from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler  # For work order flow
 
@@ -44,36 +42,43 @@ from RaspPiReader.libs.models import Alarm
 # Add PLC connection status
 from RaspPiReader.libs import plc_communication
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
-from RaspPiReader.libs.plc_communication import read_holding_register, read_coils
+from RaspPiReader.libs.plc_communication import read_holding_register
 from RaspPiReader.libs.visualization_manager import VisualizationManager
+from .boolean_data_display_handler import BooleanDataDisplayHandler
+from PyQt5.QtWidgets import QVBoxLayout, QGroupBox
 
 logger = logging.getLogger(__name__)
+
 
 def timedelta2str(td):
     total_seconds = int(td.total_seconds())
     h, rem = divmod(total_seconds, 3600)
     m, s = divmod(rem, 60)
+
     def zp(val):
         return str(val).zfill(2)
+
     return f"{zp(h)}:{zp(m)}:{zp(s)}"
 
-class MainFormHandler(QMainWindow):
+
+class MainFormHandler(QtWidgets.QMainWindow):
     update_status_bar_signal = pyqtSignal(str, int, str)
-    
+
     def __init__(self, user_record=None):
         super(MainFormHandler, self).__init__()
         self.user_record = user_record
-        
+
         # Build an absolute path to the UI file in the 'qt' folder.
         ui_path = os.path.join(os.path.dirname(__file__), "..", "qt", "main.ui")
         ui_path = os.path.abspath(ui_path)
+        # Load the UI from the .ui file
         uic.loadUi(ui_path, self)
-        
+
         # Setup UI via the MainForm class.
         self.form_obj = MainForm()
         self.form_obj.setupUi(self)
         self.immediate_panel_update_locked = False
-        
+
         # Immediately assign cycle timer labels via findChild.
         self.run_duration = self.findChild(QtWidgets.QLabel, "run_duration")
         self.d6 = self.findChild(QtWidgets.QLabel, "d6")
@@ -81,19 +86,19 @@ class MainFormHandler(QMainWindow):
             logger.warning("Cycle timer labels (run_duration and d6) not found on main window.")
         else:
             logger.info("Cycle timer labels successfully identified.")
-        
+
         # Initialize the alarm label to None.
         self.labelAlarm = None
-        
+
         # New code – initialize new cycle widget.
-        from RaspPiReader.ui.new_cycle_handler import NewCycleHandler
+
         self.new_cycle_handler = NewCycleHandler(self)
         self.new_cycle_handler.show()
         logger.info("Initialized NewCycleHandler for new cycle workflow")
-        
+
         # Set main_form in the pool.
         pool.set("main_form", self)
-        
+
         # Define headers used for CSV file creation.
         self.headers = ['Date', 'Time', 'Timer(min)', 'CycleID', 'OrderID', 'Quantity', 'CycleLocation']
         self.file_name = None
@@ -101,31 +106,28 @@ class MainFormHandler(QMainWindow):
         self.csv_path = None
         self.pdf_path = None
         self.username = self.user_record.username if self.user_record else ''
-        
+
         self.cycle_timer = QTimer()
-        
+
         # Initialize the data stacks (data_stack and test_data_stack)
         self.create_stack()
-        
+
         # Initialize connections, user display, and (optional) stacks.
         self.set_connections()
         self.display_username()
-        
+
         # Setup additional menus.
         self.setup_access_controls()
         self.connect_menu_actions()
         self.add_one_drive_menu()
         self.add_plc_comm_menu()
         self.add_database_menu()
-        
-        # Initialize Boolean status area.
+
         self.db = Database("sqlite:///local_database.db")
-        self.setup_bool_status_display()
         self.integrate_new_cycle_widget()
-        
+
         # Start timers.
         self.status_timer = QTimer(self)
-        self.status_timer.timeout.connect(self.update_bool_status)
         self.status_timer.start(5000)
         self.add_default_program_menu()
         self.add_alarm_settings_menu()
@@ -135,7 +137,7 @@ class MainFormHandler(QMainWindow):
         self.live_update_timer = QTimer(self)
         self.live_update_timer.timeout.connect(self.update_live_data)
         # self.live_update_timer.start(2000)  # Uncomment to update live data every 2000ms.
-        
+
         # Start the alarm timer to update the alarm status.
         self.alarmTimer = QTimer(self)
         self.alarmTimer.timeout.connect(self.update_alarm_status)
@@ -143,147 +145,47 @@ class MainFormHandler(QMainWindow):
 
         # UI visualization
         self.init_visualization()
+    
+        # Create Boolean Data Display widget.
+        self.boolean_data_display = BooleanDataDisplayHandler(self)
+        self.integrate_boolean_data_display()
 
         logger.info("Live update timer started.")
         self.showMaximized()
         logger.info("MainFormHandler initialized.")
 
-    def setup_boolean_indicators(self):
-        """
-        Set up the boolean indicators on the main form
-        This method should be called after the UI is initialized
-        """
-        # Create UI elements for boolean indicators if they don't exist
-        self._create_boolean_indicators()
         
-        # Create and initialize the boolean value updater
-        self.bool_updater = BooleanValueUpdater(self)
-        self.bool_updater.initialize()
-        
-        # Initialize the update boolean indicators timer
-        self.bool_update_timer = QTimer(self)
-        self.bool_update_timer.timeout.connect(self.update_boolean_indicators)
-        self.bool_update_timer.start(2000)  # Update every 2 seconds
-        logger.info("Boolean indicator update timer started")
+    # Method to integrate the BooleanDataDisplayHandler into the main UI.
+    def integrate_boolean_data_display(self):
+        """
+        Integrate the BooleanDataDisplayHandler widget into the main form.
+        First, attempt to locate a placeholder widget with objectName "booleanWidgetPlaceholder".
+        If found, add the Boolean widget to its layout. Otherwise, create a new group box
+        and add it to the central widget's layout.
+        """
+        # Try to find a placeholder widget by name.
+        placeholder = self.findChild(QtWidgets.QWidget, "booleanWidgetPlaceholder")
+        if placeholder is not None:
+            layout = placeholder.layout()
+            if layout is None:
+                layout = QVBoxLayout(placeholder)
+                placeholder.setLayout(layout)
+            layout.addWidget(self.boolean_data_display)
+            logger.info("BooleanDataDisplayHandler added to existing placeholder 'booleanWidgetPlaceholder'.")
+        else:
+            # If no placeholder found, create a new group box to contain the Boolean data display.
+            group_box = QGroupBox("Boolean Data", self)
+            group_layout = QVBoxLayout(group_box)
+            group_layout.addWidget(self.boolean_data_display)
+            # Add the group box to the central widget's layout.
+            central_widget = self.centralWidget()
+            central_layout = central_widget.layout()
+            if central_layout is None:
+                central_layout = QVBoxLayout(central_widget)
+                central_widget.setLayout(central_layout)
+            central_layout.addWidget(group_box)
+            logger.info("BooleanDataDisplayHandler added to a new group box in central widget.")
 
-    def _create_boolean_indicators(self):
-        """
-        Create UI elements for boolean indicators if they don't exist
-        """
-        # Get a reference to the form layout where the indicators should be placed
-        indicator_layout = self.boolStatusWidgetContainer.layout()
-        
-        # Check if we already have the indicators
-        if hasattr(self, 'boolIndicator1'):
-            return  # Already initialized
-        
-        # Create boolean indicators
-        for i in range(1, 7):
-            # Create a QLabel for each boolean indicator
-            indicator = QtWidgets.QLabel(f"Bool {i}: N/A")
-            indicator.setStyleSheet("background-color: gray; color: white; border-radius: 5px; padding: 2px;")
-            indicator.setAlignment(QtCore.Qt.AlignCenter)
-            indicator.setMinimumHeight(25)
-            
-            # Save reference to the indicator
-            setattr(self, f"boolIndicator{i}", indicator)
-            
-            # Add to layout
-            indicator_layout.addWidget(indicator)
-    def update_boolean_indicator(self, address, ui_element):
-        """
-        Update a UI element with the boolean value read from the PLC
-        
-        Args:
-            address (int): The PLC address to read from (1-based addressing)
-            ui_element: The UI element to update (likely a label, indicator, etc.)
-        """
-        import logging
-        logger = logging.getLogger(__name__)
-        
-        try:
-            # Use the direct Modbus approach that works in your test script
-            from pymodbus.client.sync import ModbusTcpClient
-            from RaspPiReader import pool
-            
-            # Get connection parameters
-            host = pool.config('plc/host', str, '127.0.0.1')
-            port = pool.config('plc/tcp_port', int, 502)
-            
-            # Create a client for this specific read
-            client = ModbusTcpClient(host, port=port)
-            if not client.connect():
-                logger.error(f"Failed to connect to Modbus server when reading boolean {address}")
-                ui_element.setText("N/A - Connection Error")
-                ui_element.setStyleSheet("color: gray;")
-                return
-            
-            try:
-                # Convert to 0-based addressing for Modbus
-                modbus_address = address - 1
-                logger.debug(f"Reading boolean from address {address} (Modbus address {modbus_address})")
-                
-                # Read the coil directly
-                response = client.read_coils(address=modbus_address, count=1, unit=1)
-                
-                if response and not response.isError():
-                    value = response.bits[0]
-                    logger.debug(f"Read Boolean from address {address}: {value}")
-                    
-                    # Update the UI element based on the value
-                    if value is True:
-                        ui_element.setText("ON")
-                        ui_element.setStyleSheet("color: green;")
-                    else:
-                        ui_element.setText("OFF")
-                        ui_element.setStyleSheet("color: red;")
-                else:
-                    logger.error(f"Error reading boolean from address {address}: {response}")
-                    ui_element.setText("N/A - Read Error")
-                    ui_element.setStyleSheet("color: gray;")
-                    
-            except Exception as e:
-                logger.exception(f"Error reading boolean from address {address}: {e}")
-                ui_element.setText("ERROR")
-                ui_element.setStyleSheet("color: red;")
-            finally:
-                # Always close the client
-                client.close()
-                
-        except Exception as e:
-            logger.exception(f"Error updating boolean indicator for address {address}: {e}")
-            ui_element.setText("ERROR")
-            ui_element.setStyleSheet("color: red;")
-
-    # Add this method to update all boolean indicators
-    def update_boolean_indicators(self):
-        """Update all boolean indicators on the main form"""
-        try:
-            # Make sure we have UI elements to update
-            if not hasattr(self, 'boolIndicator1'):
-                self._create_boolean_indicators()
-            
-            # Define the addresses we want to read (the ones that work in your test script)
-            boolean_addresses = [464, 465, 466, 467, 468, 469]
-            
-            # Update each indicator
-            for i, address in enumerate(boolean_addresses):
-                if i < 6:  # We only have 6 indicators
-                    indicator_name = f"boolIndicator{i+1}"
-                    if hasattr(self, indicator_name):
-                        indicator = getattr(self, indicator_name)
-                        # Use the fixed method to update the indicator
-                        self.update_boolean_indicator(address, indicator)
-        
-        except Exception as e:
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.exception(f"Error updating boolean indicators: {e}")
-
-    # Add this to your __init__ method after self.setup_bool_status_display()
-    # self.bool_update_timer = QTimer(self)
-    # self.bool_update_timer.timeout.connect(self.update_boolean_indicators)
-    # self.bool_update_timer.start(2000)  # Update every 2 seconds
     def init_visualization(self):
         """Initialize visualization components"""
         # Get visualization manager instance
@@ -392,7 +294,90 @@ class MainFormHandler(QMainWindow):
         except Exception as e:
             logger.error(f"Error updating main form data: {e}")
 
-    
+    def update_plc_settings(self):
+        """
+        Reload channel configuration and update live UI views.
+        This re-reads addresses, labels and any other dynamic settings.
+        """
+        # Reload settings from QSettings / database
+        pool.reload_config()
+
+        # Retrieve updated Boolean config and update boolean widgets if they exist.
+        self.boolean_config = pool.config('boolean_config', dict, {})
+        if hasattr(self, 'boolean_channel_widgets'):
+            for channel, widget in self.boolean_channel_widgets.items():
+                new_value = self.boolean_config.get(channel)
+                if new_value is not None:
+                    widget.setTitle(f"{channel} (Addr {new_value})")
+                    logging.getLogger(__name__).info(
+                        f"Updated Boolean widget '{channel}' to address {new_value}"
+                    )
+                else:
+                    logging.getLogger(__name__).debug(
+                        f"No new address found for Boolean channel '{channel}'"
+                    )
+        else:
+            logging.getLogger(__name__).warning(
+                "Attribute 'boolean_channel_widgets' not found in MainFormHandler."
+            )
+
+        # Update numeric channels as before
+        self._reload_channel_configurations()
+
+        # Refresh connection status display
+        self.update_connection_status_display()
+
+        # Force a refresh of the live plot visualization.
+        if hasattr(self, 'viz_manager') and self.viz_manager.dashboard is not None:
+            # Option 1: Reset data buffers and update plots
+            self.viz_manager.dashboard.visualization.reset_data()
+            self.viz_manager.dashboard.update_plots()
+            # Option 2: Alternatively, if a dedicated refresh method exists:
+            # self.viz_manager.dashboard.refresh_configuration()
+
+
+    def _reload_channel_configurations(self):
+        """
+        Internal helper method to reinitialize channels.
+        Update Numeric channels (if applicable).
+        (Boolean channels are handled in update_plc_settings above.)
+        """
+        # Update Numeric channels (if applicable)
+        numeric_config = pool.config('numeric_config', dict, {})
+        if hasattr(self, 'numeric_channel_widgets'):
+            for channel, widget in self.numeric_channel_widgets.items():
+                new_label = numeric_config.get(channel)
+                if new_label is not None:
+                    widget.setTitle(f"{channel} (Label: {new_label})")
+                    logging.getLogger(__name__).info(
+                        f"Updated Numeric widget '{channel}' with label '{new_label}'"
+                    )
+                else:
+                    logging.getLogger(__name__).debug(
+                        f"No new configuration for Numeric channel '{channel}'"
+                    )
+        else:
+            logging.getLogger(__name__).info(
+                "No numeric_channel_widgets attribute defined; skipping numeric channel update."
+            )
+
+    def refresh_configuration(self):
+        """
+        Refresh channel configuration for the live plots.
+        Re-read configuration (addresses, labels, colors, etc.) and update the plots.
+        """
+        # Reload configuration if needed
+        pool.reload_config()
+
+        # Update plots titles and properties based on new settings.
+        for idx, config in self.boolean_config.items():
+            if idx in self.plots:
+                plot_widget = self.plots[idx]
+                new_title = f"{config['label']} (Addr {config['address']})"
+                plot_widget.setTitle(new_title)
+        # Force a replot if needed.
+        self.update_plots()
+
     def _calculate_cycle_duration(self):
         if hasattr(self.new_cycle_handler, "cycle_start_time"):
             duration = datetime.now() - self.new_cycle_handler.cycle_start_time
@@ -463,27 +448,6 @@ class MainFormHandler(QMainWindow):
     def open_default_program_management(self):
         dlg = DefaultProgramForm(self)
         dlg.exec_()
-    
-    def setup_bool_status_display(self):
-        # Create the container widget for Boolean status display
-        self.boolStatusWidgetContainer = QtWidgets.QWidget(self)
-        self.boolStatusWidget = Ui_BooleanStatusWidget()
-        self.boolStatusWidget.setupUi(self.boolStatusWidgetContainer)
-        self.boolStatusLabels = [
-            self.boolStatusWidget.boolStatusLabel1,
-            self.boolStatusWidget.boolStatusLabel2,
-            self.boolStatusWidget.boolStatusLabel3,
-            self.boolStatusWidget.boolStatusLabel4,
-            self.boolStatusWidget.boolStatusLabel5,
-            self.boolStatusWidget.boolStatusLabel6,
-        ]
-        # Insert the Boolean status widget into the central widget's layout
-        central_layout = self.centralWidget().layout()
-        if central_layout is None:
-            central_layout = QtWidgets.QVBoxLayout(self.centralWidget())
-            self.centralWidget().setLayout(central_layout)
-        central_layout.addWidget(self.boolStatusWidgetContainer)
-        
     def integrate_new_cycle_widget(self):
         """
         Integrate the new cycle widget and Boolean status widget into the main window layout.
@@ -505,65 +469,6 @@ class MainFormHandler(QMainWindow):
             self.new_cycle_handler.ui.stopCycleButton.hide()
             
         self.new_cycle_handler.hide()  # Initially hide before integration if needed.
-
-        # Create container widget to integrate with other panels (e.g. Boolean status widget)
-        container = QtWidgets.QWidget(central_widget)
-        h_layout = QtWidgets.QHBoxLayout(container)
-        h_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # If the Boolean status widget container exists, add it
-        if hasattr(self, "boolStatusWidgetContainer") and self.boolStatusWidgetContainer:
-            h_layout.addWidget(self.boolStatusWidgetContainer)
-        
-        # Add the new cycle widget (without its buttons)
-        h_layout.addWidget(self.new_cycle_handler)
-        
-        # Add the container into the main layout.
-        central_layout.addWidget(container)
-        
-        # Show container and the new cycle widget (buttons remain hidden)
-        self.new_cycle_handler.show()
-        container.show()
-
-    
-    def update_bool_status(self):
-        try:
-            db = Database("sqlite:///local_database.db")
-            boolean_entries = db.session.query(BooleanAddress).all()
-            fixed_color = "#832116"
-
-            for i, label in enumerate(self.boolStatusLabels):
-                if i < len(boolean_entries):
-                    entry = boolean_entries[i]
-                    try:
-                        plc_status = dataReader.read_bool_address(entry.address, dev=1)
-                        logger.debug(f"Read Boolean from address {entry.address}: {plc_status}")
-                    except Exception as ex:
-                        logger.error(f"Error reading boolean address {entry.address}: {ex}")
-                        plc_status = None
-
-                    if plc_status is None:
-                        status_text = "N/A"
-                        status_color = "gray"
-                    elif plc_status:
-                        status_text = "ON"
-                        status_color = "green"
-                    else:
-                        status_text = "OFF"
-                        status_color = "red"
-
-                    display_text = (
-                        f"Bool Address {i+1}: "
-                        f"<span style='color:{fixed_color};'>{entry.address} - {entry.label}</span> - "
-                        f"<span style='color:{status_color};'>{status_text}</span>"
-                    )
-                    label.setText(display_text)
-                else:
-                    label.setText("N/A")
-        except Exception as e:
-            logger.error(f"Error updating boolean status: {e}")
-
-
 
     def init_custom_status_bar(self):
         """
@@ -1416,9 +1321,6 @@ class MainFormHandler(QMainWindow):
             event.accept()
         elif reply == QMessageBox.Cancel:
             event.ignore()
-        # Stop the boolean updater if it exists
-        if hasattr(self, 'bool_updater'):
-            self.bool_updater.stop()
         # Call the original closeEvent implementation
         super().closeEvent(event)
     def update_status_bar(self, msg, ms_timeout, color):
@@ -1437,7 +1339,7 @@ class MainFormHandler(QMainWindow):
         if not hasattr(self, 'channel_update_timer') or not self.channel_update_timer.isActive():
             self.channel_update_timer = QTimer(self)
             self.channel_update_timer.timeout.connect(self.update_immediate_values_panel)
-            # Refresh channel labels and boolean values every second (adjust as needed)
+            # Refresh channel labels values every second (adjust as needed)
             self.channel_update_timer.start(1000)
             logger.info("Channel updates enabled: Timer started for updating immediate channel values.")
         else:

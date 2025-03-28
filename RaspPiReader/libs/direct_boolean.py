@@ -5,23 +5,71 @@ from PLC coils without any extra abstraction layers.
 """
 
 import logging
-from pymodbus.client.sync import ModbusTcpClient
+from RaspPiReader import pool
+from pymodbus.client import ModbusTcpClient
 
 logger = logging.getLogger(__name__)
 
-def read_multiple_booleans(addresses, host='127.0.0.1', port=502, unit=1):
+def read_boolean(address, unit=1):
+    """
+    Read a boolean/coil value directly from the PLC
+    
+    Args:
+        address (int): The address to read (1-based addressing)
+        unit (int): The slave unit ID
+        
+    Returns:
+        bool or None: The boolean value, or None if error
+    """
+    # Get PLC connection parameters from configuration
+    host = pool.config('plc/host', str, '127.0.0.1')
+    port = pool.config('plc/tcp_port', int, 502)
+    
+    # Create a client connection
+    client = ModbusTcpClient(host=host, port=port)
+    
+    try:
+        # Connect to the client
+        if not client.connect():
+            logger.error(f"Failed to connect to PLC at {host}:{port}")
+            return None
+        
+        # Convert to 0-based addressing for Modbus
+        modbus_address = address - 1
+        
+        logger.debug(f"Reading boolean from address {address} (Modbus address {modbus_address})")
+        response = client.read_coils(modbus_address, count=1, unit=unit)
+        
+        if response and not response.isError():
+            value = response.bits[0]
+            logger.debug(f"Successfully read boolean from address {address}: {value}")
+            return value
+        else:
+            error_msg = str(response) if response else "No response"
+            logger.error(f"Error reading boolean from address {address}: {error_msg}")
+            return None
+    except Exception as e:
+        logger.exception(f"Exception reading boolean from address {address}: {e}")
+        return None
+    finally:
+        # Always close the connection
+        client.close()
+
+def read_multiple_booleans(addresses, unit=1):
     """
     Read multiple boolean values from the PLC using a single connection
     
     Args:
         addresses (list): List of addresses to read (1-based)
-        host (str): PLC IP address
-        port (int): TCP port
         unit (int): Slave unit ID
         
     Returns:
         dict: Dictionary mapping addresses to values (True, False, or None)
     """
+    # Get PLC connection parameters from configuration
+    host = pool.config('plc/host', str, '127.0.0.1')
+    port = pool.config('plc/tcp_port', int, 502)
+    
     client = None
     results = {}
     
@@ -67,22 +115,6 @@ def read_multiple_booleans(addresses, host='127.0.0.1', port=502, unit=1):
             
     return results
 
-def read_boolean(address, host='127.0.0.1', port=502, unit=1):
-    """
-    Read a single boolean/coil value from the PLC
-    
-    Args:
-        address (int): The address to read from (1-based)
-        host (str): PLC IP address
-        port (int): TCP port
-        unit (int): Slave unit ID
-        
-    Returns:
-        bool or None: The boolean value, or None if error
-    """
-    results = read_multiple_booleans([address], host, port, unit)
-    return results.get(address)
-
 def update_boolean_indicators(main_form):
     """
     Update all boolean indicators on the main form using a single connection
@@ -94,17 +126,12 @@ def update_boolean_indicators(main_form):
         # Define boolean addresses to read
         boolean_addresses = [464, 465, 466, 467, 468, 469]
         
-        # Get PLC connection parameters from configuration
-        from RaspPiReader import pool
-        host = pool.config('plc/host', str, '127.0.0.1')
-        port = pool.config('plc/tcp_port', int, 502)
-        
         # Make sure we have boolean indicators
         if not hasattr(main_form, 'boolIndicator1'):
             _create_boolean_indicators(main_form)
         
         # Read all boolean values at once with a single connection
-        values = read_multiple_booleans(boolean_addresses, host, port)
+        values = read_multiple_booleans(boolean_addresses)
         
         # Update each indicator
         for i, address in enumerate(boolean_addresses):

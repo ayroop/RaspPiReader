@@ -828,64 +828,36 @@ def write_registers(address, values, device_id=1):
 
 def read_boolean(address, device_id=1):
     """
-    Read a boolean value (coil) from the PLC using direct ModbusTcpClient approach.
-    This method is optimized for reliability when reading boolean values.
+    Read a boolean value (coil) from the PLC using the shared Modbus client.
+    This method leverages the PLCConnectionManager for connection management.
     
     Args:
         address (int): Address of the coil (1-based addressing)
         device_id (int): Unit ID of the slave
         
     Returns:
-        bool or None: The boolean value, or None if error
+        bool or None: The boolean value, or None if an error occurred.
     """
+    global modbus_comm  # Access the global ModbusCommunication object
     device_id = validate_device_id(device_id)
-    
-    # First try with direct_client if available
-    if direct_client is not None:
-        try:
-            coils = direct_client.read_coils(address, 1, device_id)
-            if coils and len(coils) > 0:
-                logger.debug(f"Successfully read boolean from address {address}: {coils[0]}")
-                return coils[0]
-        except Exception as e:
-            logger.debug(f"Direct client read_boolean error: {e}")
-    
-    # If direct client failed or isn't available, try with a fresh ModbusTcpClient
-    try:
-        from RaspPiReader import pool
-        host = pool.config('plc/host', str, '127.0.0.1')
-        port = pool.config('plc/tcp_port', int, 502)
-        timeout = pool.config('plc/timeout', float, 3.0)
-        
-        # Create a fresh client for this specific read
-        try:
-            # Try to import from the new path structure (pymodbus 2.5.0+)
-            from pymodbus.client import ModbusTcpClient
-        except ImportError:
-            # Fall back to old import path for backward compatibility
-            from pymodbus.client.sync import ModbusTcpClient
-            
-        client = ModbusTcpClient(host=host, port=port, timeout=timeout)
-        if not client.connect():
-            logger.error(f"Failed to connect to Modbus server when reading boolean {address}")
+
+    with plc_lock:
+        if not ensure_connection():
+            logger.error("Cannot read boolean: No connection to PLC")
             return None
-        
+
         try:
-            logger.debug(f"Reading boolean from address {address}")
-            response = client.read_coils(address, count=1, unit=device_id)
-            
-            if response and not response.isError():
-                value = response.bits[0]
-                logger.debug(f"Successfully read boolean from address {address}: {value}")
-                return value
+            logger.debug(f"Reading boolean from address {address} using shared client")
+            # Use read_coils method to read boolean value
+            result = modbus_comm.read_registers(address, 1, device_id, 'coil')
+            if result and len(result) > 0:
+                return result[0]
             else:
-                logger.error(f"Error reading boolean from address {address}: {response}")
+                logger.error(f"Error reading boolean from address {address}: {result}")
                 return None
-        finally:
-            client.close()
-    except Exception as e:
-        logger.exception(f"Exception reading boolean from address {address}: {e}")
-        return None
+        except Exception as e:
+            logger.exception(f"Exception reading boolean from address {address}: {e}")
+            return None
 
 def disconnect():
     """Disconnect from the PLC"""

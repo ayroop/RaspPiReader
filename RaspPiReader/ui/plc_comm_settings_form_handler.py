@@ -521,7 +521,9 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             return False
     
     def save_and_close(self):
-        """Save settings and close the form in a thread-safe way that prevents UI freezing"""
+        """Save settings and close the form in a thread-safe way that prevents UI freezing.
+        This routine saves new settings, reloads configuration, updates the UI and reinitializes PLC communication.
+        """
         try:
             # Disable buttons to prevent multiple clicks
             self.saveButton.setEnabled(False)
@@ -532,53 +534,73 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             self.statusLabel.setText("Saving settings...")
             self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
             
-            # Show progress bar
+            # Show progress bar if not yet created
             if not hasattr(self, 'progressBar') or self.progressBar is None:
                 self.progressBar = QtWidgets.QProgressBar(self)
                 self.progressBar.setRange(0, 0)  # Indeterminate progress
                 self.progressBar.setTextVisible(False)
                 self.statusLayout.addWidget(self.progressBar)
             
-            # Process events to update UI
+            # Process events so that the UI immediately updates
             QApplication.processEvents()
             
-            # Use a timer to delay the actual save operation to give UI a chance to update
+            # Use a timer to delay the actual save operation to give the UI time to update
             QTimer.singleShot(100, self._delayed_save_and_close)
             
         except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
             logger.error(f"Error preparing to save settings: {str(e)}")
             self._handle_save_error(str(e))
-    
+
     def _delayed_save_and_close(self):
-        """Perform the actual save operation after UI has been updated"""
+        """Perform the save, reload configuration and PLC communication, then finalize and close."""
         try:
-            # Save settings
+            # Save settings to QSettings and the database
             if not self._save_settings_simple(test_only=False):
-                # If saving failed, re-enable buttons and return
                 self._cleanup_save_ui()
                 return
-            
-            # Update the connection status
-            self._update_connection_status()
-            
-            # Create a timer to wait for any asynchronous operations to complete
-            # This helps prevent freezing when initializing the PLC with new settings
+
+            # Immediately update pool configuration by reloading QSettings data
+            pool.reload_config()
+
+            # Update connection status and dynamic UI in main form:
+            if self.parent() is not None and hasattr(self.parent(), "update_plc_settings"):
+                self.parent().update_plc_settings()
+
+            # Force a dynamic reload of PLC communication:
+            # 1. Try to reload the data reader, which should re-read settings (like boolean addresses)
+            from RaspPiReader.libs import plc_communication
+            if hasattr(plc_communication, 'data_reader') and plc_communication.data_reader is not None:
+                plc_communication.data_reader.reload()
+            else:
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.error("PLC DataReader instance not found; cannot reload PLC communication")
+
+            # 2. If your connection manager supports reloading parameters, call its reload helper
+            if hasattr(plc_communication, 'connection_manager') and plc_communication.connection_manager is not None:
+                plc_communication.connection_manager._load_connection_params()
+
+            # Wait shortly to allow asynchronous reload to complete before finalizing the save
             complete_timer = QTimer(self)
             complete_timer.setSingleShot(True)
             complete_timer.timeout.connect(self._finalize_save_and_close)
-            complete_timer.start(500)  # Wait half a second to ensure settings are applied
-            
+            complete_timer.start(500)  # 0.5 second delay
+
         except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
             logger.error(f"Error in delayed save: {str(e)}")
             self._handle_save_error(str(e))
     
     def _finalize_save_and_close(self):
-        """Finalize the save operation and close the dialog"""
+        """Finalize the save operation and close the dialog after ensuring all workers are stopped."""
         try:
             # Clean up UI elements
             self._cleanup_save_ui()
 
-            # Ensure all threads are stopped before closing
+            # Stop any running workers
             if hasattr(self, 'test_worker') and self.test_worker is not None:
                 self.test_worker.quit()
                 self.test_worker.wait()
@@ -589,11 +611,15 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                 self.status_worker.wait()
                 self.status_worker = None
 
-            # Finally, close the dialog with success
-            logger.info("Settings saved successfully, closing dialog")
+            # Log success and close the dialog
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.info("Settings saved and PLC connection reloaded successfully; closing dialog")
             self.accept()
 
         except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
             logger.error(f"Error finalizing save: {str(e)}")
             self._handle_save_error(str(e))
     

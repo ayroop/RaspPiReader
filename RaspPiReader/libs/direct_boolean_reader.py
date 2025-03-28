@@ -1,11 +1,13 @@
 """
 Direct Boolean Reader module for reliable reading of PLC coils/booleans.
 This module provides a simplified, direct approach to reading boolean values
-from a PLC using the ModbusTcpClient.
+from a PLC using the ModbusTcpClient with improved error handling and diagnostics.
 """
 
 import logging
+import time
 from pymodbus.client.sync import ModbusTcpClient
+from pymodbus.exceptions import ConnectionException, ModbusException
 
 logger = logging.getLogger(__name__)
 
@@ -17,17 +19,21 @@ class DirectBooleanReader:
     This class uses the exact same approach that works in your test script.
     """
     
-    def __init__(self, host='127.0.0.1', port=502):
+    def __init__(self, host='127.0.0.1', port=502, timeout=3):
         """
         Initialize the reader with connection parameters
         
         Args:
             host (str): PLC IP address 
             port (int): TCP port
+            timeout (int): Connection timeout in seconds
         """
         self.host = host
         self.port = port
+        self.timeout = timeout
         self.client = None
+        self.connection_attempts = 0
+        self.last_connection_time = 0
     
     def connect(self):
         """
@@ -36,12 +42,34 @@ class DirectBooleanReader:
         Returns:
             bool: True if successful, False otherwise
         """
+        # Limit connection attempts (avoid hammering the connection)
+        current_time = time.time()
+        if (current_time - self.last_connection_time) < 2 and self.connection_attempts > 3:
+            logger.warning("Too many connection attempts in a short time, backing off")
+            return False
+            
+        self.last_connection_time = current_time
+        self.connection_attempts += 1
+        
         try:
             if self.client:
                 self.client.close()
                 
-            self.client = ModbusTcpClient(host=self.host, port=self.port)
-            return self.client.connect()
+            logger.debug(f"Connecting to PLC at {self.host}:{self.port}")
+            self.client = ModbusTcpClient(
+                host=self.host, 
+                port=self.port,
+                timeout=self.timeout,
+                retry_on_empty=True
+            )
+            
+            if self.client.connect():
+                logger.info(f"Successfully connected to PLC at {self.host}:{self.port}")
+                self.connection_attempts = 0
+                return True
+            else:
+                logger.error(f"Failed to connect to PLC at {self.host}:{self.port}")
+                return False
         except Exception as e:
             logger.exception(f"Error connecting to PLC: {e}")
             return False
@@ -81,8 +109,19 @@ class DirectBooleanReader:
                 logger.debug(f"Successfully read boolean from address {address}: {value}")
                 return value
             else:
-                logger.error(f"Error reading boolean from address {address}: {response}")
+                error_msg = str(response) if response else "No response"
+                logger.error(f"Error reading boolean from address {address}: {error_msg}")
+                
+                # Force reconnection on next attempt
+                self.client.close()
                 return None
+        except ConnectionException as e:
+            logger.error(f"Connection error reading boolean from address {address}: {e}")
+            self.client.close()
+            return None
+        except ModbusException as e:
+            logger.error(f"Modbus error reading boolean from address {address}: {e}")
+            return None
         except Exception as e:
             logger.exception(f"Exception reading boolean from address {address}: {e}")
             return None
@@ -114,7 +153,7 @@ class DirectBooleanReader:
 
 # Helper functions for direct use without instantiating the class
 
-def read_boolean(address, host='127.0.0.1', port=502, unit=1):
+def read_boolean(address, host='127.0.0.1', port=502, unit=1, timeout=3):
     """
     Read a boolean value directly (one-shot function)
     
@@ -123,11 +162,12 @@ def read_boolean(address, host='127.0.0.1', port=502, unit=1):
         host (str): PLC IP address
         port (int): TCP port
         unit (int): Slave unit ID
+        timeout (int): Connection timeout in seconds
         
     Returns:
         bool or None: The boolean value or None
     """
-    client = ModbusTcpClient(host=host, port=port)
+    client = ModbusTcpClient(host=host, port=port, timeout=timeout, retry_on_empty=True)
     if not client.connect():
         logger.error(f"Failed to connect to Modbus server at {host}:{port}")
         return None
@@ -140,15 +180,22 @@ def read_boolean(address, host='127.0.0.1', port=502, unit=1):
         if response and not response.isError():
             return response.bits[0]
         else:
-            logger.error(f"Error reading boolean address {address}: {response}")
+            error_msg = str(response) if response else "No response"
+            logger.error(f"Error reading boolean address {address}: {error_msg}")
             return None
+    except ConnectionException as e:
+        logger.error(f"Connection error reading boolean address {address}: {e}")
+        return None
+    except ModbusException as e:
+        logger.error(f"Modbus error reading boolean address {address}: {e}")
+        return None
     except Exception as e:
         logger.exception(f"Exception reading boolean address {address}: {e}")
         return None
     finally:
         client.close()
 
-def read_multiple_booleans(addresses, host='127.0.0.1', port=502, unit=1):
+def read_multiple_booleans(addresses, host='127.0.0.1', port=502, unit=1, timeout=3):
     """
     Read multiple boolean values directly (one-shot function)
     
@@ -157,12 +204,13 @@ def read_multiple_booleans(addresses, host='127.0.0.1', port=502, unit=1):
         host (str): PLC IP address
         port (int): TCP port
         unit (int): Slave unit ID
+        timeout (int): Connection timeout in seconds
         
     Returns:
         dict: Dictionary mapping addresses to values
     """
     results = {}
-    client = ModbusTcpClient(host=host, port=port)
+    client = ModbusTcpClient(host=host, port=port, timeout=timeout, retry_on_empty=True)
     
     if not client.connect():
         logger.error(f"Failed to connect to Modbus server at {host}:{port}")
@@ -177,8 +225,21 @@ def read_multiple_booleans(addresses, host='127.0.0.1', port=502, unit=1):
             if response and not response.isError():
                 results[address] = response.bits[0]
             else:
-                logger.error(f"Error reading boolean address {address}: {response}")
+                error_msg = str(response) if response else "No response"
+                logger.error(f"Error reading boolean address {address}: {error_msg}")
                 results[address] = None
+    except ConnectionException as e:
+        logger.error(f"Connection error reading multiple boolean addresses: {e}")
+        # Fill in None for any addresses we haven't read yet
+        for addr in addresses:
+            if addr not in results:
+                results[addr] = None
+    except ModbusException as e:
+        logger.error(f"Modbus error reading multiple boolean addresses: {e}")
+        # Fill in None for any addresses we haven't read yet
+        for addr in addresses:
+            if addr not in results:
+                results[addr] = None
     except Exception as e:
         logger.exception(f"Exception reading multiple boolean addresses: {e}")
         # Fill in None for any addresses we haven't read yet
