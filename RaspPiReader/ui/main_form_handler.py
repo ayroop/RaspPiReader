@@ -46,6 +46,7 @@ from RaspPiReader.libs.plc_communication import read_holding_register
 from RaspPiReader.libs.visualization_manager import VisualizationManager
 from .boolean_data_display_handler import BooleanDataDisplayHandler
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox
+from RaspPiReader.libs.models import CycleSerialNumber
 
 logger = logging.getLogger(__name__)
 
@@ -136,8 +137,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.connectionTimer.start(5000)
         self.live_update_timer = QTimer(self)
         self.live_update_timer.timeout.connect(self.update_live_data)
-        # self.live_update_timer.start(2000)  # Uncomment to update live data every 2000ms.
-
+        
         # Start the alarm timer to update the alarm status.
         self.alarmTimer = QTimer(self)
         self.alarmTimer.timeout.connect(self.update_alarm_status)
@@ -146,14 +146,86 @@ class MainFormHandler(QtWidgets.QMainWindow):
         # UI visualization
         self.init_visualization()
     
-        # Create Boolean Data Display widget.
+        # Create Boolean Data Display widget but don't start reading data yet
         self.boolean_data_display = BooleanDataDisplayHandler(self)
         self.integrate_boolean_data_display()
+        
+        # Flag to track if boolean reading is active
+        self.boolean_reading_active = False
+        
+        # Initialize the direct boolean reader but don't start it yet
+        from RaspPiReader.libs.direct_boolean_reader import get_instance
+        self.boolean_reader = get_instance()
+        
+        # Connect to the new_cycle_handler's signals to start/stop boolean reading
+        if hasattr(self.new_cycle_handler, "cycle_started_signal"):
+            self.new_cycle_handler.cycle_started_signal.connect(self.start_boolean_reading)
+        if hasattr(self.new_cycle_handler, "cycle_stopped_signal"):
+            self.new_cycle_handler.cycle_stopped_signal.connect(self.stop_boolean_reading)
+        # Connect to the green Start Cycle button in the program selection step
+        if hasattr(self.new_cycle_handler, "start_cycle_signal"):
+            self.new_cycle_handler.start_cycle_signal.connect(self.start_boolean_reading)
 
         logger.info("Live update timer started.")
         self.showMaximized()
         logger.info("MainFormHandler initialized.")
 
+        
+    def start_boolean_reading(self):
+        """
+        Start reading boolean addresses when the green Start Cycle button is clicked
+        in the default program selection step.
+        """
+        if not self.boolean_reading_active:
+            logger.info("Starting boolean address reading")
+            self.boolean_reading_active = True
+            
+            # Start the direct boolean reader
+            if hasattr(self, 'boolean_reader'):
+                self.boolean_reader.start_reading()
+            
+            # Enable boolean data display updates
+            if hasattr(self.boolean_data_display, "start_reading"):
+                self.boolean_data_display.start_reading()
+            else:
+                # If no dedicated method exists, start the timer directly
+                if hasattr(self.boolean_data_display, "update_timer"):
+                    self.boolean_data_display.update_timer.start(1000)  # Update every second
+            
+            # Update group box title if it exists
+            if hasattr(self, 'boolean_group_box'):
+                self.boolean_group_box.setTitle("Boolean Data (Reading Active)")
+                
+            # Show visual indication that boolean reading is active
+            self.update_status_bar("Boolean address reading active", 5000, "green")
+    
+    def stop_boolean_reading(self):
+        """
+        Stop reading boolean addresses when the cycle ends.
+        This method is called when the user clicks Stop Cycle or when the cycle finishes.
+        """
+        if self.boolean_reading_active:
+            logger.info("Stopping boolean address reading")
+            self.boolean_reading_active = False
+            
+            # Stop the direct boolean reader
+            if hasattr(self, 'boolean_reader'):
+                self.boolean_reader.stop_reading()
+            
+            # Disable boolean data display updates
+            if hasattr(self.boolean_data_display, "stop_reading"):
+                self.boolean_data_display.stop_reading()
+            else:
+                # If no dedicated method exists, stop the timer directly
+                if hasattr(self.boolean_data_display, "update_timer"):
+                    self.boolean_data_display.update_timer.stop()
+            
+            # Update group box title if it exists
+            if hasattr(self, 'boolean_group_box'):
+                self.boolean_group_box.setTitle("Boolean Data (Waiting for Cycle Start)")
+                
+            # Show visual indication that boolean reading is stopped
+            self.update_status_bar("Boolean address reading stopped", 5000, "blue")
         
     # Method to integrate the BooleanDataDisplayHandler into the main UI.
     def integrate_boolean_data_display(self):
@@ -174,7 +246,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             logger.info("BooleanDataDisplayHandler added to existing placeholder 'booleanWidgetPlaceholder'.")
         else:
             # If no placeholder found, create a new group box to contain the Boolean data display.
-            group_box = QGroupBox("Boolean Data", self)
+            group_box = QGroupBox("Boolean Data (Waiting for Cycle Start)", self)
             group_layout = QVBoxLayout(group_box)
             group_layout.addWidget(self.boolean_data_display)
             # Add the group box to the central widget's layout.
@@ -184,7 +256,16 @@ class MainFormHandler(QtWidgets.QMainWindow):
                 central_layout = QVBoxLayout(central_widget)
                 central_widget.setLayout(central_layout)
             central_layout.addWidget(group_box)
+            self.boolean_group_box = group_box
             logger.info("BooleanDataDisplayHandler added to a new group box in central widget.")
+    
+    def update_boolean_display(self, boolean_values):
+        """
+        Update the boolean display with new values.
+        This is called by the direct_boolean_reader when new data is available.
+        """
+        if hasattr(self.boolean_data_display, "update_values"):
+            self.boolean_data_display.update_values(boolean_values)
 
     def init_visualization(self):
         """Initialize visualization components"""
@@ -751,6 +832,9 @@ class MainFormHandler(QtWidgets.QMainWindow):
         # Start visualization
         self.viz_manager.start_visualization(current_cycle_id)
         
+        # Start boolean data reading
+        self.start_boolean_reading()
+        
         # Additional existing code...
         logger.info("Cycle and visualization started")
 
@@ -780,6 +864,12 @@ class MainFormHandler(QtWidgets.QMainWindow):
             
             if hasattr(self, 'close_csv_file'):
                 QTimer.singleShot(1000, self.close_csv_file)
+            
+            # Stop boolean data reading
+            self.stop_boolean_reading()
+        
+            # Update visualization
+            self.viz_manager.stop_visualization()
             
             logger.info("Cycle stopping completed successfully")
         except Exception as e:
@@ -1152,23 +1242,42 @@ class MainFormHandler(QtWidgets.QMainWindow):
             self.csv_file.close()
 
     def generate_html_report(self, image_path=None):
-        if self.new_cycle_handler and hasattr(self.new_cycle_handler, "cycle_start_time") and hasattr(self.new_cycle_handler, "cycle_end_time"):
+        # Retrieve cycle times, using new_cycle_handler if available
+        if (self.new_cycle_handler and hasattr(self.new_cycle_handler, "cycle_start_time") and 
+                hasattr(self.new_cycle_handler, "cycle_end_time")):
             cycle_date = self.new_cycle_handler.cycle_start_time.strftime("%Y/%m/%d")
             cycle_start = self.new_cycle_handler.cycle_start_time.strftime("%H:%M:%S")
             cycle_end = self.new_cycle_handler.cycle_end_time.strftime("%H:%M:%S")
-            # Use getattr with a default value to safely retrieve numeric fields
             core_high_temp_time = round(getattr(self.new_cycle_handler, "core_temp_above_setpoint_time", 0), 2)
             if not core_high_temp_time:
                 core_high_temp_time = "-"
             release_temp = getattr(self.new_cycle_handler, "pressure_drop_core_temp", "-")
         else:
             cycle_date = cycle_start = cycle_end = core_high_temp_time = release_temp = "-"
+
+        # Retrieve current cycle id from pool configuration.
+        current_cycle_id = pool.config("cycle_id")
+        serial_numbers = "No serial numbers recorded"
+        try:
+            # Query the database for serial numbers associated with the current cycle,
+            # filtering out placeholder values.
+            if current_cycle_id:
+                from RaspPiReader.libs.models import CycleSerialNumber
+                serial_records = self.db.session.query(CycleSerialNumber).filter_by(cycle_id=current_cycle_id).all()
+                valid_serials = [rec.serial_number for rec in serial_records 
+                                 if rec.serial_number and not rec.serial_number.startswith("PLACEHOLDER_")]
+                if valid_serials:
+                    serial_numbers = ", ".join(valid_serials)
+        except Exception as e:
+            logger.error(f"Error retrieving serial numbers for cycle {current_cycle_id}: {e}")
+            serial_numbers = f"Error: {e}"
+
         report_data = {
             "order_id": pool.config("order_id") or "-",
-            "cycle_id": pool.config("cycle_id") or "-",
+            "cycle_id": current_cycle_id or "-",
             "quantity": pool.config("quantity") or "-",
             "cycle_location": pool.config("cycle_location") or "-",
-            "dwell_time": int(pool.config("dwell_time")) or "-",
+            "dwell_time": int(pool.config("dwell_time")) if pool.config("dwell_time") else "-",
             "cool_down_temp": pool.config("cool_down_temp") or "-",
             "core_temp_setpoint": pool.config("core_temp_setpoint") or "-",
             "temp_ramp": pool.config("temp_ramp") or "-",
@@ -1183,9 +1292,9 @@ class MainFormHandler(QtWidgets.QMainWindow):
             "cycle_end_time": cycle_end,
             "image_path": image_path,
             "logo_path": os.path.join(os.getcwd(), 'ui\\logo.jpg'),
+            "serial_numbers": serial_numbers    # <-- Added key for serial numbers
         }
         self.render_print_template(template_file='result_template.html', data=report_data)
-
 
     def render_print_template(self, *args, template_file=None, **kwargs):
         templateLoader = jinja2.FileSystemLoader(searchpath=os.path.join(os.getcwd(), "ui"))

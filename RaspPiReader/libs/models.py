@@ -96,6 +96,19 @@ class PlotData(Base):
     # Relationship with CycleData
     cycle = relationship("CycleData", back_populates="plot_data")
 
+# ...existing code...
+class CycleReport(Base):
+    __tablename__ = 'cycle_reports'
+    id = Column(Integer, primary_key=True)
+    cycle_id = Column(Integer, ForeignKey('cycle_data.id'), nullable=False)
+    pdf_report_path = Column(String, nullable=True)
+    html_report_path = Column(String, nullable=True)
+    html_report_content = Column(Text, nullable=True)  
+    date_created = Column(DateTime, default=datetime.utcnow)
+    cycle = relationship("CycleData", back_populates="report")
+
+
+
 class CycleData(Base):
     __tablename__ = 'cycle_data'
     id = Column(Integer, primary_key=True)
@@ -118,18 +131,17 @@ class CycleData(Base):
     maintain_vacuum = Column(Boolean, nullable=True)
     initial_set_cure_temp = Column(Float, nullable=True)
     final_set_cure_temp = Column(Float, nullable=True)
-    pdf_report_path = Column(String, nullable=True)
-    html_report_path = Column(String, nullable=True)
     plot_data = relationship("PlotData", back_populates="cycle")
-
+    serial_numbers = relationship("CycleSerialNumber", back_populates="cycle")
+    report = relationship("CycleReport", back_populates="cycle", uselist=False)
 
 class CycleSerialNumber(Base):
     __tablename__ = 'cycle_serial_numbers'
     id = Column(Integer, primary_key=True)
     cycle_id = Column(Integer, ForeignKey('cycle_data.id'), nullable=False)
     serial_number = Column(String, unique=True, nullable=False)
-    cycle = relationship("CycleData", backref="serials")
-    
+    cycle = relationship("CycleData", back_populates="serial_numbers")
+
 class DemoData(Base):
     __tablename__ = 'demo_data'
     id = Column(Integer, primary_key=True)

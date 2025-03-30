@@ -1,5 +1,6 @@
 
 from PyQt5 import QtWidgets
+from PyQt5.QtCore import pyqtSignal
 from RaspPiReader import pool
 from RaspPiReader.ui.new_cycle import Ui_NewCycle
 from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler
@@ -7,8 +8,9 @@ from datetime import datetime
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import CycleData
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
-from PyQt5.QtWidgets import QMessageBox
+from PyQt5.QtWidgets import QMessageBox, QPushButton
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,8 @@ class NewCycleHandler(QtWidgets.QWidget):
     When a cycle stops, the elapsed time is logged, a CycleData record is created,
     and reports (CSV and PDF) are generated via finalize_cycle.
     """
+    # Signal to notify when a cycle starts
+    start_cycle_signal = pyqtSignal()
     def __init__(self, parent=None):
         super(NewCycleHandler, self).__init__(parent)
         self.ui = Ui_NewCycle()
@@ -30,7 +34,47 @@ class NewCycleHandler(QtWidgets.QWidget):
 
         # Initialize timing variables
         self.reset_timing()
+        
+        # Initialize cycle status
+        self.cycle_active = False
+        
+        # Find the green Start Cycle button in the default program selection step
+        self.greenStartButton = self.findChild(QPushButton, "greenStartButton")
+        if self.greenStartButton:
+            self.greenStartButton.clicked.connect(self.onGreenStartButtonClicked)
+            logger.info("Found and connected the green Start Cycle button")
+        else:
+            # If not found by direct name, try to find by text content
+            for child in self.findChildren(QPushButton):
+                if "Start Cycle" in child.text():
+                    child.clicked.connect(self.onGreenStartButtonClicked)
+                    self.greenStartButton = child
+                    logger.info(f"Found green Start Cycle button with text: {child.text()}")
+                    break
+            
+            if not self.greenStartButton:
+                logger.warning("Green Start Cycle button not found - boolean reading may not activate correctly")
 
+    def onGreenStartButtonClicked(self):
+        """
+        Handler for the green Start Cycle button in the default program selection step.
+        This is the key method that should trigger boolean reading.
+        """
+        logger.info("Green Start Cycle button clicked in default program selection")
+        
+        # Start the cycle
+        self.start_cycle()
+        
+        # Important: Emit the signal to start boolean reading
+        self.start_cycle_signal.emit()
+        
+        # Update UI to indicate that boolean reading is active
+        if hasattr(self.parent(), "boolean_group_box"):
+            self.parent().boolean_group_box.setTitle("Boolean Data (Reading Active)")
+        
+        QMessageBox.information(self, "Cycle Started", 
+            "Cycle started. Boolean address reading is now active.")
+            
     def reset_timing(self):
         self.cycle_start_time = None
         self.cycle_end_time = None
@@ -46,6 +90,13 @@ class NewCycleHandler(QtWidgets.QWidget):
         self.reset_timing()
         self.cycle_start_time = datetime.now()
         pool.set("current_cycle", self)
+        self.cycle_active = True
+        
+        # Emit signal to notify that cycle has started
+        # Note: This signal is now primarily used for the regular start button
+        # The green start button uses its own dedicated handler
+        self.start_cycle_signal.emit()
+        logger.info("Cycle start signal emitted")
 
         # Launch work order form for further user input.
         self.work_order_form = WorkOrderFormHandler()
@@ -60,6 +111,9 @@ class NewCycleHandler(QtWidgets.QWidget):
                 main_form.enable_channel_updates()
             else:
                 logger.info("Channel updates enabled (default behavior).")
+                
+            # Note: Boolean reading is now started by the green Start Cycle button
+            # via the onGreenStartButtonClicked method, not here
         else:
             logger.warning("Main form not available to enable channel updates.")
     def stop_cycle(self):
@@ -80,6 +134,13 @@ class NewCycleHandler(QtWidgets.QWidget):
 
         # Clear the current cycle from the global pool
         pool.set("current_cycle", None)
+        self.cycle_active = False
+        
+        # Stop boolean reading if main form has the method
+        main_form = pool.get("main_form")
+        if main_form and hasattr(main_form, "stop_boolean_reading"):
+            main_form.stop_boolean_reading()
+            logger.info("Boolean reading stopped")
         
         try:
             # Import CycleData

@@ -4,6 +4,9 @@ import threading
 import socket
 from threading import Lock
 import pymodbus
+
+# Global flag to track if boolean read success has been logged
+boolean_data_success_logged = False
 try:
     # Try to import from the new path structure (pymodbus 2.5.0+)
     from pymodbus.client import ModbusTcpClient, ModbusSerialClient
@@ -591,12 +594,16 @@ def _initialize_plc_thread(callback=None):
     return success
 
 def read_coil(address, device_id=1):
-    global modbus_comm, direct_client
+    global modbus_comm, direct_client, boolean_data_success_logged
     device_id = validate_device_id(device_id)
     if direct_client is not None:
         try:
             coils = direct_client.read_coils(address, 1, device_id)
             if coils and len(coils) > 0:
+                # Log success message only once
+                if not boolean_data_success_logged:
+                    logger.info("Boolean data is working!")
+                    boolean_data_success_logged = True
                 return coils[0]
         except Exception as e:
             logger.debug(f"Direct client read_coil error: {e}")
@@ -607,6 +614,10 @@ def read_coil(address, device_id=1):
         try:
             result = modbus_comm.read_bool_addresses(address, 1, device_id)
             if result and len(result) > 0:
+                # Log success message only once
+                if not boolean_data_success_logged:
+                    logger.info("Boolean data is working!")
+                    boolean_data_success_logged = True
                 return result[0]
             return False
         except Exception as e:
@@ -614,12 +625,16 @@ def read_coil(address, device_id=1):
             return False
 
 def read_coils(address, count=1, device_id=1):
-    global modbus_comm, direct_client
+    global modbus_comm, direct_client, boolean_data_success_logged
     device_id = validate_device_id(device_id)
     if direct_client is not None:
         try:
             coils = direct_client.read_coils(address, count, device_id)
             if coils and len(coils) >= count:
+                # Log success message only once
+                if not boolean_data_success_logged:
+                    logger.info("Boolean data is working!")
+                    boolean_data_success_logged = True
                 return coils[:count]
         except Exception as e:
             logger.debug(f"Direct client read_coils error: {e}")
@@ -630,6 +645,10 @@ def read_coils(address, count=1, device_id=1):
         try:
             result = modbus_comm.read_bool_addresses(address, count, device_id)
             if result:
+                # Log success message only once
+                if not boolean_data_success_logged:
+                    logger.info("Boolean data is working!")
+                    boolean_data_success_logged = True
                 return result
             return [False] * count
         except Exception as e:
@@ -838,7 +857,7 @@ def read_boolean(address, device_id=1):
     Returns:
         bool or None: The boolean value, or None if an error occurred.
     """
-    global modbus_comm  # Access the global ModbusCommunication object
+    global modbus_comm, boolean_data_success_logged  # Access the global objects
     device_id = validate_device_id(device_id)
 
     with plc_lock:
@@ -847,10 +866,13 @@ def read_boolean(address, device_id=1):
             return None
 
         try:
-            logger.debug(f"Reading boolean from address {address} using shared client")
             # Use read_coils method to read boolean value
             result = modbus_comm.read_registers(address, 1, device_id, 'coil')
             if result and len(result) > 0:
+                # Log success message only once
+                if not boolean_data_success_logged:
+                    logger.info("Boolean data is working!")
+                    boolean_data_success_logged = True
                 return result[0]
             else:
                 logger.error(f"Error reading boolean from address {address}: {result}")

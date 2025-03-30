@@ -1,5 +1,6 @@
 from PyQt5 import QtWidgets, QtCore
 from datetime import datetime
+import traceback
 from RaspPiReader.ui.program_selection_form import Ui_ProgramSelectionForm
 from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
 from RaspPiReader.libs.database import Database
@@ -18,39 +19,24 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         self.quantity = quantity      # store user set quantity
         self.serial_numbers = serial_numbers  # list of (processed) serial numbers
         self.db = Database("sqlite:///local_database.db")
-        # Debug log to check quantity
         logger.info(f"ProgramSelectionFormHandler initiated with quantity: {self.quantity}")
-        # Set window title and initial/minimum size
         self.setWindowTitle(f"Select Program for Order: {work_order}")
         self.resize(800, 600)
         self.setMinimumSize(800, 600)
-        
-        # Set stylesheet for better font sizes
         self.setStyleSheet("QWidget { font-size: 16px; }")
-        
-        # Set label text if not already set
         if hasattr(self.ui, "programLabel"):
             self.ui.programLabel.setText("Select Program:")
-        
-        # Populate the combo box with programs
         self.populate_program_combo()
-        
-        # Set button texts if not provided by the UI
         if hasattr(self.ui, "startCycleButton"):
             self.ui.startCycleButton.setText("Start Cycle")
         if hasattr(self.ui, "cancelButton"):
             self.ui.cancelButton.setText("Cancel")
-        
-        # Connect signals
         self.ui.startCycleButton.clicked.connect(self.start_cycle)
         self.ui.cancelButton.clicked.connect(self.close)
         self.ui.programComboBox.currentIndexChanged.connect(self.update_program_info)
-        
-        # Update program info initially.
         self.update_program_info(self.ui.programComboBox.currentIndex())
     
     def populate_program_combo(self):
-        # For demo purposes, if the combo box is empty add a few items
         if self.ui.programComboBox.count() == 0:
             self.ui.programComboBox.addItem("Program 1")
             self.ui.programComboBox.addItem("Program 2")
@@ -65,7 +51,6 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         ).first()
 
         if default_program:
-            # Update configuration settings in the pool from the default program.
             pool.set_config("cycle_location", default_program.cycle_location or "N/A")
             pool.set_config("dwell_time", default_program.dwell_time if default_program.dwell_time is not None else 0.0)
             pool.set_config("core_temp_setpoint", default_program.core_temp_setpoint if default_program.core_temp_setpoint is not None else 0.0)
@@ -75,10 +60,9 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             pool.set_config("maintain_vacuum", default_program.maintain_vacuum if default_program.maintain_vacuum is not None else 0.0)
             pool.set_config("initial_set_cure_temp", default_program.initial_set_cure_temp if default_program.initial_set_cure_temp is not None else 0.0)
             pool.set_config("final_set_cure_temp", default_program.final_set_cure_temp if default_program.final_set_cure_temp is not None else 0.0)
-            # Always use the user-provided quantity
             pool.set_config("quantity", self.quantity)
+            # Pass along any pre‐existing cycle_id (may be empty)
             pool.set_config("cycle_id", default_program.cycle_id if hasattr(default_program, "cycle_id") and default_program.cycle_id is not None else "")
-
             info_text = f"""
             <div style="font-family:Arial; font-size:16px; margin:10px;">
                 <h3 style="margin-bottom:10px;">Program {program_index} Settings</h3>
@@ -119,8 +103,6 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         logger.info("Start Cycle button pressed")
         program_index = self.ui.programComboBox.currentIndex() + 1
         current_user = pool.get("current_user")
-
-        # Query DefaultProgram for the currently selected program
         default_program = self.db.session.query(DefaultProgram).filter_by(
             username=current_user, program_number=program_index
         ).first()
@@ -136,7 +118,6 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             return
 
         try:
-            # Convert fields as needed.
             core_temp_setpoint = float(default_program.core_temp_setpoint)
             cool_down_temp = float(default_program.cool_down_temp)
             set_pressure = float(default_program.set_pressure)
@@ -144,10 +125,9 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             initial_set_cure_temp = float(default_program.initial_set_cure_temp)
             final_set_cure_temp = float(default_program.final_set_cure_temp)
 
-            # Create new cycle record using the user-provided quantity
             new_cycle = CycleData(
                 order_id=self.work_order,
-                quantity=self.quantity,  # Always use self.quantity
+                quantity=self.quantity,
                 core_temp_setpoint=core_temp_setpoint,
                 cool_down_temp=cool_down_temp,
                 set_pressure=set_pressure,
@@ -156,46 +136,75 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                 final_set_cure_temp=final_set_cure_temp
             )
             new_cycle.user = user
+
+            # Ensure cycle_id is valid. If missing, empty, or "N/A", generate a new one.
+            if not new_cycle.cycle_id or new_cycle.cycle_id.strip() in ["", "N/A"]:
+                from RaspPiReader.ui.default_program_form import DefaultProgramForm
+                new_cycle.cycle_id = DefaultProgramForm().generate_cycle_id()
+
             self.db.session.add(new_cycle)
             self.db.session.commit()
             self.cycle_record = new_cycle
 
-            # Save serial numbers
-            for sn in self.serial_numbers:
-                sn = sn.strip()
-                if sn:
-                    existing = self.db.session.query(CycleSerialNumber).filter_by(serial_number=sn).first()
-                    if existing:
-                        logger.warning(f"Serial number {sn} already exists. Skipping insertion.")
-                        continue
-                    record = CycleSerialNumber(cycle_id=new_cycle.id, serial_number=sn)
+            # Immediately update the pool config so that later modules (e.g. reporting or visualization) see the correct cycle_id.
+            pool.set_config("cycle_id", new_cycle.cycle_id)
+
+            # Handle serial numbers properly
+            valid_serials = [sn.strip() for sn in self.serial_numbers if sn.strip()]
+            
+            if valid_serials:
+                # Insert all valid serial numbers, skipping duplicates
+                for sn in valid_serials:
+                    try:
+                        # Check if the serial number already exists in the database
+                        existing_serial = self.db.session.query(CycleSerialNumber).filter_by(serial_number=sn).first()
+                        if existing_serial:
+                            logger.warning(f"Serial number {sn} already exists. Skipping insertion.")
+                            continue
+                        
+                        # Create a new CycleSerialNumber record and associate it with the current cycle
+                        record = CycleSerialNumber(cycle_id=new_cycle.id, serial_number=sn)
+                        self.db.session.add(record)
+                        logger.info(f"Added serial number {sn} to cycle {new_cycle.id}")
+                    except Exception as e:
+                        logger.error(f"Error inserting serial number {sn}: {e}")
+                        self.db.session.rollback()
+                        QtWidgets.QMessageBox.critical(
+                            self, "Database Error", f"Failed to save serial number {sn}: {str(e)}"
+                        )
+                        return  # Abort if there's an error
+            else:
+                # Generate a unique placeholder if no valid serial numbers are provided
+                timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+                placeholder = f"PLACEHOLDER_{new_cycle.id}_{timestamp}"
+                try:
+                    record = CycleSerialNumber(cycle_id=new_cycle.id, serial_number=placeholder)
                     self.db.session.add(record)
+                    logger.info(f"Using unique placeholder serial number: {placeholder}")
+                except Exception as e:
+                    logger.error(f"Error inserting placeholder serial number: {e}")
+            
             self.db.session.commit()
             logger.info(f"New cycle created: Order {self.work_order}, Program {program_index}, Quantity {self.quantity}, {len(self.serial_numbers)} serial numbers")
         except Exception as e:
             self.db.session.rollback()
-            logger.error(f"Database error creating cycle: {e}")
+            error_details = traceback.format_exc()
+            logger.error(f"Database error creating cycle: {e}\n{error_details}")
             QtWidgets.QMessageBox.critical(
-                self, "Database Error", f"Could not save cycle data: {str(e)}"
+                self, "Database Error", f"Failed to create cycle: {str(e)}"
             )
             return
 
-        # Retrieve the active StartCycleFormHandler from the pool and start the cycle.
         start_cycle_form = pool.get("start_cycle_form")
         if start_cycle_form and hasattr(start_cycle_form, "start_cycle"):
             start_cycle_form.start_cycle()
 
-        # Update the main form cycle info, and start the cycle timer now.
         main_form = pool.get("main_form")
         if main_form:
             from datetime import datetime
-            # Set the cycle start time (overwrite any previous timing)
             main_form.new_cycle_handler.cycle_start_time = datetime.now()
-            # Start the cycle timer—which should begin counting time,
-            # trigger live data reading and log the cycle (and set the cycle start register to one)
             if hasattr(main_form, "start_cycle_timer"):
                 main_form.start_cycle_timer(main_form.new_cycle_handler.cycle_start_time)
-            # Optionally, set the cycle start register to one (ensure this method exists)
             if hasattr(main_form, "set_cycle_start_register"):
                 main_form.set_cycle_start_register(1)
             if hasattr(main_form, "update_cycle_info_pannel"):

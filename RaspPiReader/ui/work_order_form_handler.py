@@ -6,6 +6,9 @@ from RaspPiReader.libs import plc_communication
 from RaspPiReader.libs.communication import dataReader
 from RaspPiReader import pool
 from PyQt5.QtWidgets import QMessageBox
+# Import database and models for work order uniqueness check
+from RaspPiReader.libs.database import Database
+from RaspPiReader.libs.models import CycleData
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +30,13 @@ class WorkOrderFormHandler(QtWidgets.QWidget):
             return
         if quantity <= 0:
             QMessageBox.warning(self, "Input Error", "Product quantity must be at least 1")
+            return
+
+        # Check uniqueness: query the database for an existing cycle with this work order
+        db = Database("sqlite:///local_database.db")
+        existing_cycle = db.session.query(CycleData).filter(CycleData.order_id == work_order).first()
+        if existing_cycle:
+            QMessageBox.warning(self, "Duplicate Work Order", "This work order already exists. Please enter a unique work order number.")
             return
 
         logger.info(f"Starting serial number entry for work order {work_order} with quantity {quantity}")

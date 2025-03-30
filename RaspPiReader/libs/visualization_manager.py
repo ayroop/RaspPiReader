@@ -7,7 +7,21 @@ from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import PlotData, ChannelConfigSettings
 from RaspPiReader.libs.plc_communication import modbus_comm
 
+# Define a custom logging filter for PLC raw data logs
+class PLCDataFilter(logging.Filter):
+    def filter(self, record):
+        # Suppress debug messages containing raw PLC values or boolean readings
+        message = record.getMessage()
+        if record.levelno == logging.DEBUG and (
+            "Raw value read from PLC for" in message or 
+            "Reading boolean from address" in message
+        ):
+            return False
+        return True
+
 logger = logging.getLogger(__name__)
+# Add the filter to suppress raw PLC value debug messages
+logger.addFilter(PLCDataFilter())
 
 def safe_int(val, default=0):
     """
@@ -61,7 +75,6 @@ class VisualizationManager:
     def instance(cls):
         """
         Singleton pattern to ensure only one visualization manager exists.
-        
         Returns:
             VisualizationManager: The singleton instance
         """
@@ -71,7 +84,7 @@ class VisualizationManager:
     
     def __init__(self):
         """Initialize the visualization manager"""
-        # Initialize PLC communication for use in read_channel_data
+        # Initialize PLC communication for use in read_channel_data        
         self.plc_comm = modbus_comm
 
         self.dashboard = None
@@ -82,6 +95,9 @@ class VisualizationManager:
         self.db = Database("sqlite:///local_database.db")
         self.cycle_id = None
         self.channel_configs = {}
+        self.last_loaded_configs = {}  # Store last loaded configurations to avoid duplicate logging
+        self.last_values = {}  # Cache for the last value of each channel
+        self.last_update_time = {}  # Timestamps of the last update per channel
         self.load_channel_configs()
         if self.dashboard is not None:
             self.dashboard.update()
@@ -91,11 +107,12 @@ class VisualizationManager:
     
     def load_channel_configs(self):
         """Load all channel configurations from the database and convert numeric fields safely"""
+        new_configs = {}
         try:
             for i in range(1, 15):  # 14 channels
                 channel = self.db.session.query(ChannelConfigSettings).filter_by(id=i).first()
                 if channel:
-                    self.channel_configs[i] = {
+                    config = {
                         'id': i,
                         'label': channel.label,
                         'address': safe_int(channel.address, 0),
@@ -112,9 +129,14 @@ class VisualizationManager:
                         'min_scale_range': safe_float(channel.min_scale_range, 0),
                         'max_scale_range': safe_float(channel.max_scale_range, 0)
                     }
-                    logger.debug(f"Loaded channel config: {self.channel_configs[i]}")
+                    new_configs[i] = config
+                    # Only log if this config is new or changed
+                    if i not in self.last_loaded_configs or self.last_loaded_configs[i] != config:
+                        logger.debug(f"Loaded channel config for CH{i}: {config}")
                 else:
                     logger.warning(f"No configuration found for CH{i}")
+            self.channel_configs = new_configs
+            self.last_loaded_configs = new_configs.copy()
         except Exception as e:
             logger.error(f"Error loading channel configurations: {e}")
     
@@ -233,6 +255,7 @@ class VisualizationManager:
         if not self.data_collection_timer.isActive():
             self.data_collection_timer.start(500)
             logger.info("Data collection started")
+            logger.info("PLC visualization data received OK!")
     
     def stop_data_collection(self):
         """Stop the data collection timer"""
@@ -245,20 +268,27 @@ class VisualizationManager:
             return
         try:
             from RaspPiReader.libs.plc_communication import read_holding_register, read_coil
+            current_time = QtCore.QTime.currentTime().msecsSinceStartOfDay() / 1000.0  # current time in seconds
+            throttle_interval = 2.0  # seconds - update at most every 2 seconds per channel
+            
             for channel_number in range(1, 15):
                 try:
                     channel_config = self.channel_configs.get(channel_number)
                     if channel_config and channel_config.get('address', 0):
+                        # Read PLC data based on channel configuration
                         address = safe_int(channel_config['address']) - 1
                         if channel_config.get('label', '').upper().startswith("LA"):
                             value = read_coil(address, 1)
                         else:
                             value = read_holding_register(address, 1)
-                        logger.debug(f"Raw value read from PLC for CH{channel_number}: {value}")
                         if value is not None:
                             if isinstance(value, list) and len(value) > 0:
                                 value = value[0]
                             numeric_value = safe_int(value)
+                            
+                            # Log raw value only if changed from last logged value (will be filtered by PLCDataFilter)
+                            if channel_number not in self.last_values or self.last_values[channel_number] != numeric_value:
+                                logger.debug(f"Raw value read from PLC for CH{channel_number}: {numeric_value}")
                             if not channel_config.get('label', '').upper().startswith("LA"):
                                 decimal_point = safe_int(channel_config.get('decimal_point', 0))
                                 if decimal_point > 0:
@@ -272,8 +302,16 @@ class VisualizationManager:
                                         numeric_value = limit_low + (numeric_value - raw_min) * (limit_high - limit_low) / (raw_max - raw_min)
                                     else:
                                         logger.debug(f"Scaling skipped for CH{channel_number} because limit_high equals limit_low")
-                            self.dashboard.update_data(channel_number, numeric_value)
-                            self.store_plot_data(f"ch{channel_number}", numeric_value)
+                            
+                            # Throttle updates: only update if value changed or if throttle_interval seconds have passed
+                            last_update = self.last_update_time.get(channel_number, 0)
+                            if (self.last_values.get(channel_number) != numeric_value) or ((current_time - last_update) >= throttle_interval):
+                                self.dashboard.update_data(channel_number, numeric_value)
+                                self.store_plot_data(f"ch{channel_number}", numeric_value)
+                                self.last_values[channel_number] = numeric_value
+                                self.last_update_time[channel_number] = current_time
+                        else:
+                            logger.warning(f"No address configured for CH{channel_number}")
                     else:
                         logger.warning(f"No address configured for CH{channel_number}")
                 except Exception as e:

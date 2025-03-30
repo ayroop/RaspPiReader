@@ -8,6 +8,9 @@ from RaspPiReader.libs.models import (
     BooleanStatus, PlotData, DefaultProgram, Alarm, CycleSerialNumber,
     ReportTemplate 
 )
+from RaspPiReader.libs.models import CycleReport
+import os 
+DB_DIR = os.path.dirname(os.path.abspath(__file__))
 
 logger = logging.getLogger(__name__)
 
@@ -389,3 +392,32 @@ class Database:
                 azure_alarm.address = alarm.address
                 azure_alarm.alarm_text = alarm.alarm_text
         azure_session.commit()
+
+    def get_cycle_report_details(self):
+        """
+        Retrieve cycle report details from the database.
+        Returns a list of dictionaries with keys: 'cycle_id', 'pdf_report_path', 'html_report_path'.
+        """
+        
+        try:
+            reports = self.session.query(CycleReport).all()
+            details = []
+            for rep in reports:
+                details.append({
+                    'cycle_id': rep.cycle_id,
+                    'pdf_report_path': rep.pdf_report_path or '',
+                    'html_report_path': rep.html_report_path or ''
+                })
+            return details
+        except Exception as e:
+            logger.error(f"Error retrieving cycle report details: {e}")
+            return []
+
+# Top-level wrapper can be defined outside the class if needed:
+def get_cycle_report_details():
+    """
+    Top-level wrapper that creates a Database instance and retrieves cycle report details.
+    """
+    database_url = f"sqlite:///{os.path.join(DB_DIR, 'plc_data.db')}"
+    db = Database(database_url)
+    return db.get_cycle_report_details()

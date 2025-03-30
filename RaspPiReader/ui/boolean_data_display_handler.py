@@ -31,12 +31,18 @@ class BooleanDataDisplayHandler(QtWidgets.QWidget):
         ]
         self.boolean_config = {}
         self.previous_values = {}  # Store previous boolean values
+        self.is_reading_active = False  # Flag to track if reading is active
         self.load_boolean_config()
-        self.update_boolean_data()
+        
+        # Initialize all values to "Waiting..."
+        for value_label in self.values:
+            value_label.setText("Waiting...")
 
+        # Create timer but don't start it yet
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self.update_boolean_data)
-        self.timer.start(1000)  # Update every 1000 ms (1 second)
+        
+        logger.info("BooleanDataDisplayHandler initialized - waiting for cycle start")
 
     def load_boolean_config(self):
         """Load Boolean address configurations from the database"""
@@ -74,8 +80,37 @@ class BooleanDataDisplayHandler(QtWidgets.QWidget):
                 self.labels[i-1].setText(f"LA {i}")
                 self.previous_values[i] = None  # Initialize previous values
 
+    def start_reading(self):
+        """Start reading boolean values from PLC"""
+        if not self.is_reading_active:
+            self.is_reading_active = True
+            self.timer.start(1000)  # Update every second
+            logger.info("Started boolean address reading")
+            
+            # Update parent title if it exists
+            if hasattr(self.parent(), "boolean_group_box"):
+                self.parent().boolean_group_box.setTitle("Boolean Data (Reading Active)")
+    
+    def stop_reading(self):
+        """Stop reading boolean values from PLC"""
+        if self.is_reading_active:
+            self.is_reading_active = False
+            self.timer.stop()
+            logger.info("Stopped boolean address reading")
+            
+            # Reset all values to "Waiting..."
+            for value_label in self.values:
+                value_label.setText("Waiting...")
+                
+            # Update parent title if it exists
+            if hasattr(self.parent(), "boolean_group_box"):
+                self.parent().boolean_group_box.setTitle("Boolean Data (Waiting for Cycle Start)")
+    
     def update_boolean_data(self):
         """Update the boolean data display only when the value changes."""
+        if not self.is_reading_active:
+            return
+            
         for i in range(6):
             config = self.boolean_config.get(i+1)
             if config:
@@ -83,12 +118,18 @@ class BooleanDataDisplayHandler(QtWidgets.QWidget):
                     value = read_boolean(config['address'])
                     if value is not None:
                         if value != self.previous_values.get(i+1):  # Compare with previous value
-                            self.values[i].setText(str(value))
+                            display_text = "1" if value else "0"
+                            self.values[i].setText(display_text)
+                            color = "green" if value else "red"
+                            self.values[i].setStyleSheet(f"color: {color};")
                             self.previous_values[i+1] = value  # Update previous value
                     else:
-                        self.values[i].setText("Error")
+                        self.values[i].setText("N/A")
+                        self.values[i].setStyleSheet("color: gray;")
                 except Exception as e:
                     logger.error(f"Error reading boolean data: {e}")
                     self.values[i].setText("Error")
+                    self.values[i].setStyleSheet("color: gray;")
             else:
                 self.values[i].setText("N/A")
+                self.values[i].setStyleSheet("color: gray;")
