@@ -824,19 +824,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
             self.actionStart.setEnabled(False)
         if hasattr(self, "actionStop"):
             self.actionStop.setEnabled(True)
-        # Start visualization with the current cycle ID
-        current_cycle_id = None
-        if hasattr(self.new_cycle_handler, "current_cycle") and self.new_cycle_handler.current_cycle:
-            current_cycle_id = self.new_cycle_handler.current_cycle.id
-        
-        # Start visualization
-        self.viz_manager.start_visualization(current_cycle_id)
-        
-        # Start boolean data reading
-        self.start_boolean_reading()
-        
-        # Additional existing code...
-        logger.info("Cycle and visualization started")
 
     def _stop(self):
         try:

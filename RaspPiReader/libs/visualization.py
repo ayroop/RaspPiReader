@@ -42,42 +42,33 @@ class LiveDataVisualization:
             self.data_buffers[key] = {'timestamps': [], 'values': []}
             
     def add_time_series_plot(self, plot_widget, parameter_name, color='#1f77b4', 
-                             line_width=2, title=None, y_label=None, x_label="Time (s)"):
-        """
-        Add a time series plot for a specific parameter.
-        
-        Args:
-            plot_widget: pyqtgraph PlotWidget to use
-            parameter_name: Name of the parameter to plot
-            color: Line color
-            line_width: Line width
-            title: Plot title
-            y_label: Y-axis label
-            x_label: X-axis label
-        """
+                             line_width=2, title=None, y_label=None, x_label="Time (s)", smooth=False):
+        # Initialize data buffer if not exist
         if parameter_name not in self.data_buffers:
             self.data_buffers[parameter_name] = {'timestamps': [], 'values': []}
-            
-        # Configure plot
+        
+        # Configure plot widget
         plot_widget.setBackground('w')
         plot_widget.showGrid(x=True, y=True, alpha=0.3)
-        plot_widget.enableAutoRange()  # enable auto-ranging for dynamic updates
-        
-        if title:
-            plot_widget.setTitle(title)
+        plot_widget.enableAutoRange()
         if y_label:
             plot_widget.setLabel('left', y_label)
         if x_label:
             plot_widget.setLabel('bottom', x_label)
         
-        # Create plot item
         pen = pg.mkPen(color=color, width=line_width)
-        plot_curve = plot_widget.plot([], [], pen=pen)
+        plot_curve = plot_widget.plot([], [], pen=pen, name=title)
         
         self.plots[parameter_name] = {
             'widget': plot_widget,
-            'curve': plot_curve
+            'curve': plot_curve,
+            'smooth': smooth
         }
+    
+    def smooth_data(self, data, window=5):
+        if len(data) >= window:
+            return np.convolve(data, np.ones(window)/window, mode='valid')
+        return data
     
     def add_gauge_visualization(self, gauge_widget, parameter_name, min_value=0, max_value=100):
         """
@@ -128,26 +119,37 @@ class LiveDataVisualization:
         """Update all plot visualizations with the latest data"""
         if not self.active:
             return
-            
-        for param_name, plot_data in self.plots.items():
+        for param_name, plot_info in self.plots.items():
             if param_name not in self.data_buffers:
                 continue
-                
-            # Get data for this parameter
             timestamps = self.data_buffers[param_name]['timestamps']
             values = self.data_buffers[param_name]['values']
-            
             if not timestamps or not values:
                 continue
-                
-            # Check plot type and update accordingly
-            if 'curve' in plot_data:  # Time series plot
-                plot_data['curve'].setData(timestamps, values)
-            elif 'type' in plot_data and plot_data['type'] == 'gauge':
-                # Update gauge with the latest value
-                if values:
-                    plot_data['widget'].setValue(values[-1])
+            # If smoothing is enabled use the moving average
+            if plot_info.get('smooth'):
+                smoothed = self.smooth_data(values)
+                # Adjust timestamps to match the smoothed data length
+                ts = timestamps[-len(smoothed):]
+                plot_info['curve'].setData(ts, smoothed)
+            else:
+                plot_info['curve'].setData(timestamps, values)
     
+    def export_chart_image(self, plot_widget, save_path):
+        """
+        Export the given plot widget as an image saved to save_path.
+        Returns True if export succeeded.
+        """
+        try:
+            # Grab the plot widget as pixmap and save to file
+            pixmap = plot_widget.grab()
+            pixmap.save(save_path)
+            return True
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error exporting chart image: {e}")
+            return False
+        
     def export_data(self, file_path: str):
         """
         Export collected data to a CSV file.

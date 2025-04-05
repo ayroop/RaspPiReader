@@ -109,7 +109,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
             return "#2ecc71"  # Green
         
     def setup_ui(self):
-        """Setup the dashboard UI components with three tabs: Plot View, Boolean Data, and Table View"""
+        """Setup the dashboard UI components with four tabs: Combined Plot, Plot View, Boolean Data, and Table View"""
         self.main_layout = QtWidgets.QVBoxLayout(self)
         
         # Title
@@ -130,20 +130,48 @@ class VisualizationDashboard(QtWidgets.QWidget):
         self.control_panel.addWidget(self.btn_pause)
         self.btn_export = QtWidgets.QPushButton("Export Data")
         self.btn_export.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_DialogSaveButton))
-        self.btn_export.clicked.connect(self.export_data)
+        self.btn_export.clicked.connect(self.handle_export)
         self.control_panel.addWidget(self.btn_export)
         self.main_layout.addLayout(self.control_panel)
         
         # Tab widget for visualization views
         self.tab_widget = QtWidgets.QTabWidget()
         
-        # Plot View tab for numeric channels
+        # Combined Plot tab for all 14 channels in one chart
+        self.combined_tab = QtWidgets.QWidget()
+        self.combined_layout = QtWidgets.QVBoxLayout(self.combined_tab)
+        self.combined_plot_widget = pg.PlotWidget()
+        self.combined_plot_widget.setBackground('w')
+        self.combined_plot_widget.showGrid(x=True, y=True, alpha=0.3)
+        self.combined_plot_widget.enableAutoRange()
+        self.combined_plot_widget.addLegend()
+        self.combined_layout.addWidget(self.combined_plot_widget)
+        # Create a separate LiveDataVisualization instance for combined view
+        self.combined_visualization = LiveDataVisualization(update_interval_ms=100)
+        # For each channel, add a curve with smoothing enabled (so the curve updates are not “jumpy” every 2 seconds)
+        for i in range(1, 15):
+            channel_name = f"ch{i}"
+            channel_config = self.channels_config.get(i, {})
+            color = channel_config.get('color', self.get_default_color(i))
+            label = channel_config.get('label', f"Channel {i}")
+            self.combined_visualization.add_time_series_plot(
+                self.combined_plot_widget,
+                channel_name,
+                color=color,
+                line_width=2,
+                title=label,
+                y_label="Value" if i == 1 else None,
+                x_label="Time (s)" if i == 1 else None,
+                smooth=True  # Enable smoothing for a better visual appearance
+            )
+        
+        # Plot View tab (existing code, create grid for individual plots)
         self.plot_tab = QtWidgets.QWidget()
         self.plot_layout = QtWidgets.QVBoxLayout(self.plot_tab)
         self.main_splitter = QtWidgets.QSplitter(QtCore.Qt.Vertical)
         self.plot_grid_widget = QtWidgets.QWidget()
         self.plot_grid_layout = QtWidgets.QGridLayout(self.plot_grid_widget)
-        self.create_visualization_grid()  # creates plots for CH1-CH14
+        self.create_visualization_grid()  # existing function to create CH1–CH14 plots
         self.channel_info_widget = QtWidgets.QWidget()
         self.channel_info_layout = QtWidgets.QVBoxLayout(self.channel_info_widget)
         self.create_channel_info_area()
@@ -152,21 +180,19 @@ class VisualizationDashboard(QtWidgets.QWidget):
         self.main_splitter.setSizes([700, 300])
         self.plot_layout.addWidget(self.main_splitter)
         
-        # New Boolean Data tab for boolean addresses
+        # Boolean Data tab (existing code)
         self.boolean_tab = QtWidgets.QWidget()
         self.boolean_layout = QtWidgets.QGridLayout(self.boolean_tab)
-        # Create plots for each Boolean address
         row, col = 0, 0
         for idx in sorted(self.boolean_config.keys()):
             config = self.boolean_config[idx]
             plot_widget = pg.PlotWidget()
             plot_widget.setBackground('w')
             plot_widget.showGrid(x=True, y=True, alpha=0.3)
-            # Enable auto range and set fixed Y-range for booleans (0 to 1)
             plot_widget.enableAutoRange()
             plot_widget.setYRange(-0.2, 1.2)
             title = f"{config['label']} (Addr {config['address']})"
-            color = "#FF0000"  # Use red for booleans (or assign per entry)
+            color = "#FF0000"
             key = f"bool{idx}"
             self.boolean_visualization.add_time_series_plot(plot_widget, key, color=color, title=title, y_label="Value")
             self.boolean_layout.addWidget(plot_widget, row, col)
@@ -175,18 +201,19 @@ class VisualizationDashboard(QtWidgets.QWidget):
                 col = 0
                 row += 1
         
-        # Table View tab (existing)
+        # Table View tab (existing code)
         self.table_tab = QtWidgets.QWidget()
         self.table_layout = QtWidgets.QVBoxLayout(self.table_tab)
         self.create_table_view()
         
-        # Add tabs to tab widget: Plot View, Boolean Data, then Table View
+        # Add tabs in desired order
+        self.tab_widget.addTab(self.combined_tab, "Combined Plot")
         self.tab_widget.addTab(self.plot_tab, "Plot View")
         self.tab_widget.addTab(self.boolean_tab, "Boolean Data")
         self.tab_widget.addTab(self.table_tab, "Table View")
         self.main_layout.addWidget(self.tab_widget)
         
-        # Status bar and cycle time update timer
+        # Status bar and timer for cycle time
         self.status_bar = QtWidgets.QStatusBar()
         self.status_bar.showMessage("Ready")
         self.main_layout.addWidget(self.status_bar)
@@ -194,7 +221,39 @@ class VisualizationDashboard(QtWidgets.QWidget):
         self.timer.timeout.connect(self.update_cycle_time)
         self.cycle_start_time = None
         self.paused = False
+
+    def handle_export(self):
+        """Export the combined plot to a PNG file and update the HTML report template."""
+        export_dir = os.path.join(os.path.dirname(__file__), "..", "reports")
+        if not os.path.exists(export_dir):
+            os.makedirs(export_dir)
+        export_path = os.path.join(export_dir, "plot_export.png")
+        if self.combined_visualization.export_chart_image(self.combined_plot_widget, export_path):
+            QtWidgets.QMessageBox.information(
+                self, "Export Success", f"Chart image exported to:\n{export_path}"
+            )
+            template_path = os.path.join(os.path.dirname(__file__), "result_template.html")
+            self.update_report_template(template_path, export_path)
+        else:
+            QtWidgets.QMessageBox.warning(self, "Export Failed", "Failed to export chart image.")
+
+    def update_report_template(self, template_path, image_path):
+        """Updates the HTML report template so that the exported image is shown.
         
+        The template should contain the marker <!-- PLOT_IMAGE_PLACEHOLDER -->.
+        """
+        try:
+            with open(template_path, "r", encoding="utf-8") as f:
+                content = f.read()
+            # Insert an <img> tag with the exported PNG image
+            img_tag = f'<img src="{image_path}" alt="PLC Combined Plot" width="100%"/>'
+            new_content = content.replace("<!-- PLOT_IMAGE_PLACEHOLDER -->", img_tag)
+            with open(template_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error updating report template: {e}")
+
     def create_visualization_grid(self):
         """Create the grid of plots for numeric channels (CH1–CH14)"""
         rows, cols = 4, 4  # 4x4 grid (2 empty spots)
@@ -303,13 +362,15 @@ class VisualizationDashboard(QtWidgets.QWidget):
         """Start numeric and Boolean visualization and cycle timer"""
         self.visualization.start_visualization()
         self.boolean_visualization.start_visualization()  # <-- Start Boolean updates
+        # NEW: start combined visualization updates
+        if hasattr(self, 'combined_visualization'):
+            self.combined_visualization.start_visualization()
         self.cycle_start_time = QtCore.QDateTime.currentDateTime()
         self.timer.start(1000)
         self.btn_pause.setText("Pause")
         self.btn_pause.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPause))
         self.paused = False
         self.status_bar.showMessage("Visualization started")
-        # Start a dedicated timer for updating Boolean data if not already running
         if not hasattr(self, "boolean_timer"):
             self.boolean_timer = QtCore.QTimer(self)
             self.boolean_timer.timeout.connect(self.update_all_boolean_data)
@@ -329,7 +390,6 @@ class VisualizationDashboard(QtWidgets.QWidget):
     def update_data(self, channel_number, value):
         """
         Update numeric channel data.
-        
         Args:
             channel_number: 1-14 for numeric channels
             value: Current numeric value
@@ -348,6 +408,9 @@ class VisualizationDashboard(QtWidgets.QWidget):
         formatted_value = f"{value:.{decimal_places}f}"
         channel_name = f"ch{channel_number}"
         self.visualization.update_data(channel_name, value)
+        # NEW: also update combined plot data
+        if hasattr(self, 'combined_visualization'):
+            self.combined_visualization.update_data(channel_name, value)
         if channel_number in self.channel_info_widgets:
             self.channel_info_widgets[channel_number]['pv'].setText(formatted_value)
         if self.tab_widget.currentIndex() == 2:
@@ -361,6 +424,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
                 self.db.session.commit()
         except Exception as e:
             print(f"Error updating channel PV in database: {e}")
+            
     
     def update_boolean_data(self, bool_index, value):
         """
@@ -531,19 +595,17 @@ class VisualizationDashboard(QtWidgets.QWidget):
         """Reset the visualization dashboard"""
         self.stop_visualization()
         self.visualization.reset_data()
+        # NEW: reset combined visualization data if available
+        if hasattr(self, 'combined_visualization'):
+            self.combined_visualization.reset_data()
         self.cycle_time_label.setText("Cycle Time: 00:00:00")
-        
-        # Reset all PV displays
         for channel_number, widgets in self.channel_info_widgets.items():
             widgets['pv'].setText("0.0")
-        
-        # Reset table view
         if self.tab_widget.currentIndex() == 1:
             for i in range(1, 15):
                 pv_item = self.data_table.item(i-1, 2)
                 if pv_item:
                     pv_item.setText("0.0")
-        
         self.status_bar.showMessage("Visualization reset")
         
     def update_channel_settings(self, channel_number, settings):
@@ -682,12 +744,19 @@ class VisualizationDashboard(QtWidgets.QWidget):
             color = channel_config.get('color', self.get_default_color(i))
             channel_name = f"ch{i}"
             
-            # Update plot color
+            # Update plot color for individual plots (existing)
             if channel_name in self.visualization.plots:
                 plot_data = self.visualization.plots.get(channel_name)
                 if plot_data and 'curve' in plot_data:
                     pen = pg.mkPen(color=color, width=2)
                     plot_data['curve'].setPen(pen)
+            
+            # Update plot color for combined plot curves
+            if hasattr(self, 'combined_visualization') and channel_name in self.combined_visualization.plots:
+                combined_plot = self.combined_visualization.plots.get(channel_name)
+                if combined_plot and 'curve' in combined_plot:
+                    combined_pen = pg.mkPen(color=color, width=2)
+                    combined_plot['curve'].setPen(combined_pen)
             
             # Update CH label color in info area
             if i in self.channel_info_widgets:
@@ -695,7 +764,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
                 if ch_label:
                     ch_label.setStyleSheet(f"color: {color};")
             
-            # Update table row
+            # Update table row if needed
             if self.tab_widget.currentIndex() == 1:
                 self.update_table_row(i)
                 

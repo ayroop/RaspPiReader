@@ -146,23 +146,21 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             self.db.session.commit()
             self.cycle_record = new_cycle
 
-            # Immediately update the pool config so that later modules (e.g. reporting or visualization) see the correct cycle_id.
+            # Immediately update the pool config so that later modules see the correct cycle_id.
             pool.set_config("cycle_id", new_cycle.cycle_id)
+            # Ensure the current cycle in pool is this CycleData record.
+            pool.set("current_cycle", new_cycle)
 
             # Handle serial numbers properly
             valid_serials = [sn.strip() for sn in self.serial_numbers if sn.strip()]
-            
             if valid_serials:
                 # Insert all valid serial numbers, skipping duplicates
                 for sn in valid_serials:
                     try:
-                        # Check if the serial number already exists in the database
                         existing_serial = self.db.session.query(CycleSerialNumber).filter_by(serial_number=sn).first()
                         if existing_serial:
                             logger.warning(f"Serial number {sn} already exists. Skipping insertion.")
                             continue
-                        
-                        # Create a new CycleSerialNumber record and associate it with the current cycle
                         record = CycleSerialNumber(cycle_id=new_cycle.id, serial_number=sn)
                         self.db.session.add(record)
                         logger.info(f"Added serial number {sn} to cycle {new_cycle.id}")
@@ -172,9 +170,8 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                         QtWidgets.QMessageBox.critical(
                             self, "Database Error", f"Failed to save serial number {sn}: {str(e)}"
                         )
-                        return  # Abort if there's an error
+                        return
             else:
-                # Generate a unique placeholder if no valid serial numbers are provided
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
                 placeholder = f"PLACEHOLDER_{new_cycle.id}_{timestamp}"
                 try:
@@ -183,7 +180,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                     logger.info(f"Using unique placeholder serial number: {placeholder}")
                 except Exception as e:
                     logger.error(f"Error inserting placeholder serial number: {e}")
-            
+
             self.db.session.commit()
             logger.info(f"New cycle created: Order {self.work_order}, Program {program_index}, Quantity {self.quantity}, {len(self.serial_numbers)} serial numbers")
         except Exception as e:
@@ -212,6 +209,20 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             logger.info("Cycle timer started after program selection.")
         else:
             logger.warning("Main form not available for finalizing cycle start.")
+
+        # Start visualization and boolean reading using the main form
+        if main_form:
+            current_cycle = pool.get("current_cycle")
+            # Ensure we have a proper CycleData record (with an 'id' attribute)
+            if not hasattr(current_cycle, "id"):
+                current_cycle = self.cycle_record
+                pool.set("current_cycle", current_cycle)
+            current_cycle_id = current_cycle.id if current_cycle is not None else None
+            main_form.viz_manager.start_visualization(current_cycle_id)
+            main_form.start_boolean_reading()
+            logger.info("Cycle and visualization started")
+        else:
+            logger.error("Main form not found in pool; cannot start visualization and boolean data reading.")
 
         QtWidgets.QMessageBox.information(self, "Success", "Cycle started successfully!")
         self.close()
