@@ -553,6 +553,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             logger.error(f"Error preparing to save settings: {str(e)}")
             self._handle_save_error(str(e))
 
+    
     def _delayed_save_and_close(self):
         """Perform the save, reload configuration and PLC communication, then finalize and close."""
         try:
@@ -560,6 +561,9 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             if not self._save_settings_simple(test_only=False):
                 self._cleanup_save_ui()
                 return
+
+            # Import pool here to ensure it is defined.
+            from RaspPiReader import pool
 
             # Immediately update pool configuration by reloading QSettings data
             pool.reload_config()
@@ -581,18 +585,62 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             # 2. If your connection manager supports reloading parameters, call its reload helper
             if hasattr(plc_communication, 'connection_manager') and plc_communication.connection_manager is not None:
                 plc_communication.connection_manager._load_connection_params()
-
+                
+            # 3. Force a connection attempt in a background thread to avoid UI freeze
+            import threading
+            from PyQt5.QtCore import QTimer
+            from PyQt5.QtWidgets import QApplication
+            def force_connect():
+                """
+                Force a full PLC connection attempt using new settings.
+                This function disconnects any current connection, then calls ensure_connection with force_reconnect=True (ignoring UI-thread limitations)
+                and finally requests the main form to update its connection status display.
+                """
+                from RaspPiReader.libs import plc_communication
+                logger = plc_communication.logger
+                try:
+                    # If there is an existing connection (client) and it supports disconnect, do so.
+                    if hasattr(plc_communication, "client") and plc_communication.client is not None:
+                        try:
+                            plc_communication.client.disconnect()
+                            logger.info("Existing PLC connection disconnected.")
+                        except Exception as disconnect_error:
+                            logger.error(f"Error during disconnect: {disconnect_error}")
+                    
+                    # Attempt to force a new connection using the updated settings.
+                    connected = plc_communication.ensure_connection(force_reconnect=True)
+                    if connected:
+                        logger.info("Forced reconnection successful; PLC is connected.")
+                    else:
+                        logger.error("Forced reconnection failed; PLC is not connected.")
+                except Exception as ex:
+                    logger.error(f"Exception in force_connect: {ex}")
+            
+                # Update the main form UI with the new connection status
+                from PyQt5.QtCore import QTimer
+                from RaspPiReader import pool
+                main_form = pool.get("main_form")
+                if main_form is not None and hasattr(main_form, "update_connection_status_display"):
+                    # Schedule the UI update on the main thread using QTimer.singleShot
+                    QTimer.singleShot(0, main_form.update_connection_status_display)
+            
+            self.statusLabel.setText("Connecting to PLC...")
+            self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
+            QApplication.processEvents()
+            threading.Thread(target=force_connect, name="ForcePLCConnect", daemon=True).start()
+                
             # Wait shortly to allow asynchronous reload to complete before finalizing the save
             complete_timer = QTimer(self)
             complete_timer.setSingleShot(True)
             complete_timer.timeout.connect(self._finalize_save_and_close)
             complete_timer.start(500)  # 0.5 second delay
-
+    
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
-            logger.error(f"Error in delayed save: {str(e)}")
+            logger.error(f"Error in delayed save: {str(e)}", exc_info=True)
             self._handle_save_error(str(e))
+
     
     def _finalize_save_and_close(self):
         """Finalize the save operation and close the dialog after ensuring all workers are stopped."""
@@ -610,6 +658,11 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                 self.status_worker.quit()
                 self.status_worker.wait()
                 self.status_worker = None
+
+            # Update status label to indicate success
+            self.statusLabel.setText("Connected")
+            self.statusLabel.setStyleSheet("color: green; font-weight: bold;")
+            QApplication.processEvents()
 
             # Log success and close the dialog
             import logging

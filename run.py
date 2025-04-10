@@ -14,6 +14,7 @@ from RaspPiReader.libs.demo_data_reader import data as demo_data
 from RaspPiReader.libs.plc_communication import initialize_plc_communication_async
 from RaspPiReader.libs.logging_config import setup_logging
 from RaspPiReader.ui.splash_screen import SplashScreen
+from RaspPiReader.libs.resource_path import resource_path
 
 def setup_application():
     """Setup application configurations and logging"""
@@ -39,7 +40,8 @@ def initialize_components(logger, args):
     logger.info(f"Demo mode: {demo_mode}")
 
     logger.info("Initializing local database...")
-    db = Database("sqlite:///local_database.db")
+    db_path = resource_path("local_database.db")
+    db = Database(f"sqlite:///{db_path}")
     db.create_tables()
 
     # Start PLC initialization in background to avoid blocking startup

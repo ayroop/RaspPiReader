@@ -23,6 +23,30 @@ from PyQt5.QtWidgets import QApplication
 # Configure logger
 logger = logging.getLogger(__name__)
 
+def _load_connection_params(config):
+    """
+    Reload and update connection parameters from the current configuration.
+    This method ensures that numeric parameters (e.g. port, timeout) are correctly cast.
+    """
+    try:
+        host = config.get("host", "127.0.0.1")
+        port = config.get("port", 502)
+        timeout = config.get("timeout", 10.0)
+
+        # Explicit type conversions:
+        host = str(host)
+        port = int(port)
+        timeout = float(timeout)
+
+        logger.debug(
+            f"Connection parameters reloaded: host={host}, port={port}, timeout={timeout}"
+        )
+        return {"host": host, "port": port, "timeout": timeout}
+    except Exception as e:
+        logger.error(f"Error loading connection parameters: {e}", exc_info=True)
+        # Fallback defaults:
+        return {"host": "127.0.0.1", "port": 502, "timeout": 10.0}
+
 # Global Modbus communication object - properly initialized
 modbus_comm = ModbusCommunication(name="PLCCommunication")
 
@@ -508,10 +532,17 @@ def is_connected():
             logger.debug(f"{modbus_comm.connection_type.upper()} connection test error: {e}")
             return False
 
-def ensure_connection():
+def ensure_connection(force_reconnect=False):
     """
     Ensure that a connection to the PLC is available.
-    This version avoids blocking the UI thread by skipping blocking reconnection attempts.
+    This version avoids blocking the UI thread by default.
+    If force_reconnect is True, blocking reconnection attempts will be executed.
+    
+    Args:
+        force_reconnect (bool): If True, attempt reconnection even on UI thread
+        
+    Returns:
+        bool: True if connected, False otherwise
     """
     global modbus_comm, direct_client
     from PyQt5.QtCore import QCoreApplication, QThread
@@ -530,13 +561,25 @@ def ensure_connection():
         except Exception as e:
             logger.error(f"Error during direct client reconnection: {e}")
 
-    # Run reconnection attempts only if not on the UI thread.
-    if QThread.currentThread() == QCoreApplication.instance().thread():
+    # Unless forced, if this is called on the UI thread, skip blocking attempts.
+    if not force_reconnect and QThread.currentThread() == QCoreApplication.instance().thread():
         logger.debug("ensure_connection() called on UI thread, skipping blocking reconnection attempts.")
         return getattr(modbus_comm, 'connected', False)
 
     # Now, use the modbus_comm with plc_lock.
     with plc_lock:
+        config = {}
+        config['host'] = pool.config("plc/host", str, "127.0.0.1")
+        config['port'] = pool.config("plc/tcp_port", int, 502)
+        config['timeout'] = pool.config("plc/timeout", float, 6.0)
+        params = _load_connection_params(config)
+        host = params['host']
+        port = params['port']
+        timeout = params['timeout']
+        logger.info(f"Ensuring connection with parameters: host={host}, port={port}, timeout={timeout}")
+        if pool.config("plc/connection_type", str, "tcp") == "tcp" and modbus_comm is not None:
+            modbus_comm.disconnect()
+            modbus_comm.configure("tcp", host=host, port=port, timeout=timeout)
         if modbus_comm is None:
             logger.error("Modbus client not initialized; reinitializing now.")
             from RaspPiReader.libs.communication import ModbusCommunication

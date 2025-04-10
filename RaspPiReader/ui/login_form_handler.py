@@ -3,6 +3,7 @@ from RaspPiReader import pool
 from .login_form import Ui_LoginForm
 from .main_form_handler import MainFormHandler
 from RaspPiReader.libs.database import Database
+from RaspPiReader.libs.resource_path import resource_path
 
 class LoginFormHandler(QtWidgets.QDialog):
     def __init__(self, parent=None):
@@ -10,7 +11,9 @@ class LoginFormHandler(QtWidgets.QDialog):
         self.ui = Ui_LoginForm()
         self.ui.setupUi(self)
         self.ui.loginPushButton.clicked.connect(self.login)
-        self.db = Database("sqlite:///local_database.db")
+        # Use resource_path to resolve the database location.
+        db_path = resource_path("local_database.db")
+        self.db = Database(f"sqlite:///{db_path}")
 
     def login(self):
         username = self.ui.usernameLineEdit.text().strip()

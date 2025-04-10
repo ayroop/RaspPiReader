@@ -1,5 +1,6 @@
 import os
 from PyQt5 import QtWidgets, QtGui, QtCore
+from RaspPiReader.libs.resource_path import resource_path
 
 
 class SplashScreen(QtWidgets.QWidget):
@@ -9,9 +10,8 @@ class SplashScreen(QtWidgets.QWidget):
         self.setWindowFlags(QtCore.Qt.FramelessWindowHint | QtCore.Qt.WindowStaysOnTopHint)
         self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
         
-        # Base directory of the current file for image resolution.
-        base_dir = os.path.dirname(os.path.abspath(__file__))
-        splash_file = os.path.join(base_dir, "Rasp-Splash.png")
+        # Use resource_path to obtain the correct path to the splash image.
+        splash_file = resource_path("RaspPiReader/ui/Rasp-Splash.png")
 
         # Load the splash image.
         pixmap = QtGui.QPixmap(splash_file)

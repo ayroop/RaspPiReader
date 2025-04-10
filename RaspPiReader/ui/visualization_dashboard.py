@@ -582,6 +582,14 @@ class VisualizationDashboard(QtWidgets.QWidget):
             self.btn_pause.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPlay))
             self.status_bar.showMessage("Visualization paused")
         self.paused = not self.paused
+
+    # NEW: Delegate method to support external calls to update_plots
+    def update_plots(self):
+        """
+        Delegate update_plots call to the LiveDataVisualization instance.
+        This method avoids the attribute error on the VisualizationDashboard object.
+        """
+        self.visualization.update_plots()
         
     def export_data(self):
         """Export visualization data to CSV"""
