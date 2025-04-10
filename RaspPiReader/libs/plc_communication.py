@@ -509,7 +509,13 @@ def is_connected():
             return False
 
 def ensure_connection():
+    """
+    Ensure that a connection to the PLC is available.
+    This version avoids blocking the UI thread by skipping blocking reconnection attempts.
+    """
     global modbus_comm, direct_client
+    from PyQt5.QtCore import QCoreApplication, QThread
+
     # If demo mode is active, skip actual PLC connection.
     if pool.config('demo', bool, False):
         logger.info("Demo mode active; skipping PLC connection check.")
@@ -524,25 +530,32 @@ def ensure_connection():
         except Exception as e:
             logger.error(f"Error during direct client reconnection: {e}")
 
+    # Run reconnection attempts only if not on the UI thread.
+    if QThread.currentThread() == QCoreApplication.instance().thread():
+        logger.debug("ensure_connection() called on UI thread, skipping blocking reconnection attempts.")
+        return getattr(modbus_comm, 'connected', False)
+
     # Now, use the modbus_comm with plc_lock.
     with plc_lock:
         if modbus_comm is None:
             logger.error("Modbus client not initialized; reinitializing now.")
             from RaspPiReader.libs.communication import ModbusCommunication
             modbus_comm = ModbusCommunication(name="PLCCommunication")
-        if not getattr(modbus_comm, 'connected', False):
-            logger.warning("Connection lost, attempting to reconnect...")
-            for attempt in range(CONNECTION_RETRY_ATTEMPTS):
-                if modbus_comm.connect():
-                    logger.info(f"Reconnection successful on attempt {attempt+1}")
-                    return True
-                else:
-                    logger.warning(f"Reconnection attempt {attempt+1} failed; resetting client pointer.")
-                    modbus_comm.client = None
-                    time.sleep(CONNECTION_RETRY_DELAY)
-            logger.error("Failed to reconnect after maximum attempts.")
-            return False
-        return True
+        # If already connected, simply return True.
+        if getattr(modbus_comm, 'connected', False):
+            return True
+        # Not connected: proceed with reconnection attempts.
+        logger.warning("Connection lost, attempting to reconnect...")
+        for attempt in range(CONNECTION_RETRY_ATTEMPTS):
+            if modbus_comm.connect():
+                logger.info(f"Reconnection successful on attempt {attempt+1}")
+                return True
+            else:
+                logger.warning(f"Reconnection attempt {attempt+1} failed; resetting client pointer.")
+                modbus_comm.client = None
+                time.sleep(CONNECTION_RETRY_DELAY)
+        logger.error("Failed to reconnect after maximum attempts.")
+        return False
 
 def validate_device_id(device_id):
     """

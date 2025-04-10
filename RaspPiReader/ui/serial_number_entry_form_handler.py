@@ -223,6 +223,15 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
             self.db.session.commit()
             logger.info("Cycle serial numbers stored successfully.")
 
+            # Reload the cycle with its joined report so that subsequent queries/template rendering can access cycle.report
+            from RaspPiReader.libs.models import CycleReport
+            updated_cycle = self.db.session.query(CycleData)\
+                .outerjoin(CycleReport, CycleData.id == CycleReport.cycle_id)\
+                .filter(CycleData.id == cycle_data.id)\
+                .one_or_none()
+            if updated_cycle:
+                self.current_cycle = updated_cycle
+
             # Transition to Program Selection
             logger.info(f"Transitioning to program selection with work order {self.work_order} and {len(final_serials)} serial numbers")
             self.program_form = ProgramSelectionFormHandler(self.work_order, final_serials, self.quantity, parent=None)

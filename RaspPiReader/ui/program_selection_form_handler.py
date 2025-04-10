@@ -153,24 +153,23 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
 
             # Handle serial numbers properly
             valid_serials = [sn.strip() for sn in self.serial_numbers if sn.strip()]
+            inserted_serials = set()  # local set to track serial numbers already added
             if valid_serials:
                 # Insert all valid serial numbers, skipping duplicates
                 for sn in valid_serials:
-                    try:
-                        existing_serial = self.db.session.query(CycleSerialNumber).filter_by(serial_number=sn).first()
-                        if existing_serial:
-                            logger.warning(f"Serial number {sn} already exists. Skipping insertion.")
-                            continue
-                        record = CycleSerialNumber(cycle_id=new_cycle.id, serial_number=sn)
-                        self.db.session.add(record)
-                        logger.info(f"Added serial number {sn} to cycle {new_cycle.id}")
-                    except Exception as e:
-                        logger.error(f"Error inserting serial number {sn}: {e}")
-                        self.db.session.rollback()
-                        QtWidgets.QMessageBox.critical(
-                            self, "Database Error", f"Failed to save serial number {sn}: {str(e)}"
-                        )
-                        return
+                    if sn in inserted_serials:
+                        logger.warning(f"Serial number {sn} already processed in this cycle. Skipping duplicate insertion.")
+                        continue
+                    # Check for duplicates within the current cycle only.
+                    existing_serial = self.db.session.query(CycleSerialNumber).filter_by(cycle_id=new_cycle.id, serial_number=sn).first()
+                    if existing_serial:
+                        logger.warning(f"Serial number {sn} already exists in cycle {new_cycle.id}. Skipping insertion.")
+                        inserted_serials.add(sn)
+                        continue
+                    record = CycleSerialNumber(cycle_id=new_cycle.id, serial_number=sn)
+                    self.db.session.add(record)
+                    inserted_serials.add(sn)
+                    logger.info(f"Added serial number {sn} to cycle {new_cycle.id}")
             else:
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
                 placeholder = f"PLACEHOLDER_{new_cycle.id}_{timestamp}"

@@ -44,6 +44,14 @@
         td.top {
             vertical-align: top;   
         }
+        .plot-container {
+            text-align: center;
+            padding: 10px;
+        }
+        .plot-image {
+            max-width: 90%;
+            height: auto;
+        }
     </style>
 </head>
 <body>
@@ -174,8 +182,18 @@
             </td>
         </tr>
         <tr>
-            <td colspan="6">
-                <img src="C:\DEV\Python\PLC Integration\src1-main\src1-main\RaspPiReader-master\RaspPiReader\ui\..\reports\plot_export.png" alt="PLC Combined Plot" width="100%">
+            <td colspan="6" class="plot-container">
+                <!-- Use multiple sources with cache-busting timestamp parameters -->
+                {% if data.plot_path %}
+                    <!-- Option 1: Use the path provided by the visualization manager with timestamp -->
+                    <img src="{{data.plot_path}}?t={{data.timestamp|default(data.cycle_id)}}" alt="PLC Combined Plot" class="plot-image">
+                {% elif data.cycle_id %}
+                    <!-- Option 2: Use the cycle-specific filename format with timestamp -->
+                    <img src="../RaspPiReader/reports/{{data.cycle_id}}_{{data.timestamp|default('')}}_plot.png" alt="PLC Combined Plot" class="plot-image">
+                {% else %}
+                    <!-- Option 3: Fallback to standard path with timestamp -->
+                    <img src="../RaspPiReader/reports/plot_export.png?t={{data.timestamp|default('')}}" alt="PLC Combined Plot" class="plot-image">
+                {% endif %}
             </td>
         </tr>
         <tr>

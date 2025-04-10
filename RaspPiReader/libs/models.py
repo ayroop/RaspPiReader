@@ -1,5 +1,5 @@
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy import Column, Integer, String, Boolean, Text, Float, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, Text, Float, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -96,15 +96,14 @@ class PlotData(Base):
     # Relationship with CycleData
     cycle = relationship("CycleData", back_populates="plot_data")
 
-# ...existing code...
 class CycleReport(Base):
     __tablename__ = 'cycle_reports'
     id = Column(Integer, primary_key=True)
     cycle_id = Column(Integer, ForeignKey('cycle_data.id'), nullable=False)
-    pdf_report_path = Column(String, nullable=True)
-    html_report_path = Column(String, nullable=True)
-    html_report_content = Column(Text, nullable=True)  
-    date_created = Column(DateTime, default=datetime.utcnow)
+    report_file_path = Column(String, nullable=True)  # Changed to nullable
+    plot_image_path = Column(String, nullable=True)   # Added plot_image_path field
+    created_at = Column(DateTime, default=datetime.utcnow)
+    # Additional fields as needed
     cycle = relationship("CycleData", back_populates="report")
 
 
@@ -132,14 +131,15 @@ class CycleData(Base):
     initial_set_cure_temp = Column(Float, nullable=True)
     final_set_cure_temp = Column(Float, nullable=True)
     plot_data = relationship("PlotData", back_populates="cycle")
-    serial_numbers = relationship("CycleSerialNumber", back_populates="cycle")
+    serial_numbers = relationship("CycleSerialNumber", back_populates="cycle", cascade="all, delete-orphan")
     report = relationship("CycleReport", back_populates="cycle", uselist=False)
 
 class CycleSerialNumber(Base):
     __tablename__ = 'cycle_serial_numbers'
     id = Column(Integer, primary_key=True)
     cycle_id = Column(Integer, ForeignKey('cycle_data.id'), nullable=False)
-    serial_number = Column(String, unique=True, nullable=False)
+    serial_number = Column(String, nullable=False)
+    __table_args__ = (UniqueConstraint('cycle_id', 'serial_number', name='_cycle_serial_uc'), )
     cycle = relationship("CycleData", back_populates="serial_numbers")
 
 class DemoData(Base):

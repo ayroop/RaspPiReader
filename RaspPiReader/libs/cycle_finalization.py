@@ -3,6 +3,7 @@ import csv
 import logging
 import pdfkit
 import webbrowser
+import shutil
 from jinja2 import Template
 from datetime import datetime
 from RaspPiReader.libs.plc_communication import write_bool_address
@@ -97,6 +98,97 @@ def upload_to_onedrive(csv_path, pdf_path):
         logger.error(f"OneDrive upload process failed: {e}")
         return False
 
+def create_unique_plot_export(cycle_id, timestamp):
+    """
+    Create a unique plot export image for this cycle using a multi-strategy approach:
+    1. Try to find a plot image named with the cycle ID first
+    2. Copy the default plot_export.png to a unique name if it exists
+    3. Use the most recent plot as a fallback
+    4. Create a basic placeholder plot if nothing else is available
+    
+    Args:
+        cycle_id: The cycle ID
+        timestamp: Timestamp string for the filename
+        
+    Returns:
+        Tuple of (plot_filename, plot_path)
+    """
+    try:
+        reports_dir = os.path.join(os.getcwd(), "reports")
+        os.makedirs(reports_dir, exist_ok=True)
+        
+        # Create a unique filename for this cycle's plot
+        plot_filename = f"{cycle_id}_{timestamp}_plot.png"
+        unique_plot_path = os.path.join(reports_dir, plot_filename)
+        
+        # Strategy 1: Look for a plot with the cycle ID in the name
+        cycle_id_str = str(cycle_id)
+        cycle_plots = list(filter(
+            lambda f: cycle_id_str in f and f.endswith('.png'),
+            os.listdir(reports_dir)
+        ))
+        
+        if cycle_plots:
+            # Use the most recent plot for this cycle
+            most_recent = sorted(cycle_plots, key=lambda f: os.path.getmtime(os.path.join(reports_dir, f)), reverse=True)[0]
+            most_recent_path = os.path.join(reports_dir, most_recent)
+            shutil.copy2(most_recent_path, unique_plot_path)
+            logger.info(f"Using existing cycle plot for cycle {cycle_id}: {most_recent} → {unique_plot_path}")
+            return (plot_filename, unique_plot_path)
+        
+        # Strategy 2: Check normal plot_export.png
+        default_plot_path = os.path.join(os.getcwd(), "RaspPiReader", "reports", "plot_export.png")
+        if os.path.exists(default_plot_path):
+            # Copy the plot export to our unique filename
+            shutil.copy2(default_plot_path, unique_plot_path)
+            logger.info(f"Created unique plot from default for cycle {cycle_id}: {unique_plot_path}")
+            return (plot_filename, unique_plot_path)
+        
+        # Strategy 3: No plot exists, check if we have an older one to use
+        logger.warning(f"No plot_export.png found at {default_plot_path}")
+        existing_plots = sorted(list(filter(
+            lambda f: f.endswith('_plot.png'),
+            os.listdir(reports_dir)
+        )), reverse=True)
+        
+        if existing_plots:
+            # Use the most recent plot as a fallback
+            recent_plot = os.path.join(reports_dir, existing_plots[0])
+            shutil.copy2(recent_plot, unique_plot_path)
+            logger.info(f"Using most recent plot as template: {recent_plot} -> {unique_plot_path}")
+            return (plot_filename, unique_plot_path)
+        
+        # Strategy 4: Create a basic placeholder plot
+        try:
+            import matplotlib.pyplot as plt
+            import numpy as np
+            
+            # Create a simple placeholder plot
+            plt.figure(figsize=(10, 6))
+            x = np.linspace(0, 10, 100)
+            y = np.sin(x)
+            plt.plot(x, y)
+            plt.title(f"Cycle {cycle_id} - Placeholder Chart")
+            plt.xlabel("Time")
+            plt.ylabel("Value")
+            plt.grid(True)
+            
+            # Save it
+            plt.savefig(unique_plot_path)
+            plt.close()
+            
+            logger.info(f"Created placeholder plot for cycle {cycle_id}: {unique_plot_path}")
+            return (plot_filename, unique_plot_path)
+            
+        except Exception as e:
+            logger.error(f"Error creating placeholder plot: {e}")
+            logger.warning(f"No plot images found to use as fallback")
+            return (None, None)
+            
+    except Exception as e:
+        logger.error(f"Error creating unique plot export: {e}")
+        return (None, None)
+
 def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_values={},
                    reports_folder="reports", template_file="RaspPiReader/ui/result_template.html"):
     """
@@ -130,6 +222,11 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     write_bool_address(stop_bool_addr, 0)
 
     db = Database("sqlite:///local_database.db")
+    from RaspPiReader.libs.models import CycleData, CycleReport
+    cycle_data = db.session.query(CycleData)\
+        .outerjoin(CycleReport, CycleData.id == CycleReport.cycle_id)\
+        .filter(CycleData.id == cycle_data.id)\
+        .one_or_none()
     # Build alarm mapping from DB or use defaults.
     alarm_mapping = {}
     db_alarms = db.session.query(Alarm).all()
@@ -176,6 +273,23 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     csv_path = os.path.join(reports_dir, csv_filename)
     pdf_path = os.path.join(reports_dir, pdf_filename)
     html_path = os.path.join(reports_dir, html_filename)
+    
+    # Create a unique plot export for this cycle
+    plot_filename, plot_path = create_unique_plot_export(cycle_number, timestamp)
+        
+    # Try to get plot path from visualization manager if available
+    try:
+        # Import here to avoid circular imports
+        from RaspPiReader.libs.visualization_manager import VisualizationManager
+        vis_manager = VisualizationManager.instance()
+        if hasattr(vis_manager, 'get_current_plot_path'):
+            vis_plot_path = vis_manager.get_current_plot_path()
+            if vis_plot_path and os.path.exists(vis_plot_path):
+                logger.info(f"Using visualization manager plot: {vis_plot_path}")
+                plot_path = vis_plot_path
+                plot_filename = os.path.basename(vis_plot_path)
+    except Exception as e:
+        logger.warning(f"Could not get plot from visualization manager: {e}")
 
     try:
         generate_csv_report(serial_numbers, csv_path, cycle_data)
@@ -193,29 +307,52 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         counts[sn] = counts.get(sn, 0) + 1
         final_serials.append(f"{sn}R" if counts[sn] > 1 else sn)
 
-    # Retrieve stored serial numbers from the DB for consistency in the template.
     try:
-        # Explicitly verify the cycle ID before proceeding
-        cycle_id = getattr(cycle_data, 'id', None)
-        if not cycle_id:
-            logger.error("Cannot retrieve serial numbers: cycle_data has no valid ID")
-            filtered_serials = [s for s in final_serials if s and not s.startswith("PLACEHOLDER_")]
-            serial_list = ", ".join(filtered_serials) if filtered_serials else "No serial numbers recorded"
-            logger.info(f"Using final_serials instead (no cycle ID): {serial_list}")
+        # First check for serial numbers directly associated with this cycle
+        stored_serials = db.session.query(CycleSerialNumber).filter(CycleSerialNumber.cycle_id == cycle_id).all()
+        db_serial_list = [s.serial_number for s in stored_serials
+                          if s.serial_number and not s.serial_number.startswith("PLACEHOLDER_")]
+        
+        # If no valid serial numbers found for this cycle, check for related cycles
+        if not db_serial_list:
+            logger.info(f"No direct serial numbers found for cycle {cycle_id}, checking related cycles")
+            # Look for related cycles with the same order_id
+            if hasattr(cycle_data, 'order_id') and cycle_data.order_id:
+                # Find other cycles with the same order_id
+                related_cycles = db.session.query(CycleData).filter(
+                    CycleData.order_id == cycle_data.order_id,
+                    CycleData.id != cycle_id  # Exclude current cycle
+                ).all()
+                
+                for related_cycle in related_cycles:
+                    related_serials = db.session.query(CycleSerialNumber).filter(
+                        CycleSerialNumber.cycle_id == related_cycle.id
+                    ).all()
+                    
+                    related_serial_list = [s.serial_number for s in related_serials
+                                          if s.serial_number and not s.serial_number.startswith("PLACEHOLDER_")]
+                    
+                    if related_serial_list:
+                        logger.info(f"Found {len(related_serial_list)} serial numbers from related cycle {related_cycle.id}")
+                        db_serial_list.extend(related_serial_list)
+        
+        if not db_serial_list:
+            serial_list = "No serial numbers recorded"
+            logger.info(f"Only placeholder serial numbers found in DB for cycle {cycle_id}")
         else:
-            stored_serials = db.session.query(CycleSerialNumber).filter(CycleSerialNumber.cycle_id == cycle_id).all()
-            db_serial_list = [s.serial_number for s in stored_serials if s.serial_number and not s.serial_number.startswith("PLACEHOLDER_")]
-            if not db_serial_list:
-                serial_list = "No serial numbers recorded"
-                logger.info(f"Only placeholder serial numbers found in DB for cycle {cycle_id}")
-            else:
-                serial_list = ", ".join(db_serial_list)
-                logger.info(f"Retrieved serial numbers from DB for cycle {cycle_id}: {serial_list}")
+            # Remove duplicates while preserving order
+            seen = set()
+            unique_serials = []
+            for sn in db_serial_list:
+                if sn not in seen:
+                    seen.add(sn)
+                    unique_serials.append(sn)
+            
+            serial_list = ", ".join(unique_serials)
+            logger.info(f"Retrieved serial numbers for cycle {cycle_id}: {serial_list}")
     except Exception as e:
-        logger.error(f"Error fetching stored cycle serial numbers: {e}")
-        filtered_serials = [s for s in final_serials if s and not s.startswith("PLACEHOLDER_")]
-        serial_list = ", ".join(filtered_serials) if filtered_serials else "No serial numbers recorded"
-        logger.info(f"Using final_serials instead (due to error): {serial_list}")
+        logger.error(f"Error fetching stored serial numbers: {e}")
+        serial_list = "No serial numbers recorded"
 
     try:
         dwell_time = float(cycle_data.dwell_time) if hasattr(cycle_data, 'dwell_time') else 0.0
@@ -239,6 +376,33 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         cycle_end_time = (cycle_data.stop_time.strftime("%H:%M:%S")
                           if hasattr(cycle_data, 'stop_time') and cycle_data.stop_time
                           else datetime.now().strftime("%H:%M:%S"))
+        
+        # Prepare plot image path for the template
+        plot_image_rel_path = None
+        if plot_path and os.path.exists(plot_path):
+            try:
+                # Get relative path for HTML - use the reports directory as base
+                reports_dir = os.path.join(os.getcwd(), "reports")
+                # Make sure we're using the correct path separator for HTML
+                plot_image_rel_path = os.path.basename(plot_path)
+                logger.info(f"Including plot image in report: {plot_image_rel_path}")
+                
+                # Create a backup copy with timestamp in the filename for reference
+                timestamp_str = datetime.now().strftime("%Y%m%d%H%M%S")
+                backup_filename = f"{cycle_number}_{timestamp_str}_plot.png"
+                backup_path = os.path.join(reports_dir, backup_filename)
+                
+                if not os.path.exists(backup_path) and os.path.exists(plot_path):
+                    try:
+                        shutil.copy2(plot_path, backup_path)
+                        logger.info(f"Created timestamped backup of plot: {backup_filename}")
+                    except Exception as copy_err:
+                        logger.warning(f"Could not create timestamped backup of plot: {copy_err}")
+            except Exception as e:
+                logger.error(f"Error preparing plot path for template: {e}")
+        # Add timestamp for cache busting
+        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+        
         report_data = {
             'data': {
                 'order_id': getattr(cycle_data, 'order_id', "N/A"),
@@ -261,7 +425,10 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
                 'alarms': alarm_info,
                 'supervisor': supervisor_username if supervisor_username else "N/A",
                 'current_date': datetime.now().strftime("%Y-%m-%d"),
-                'generation_time': datetime.now().strftime("%H:%M:%S")
+                'generation_time': datetime.now().strftime("%H:%M:%S"),
+                'timestamp': timestamp,  # Add timestamp for cache busting
+                'plot_image': plot_image_rel_path,  # Add plot image path to the template data
+                'plot_path': f"{plot_image_rel_path}?t={timestamp}" if plot_image_rel_path else None  # Add plot path with timestamp
             }
         }
         html_content = template.render(**report_data)
@@ -298,24 +465,30 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         if not cycle_id:
             logger.error("Cannot associate report: cycle_data has no valid ID")
             return (pdf_filename, csv_filename)
-            
+                
         # Check if a report already exists for this cycle
         existing_report = db.session.query(CycleReport).filter(CycleReport.cycle_id == cycle_id).first()
-        
+            
         if existing_report:
             logger.info(f"Updating existing report record for cycle {cycle_id}")
             existing_report.pdf_report_path = pdf_filename
             existing_report.html_report_path = html_filename
             existing_report.html_report_content = html_content  # Save HTML content
+            if plot_filename:
+                existing_report.plot_image_path = plot_filename  # Save plot image path
+                logger.info(f"Updated plot image path in database: {plot_filename}")
         else:
             logger.info(f"Creating new report record for cycle {cycle_id}")
             new_report = CycleReport(
                 cycle_id=cycle_id,
                 pdf_report_path=pdf_filename,
                 html_report_path=html_filename,
-                html_report_content=html_content  # Save HTML content
+                html_report_content=html_content,  # Save HTML content
+                plot_image_path=plot_filename if plot_filename else None  # Save plot image path
             )
             db.session.add(new_report)
+            if plot_filename:
+                logger.info(f"Saved plot image path in new database record: {plot_filename}")
         
         db.session.commit()
         logger.info(f"Successfully saved report paths to database for cycle {cycle_id}")
@@ -326,8 +499,8 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
             cycle_id = getattr(cycle_data, 'id', None)
             if cycle_id:
                 db.session.execute(
-                    "UPDATE cycle_reports SET pdf_report_path = :pdf, html_report_path = :html, html_report_content = :html_content WHERE cycle_id = :cycle_id",
-                    {"pdf": pdf_filename, "html": html_filename, "html_content": html_content, "cycle_id": cycle_id}
+                    "UPDATE cycle_reports SET pdf_report_path = :pdf, html_report_path = :html, html_report_content = :html_content, plot_image_path = :plot WHERE cycle_id = :cycle_id",
+                    {"pdf": pdf_filename, "html": html_filename, "html_content": html_content, "plot": plot_filename, "cycle_id": cycle_id}
                 )
                 db.session.commit()
                 logger.info(f"Successfully updated report using direct SQL for cycle {cycle_id}")
@@ -340,42 +513,82 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         logger.error(f"Error updating cycle report record: {e}")
         db.session.rollback()
 
-    # Delete existing serial numbers and insert the new ones for this cycle.
+    # Process the final serial numbers:
+    # Instead of deleting existing records, first see if there are valid serials stored.
     try:
-        # Explicitly verify the cycle ID before proceeding
-        cycle_id = getattr(cycle_data, 'id', None)
-        if not cycle_id:
-            logger.error("Cannot associate serial numbers: cycle_data has no valid ID")
-            return (pdf_filename, csv_filename)
-            
-        logger.info(f"Deleting existing serial numbers for cycle {cycle_id}")
-        db.session.query(CycleSerialNumber).filter(CycleSerialNumber.cycle_id == cycle_id).delete()
+        stored_serials = db.session.query(CycleSerialNumber).filter(CycleSerialNumber.cycle_id == cycle_id).all()
+        valid_stored = [s.serial_number for s in stored_serials if s.serial_number and not s.serial_number.startswith("PLACEHOLDER_")]
         
-        valid_serials = [sn.strip() for sn in serial_numbers if sn and sn.strip() and not sn.startswith("PLACEHOLDER_")]
-        if not valid_serials:
-            timestamp_serial = datetime.now().strftime("%Y%m%d%H%M%S")
-            placeholder = f"PLACEHOLDER_{cycle_id}_{timestamp_serial}"
-            logger.warning(f"No valid serial numbers provided; creating unique placeholder: {placeholder}")
-            record = CycleSerialNumber(cycle_id=cycle_id, serial_number=placeholder)
-            db.session.add(record)
+        # Check if we have valid stored serial numbers for this cycle
+        if valid_stored:
+            logger.info(f"Using stored serial numbers for cycle {cycle_id}: {valid_stored}")
         else:
-            logger.info(f"Adding new serial numbers for cycle {cycle_id}: {valid_serials}")
-            for sn in valid_serials:
-                try:
-                    record = CycleSerialNumber(cycle_id=cycle_id, serial_number=sn)
+            # No valid serials found directly for this cycle
+            
+            # First, check if we have serial numbers from related cycles with the same order_id
+            related_serials = []
+            if hasattr(cycle_data, 'order_id') and cycle_data.order_id:
+                # Find other cycles with the same order_id
+                related_cycles = db.session.query(CycleData).filter(
+                    CycleData.order_id == cycle_data.order_id,
+                    CycleData.id != cycle_id  # Exclude current cycle
+                ).all()
+                
+                for related_cycle in related_cycles:
+                    related_records = db.session.query(CycleSerialNumber).filter(
+                        CycleSerialNumber.cycle_id == related_cycle.id
+                    ).all()
+                    
+                    for record in related_records:
+                        if record.serial_number and not record.serial_number.startswith("PLACEHOLDER_"):
+                            related_serials.append(record.serial_number)
+                
+                if related_serials:
+                    logger.info(f"Found {len(related_serials)} serial numbers from related cycles")
+                    # Copy these serial numbers to the current cycle
+                    for sn in related_serials:
+                        # Check if this serial number already exists for this cycle
+                        existing = db.session.query(CycleSerialNumber).filter(
+                            CycleSerialNumber.cycle_id == cycle_id,
+                            CycleSerialNumber.serial_number == sn
+                        ).first()
+                        
+                        if not existing:
+                            record = CycleSerialNumber(cycle_id=cycle_id, serial_number=sn)
+                            db.session.add(record)
+                    
+                    db.session.commit()
+                    logger.info(f"Copied serial numbers from related cycles to cycle {cycle_id}")
+            
+            # If we still don't have serial numbers, use the provided list
+            if not related_serials:
+                # No valid serials found, so insert from the provided list.
+                valid_serials = [sn.strip() for sn in serial_numbers if sn and sn.strip() and not sn.startswith("PLACEHOLDER_")]
+                # Deduplicate while preserving order.
+                seen = set()
+                dedup_serials = []
+                for s in valid_serials:
+                    if s not in seen:
+                        dedup_serials.append(s)
+                        seen.add(s)
+                valid_serials = dedup_serials
+
+                if not valid_serials:
+                    timestamp_serial = datetime.now().strftime("%Y%m%d%H%M%S")
+                    placeholder = f"PLACEHOLDER_{cycle_id}_{timestamp_serial}"
+                    logger.warning(f"No valid serial numbers provided; creating unique placeholder: {placeholder}")
+                    record = CycleSerialNumber(cycle_id=cycle_id, serial_number=placeholder)
                     db.session.add(record)
-                except sqlalchemy.exc.IntegrityError as ie:
-                    logger.warning(f"Serial number {sn} already exists. Adding with suffix.")
-                    db.session.rollback()
-                    suffix = datetime.now().strftime("%H%M%S")
-                    record = CycleSerialNumber(cycle_id=cycle_id, serial_number=f"{sn}_R{suffix}")
-                    db.session.add(record)
-        
-        db.session.commit()
-        logger.info(f"Cycle serial numbers stored successfully for cycle {cycle_id}.")
+                else:
+                    logger.info(f"Adding new serial numbers for cycle {cycle_id}: {valid_serials}")
+                    for sn in valid_serials:
+                        record = CycleSerialNumber(cycle_id=cycle_id, serial_number=sn)
+                        db.session.add(record)
+                db.session.commit()
     except Exception as e:
         logger.error(f"Error saving cycle serial numbers: {e}")
         db.session.rollback()
+
     try:
         upload_to_onedrive(csv_path, pdf_path)
     except Exception as e:
