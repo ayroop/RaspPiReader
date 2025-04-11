@@ -15,10 +15,14 @@ class BooleanDataDisplayHandler(QtWidgets.QWidget):
         self.ui.setupUi(self)
         
         # Adjust grid layout spacing and margins for better UI/UX
-        self.ui.gridLayout.setHorizontalSpacing(5)
-        self.ui.gridLayout.setVerticalSpacing(5)
-        self.ui.gridLayout.setContentsMargins(5, 5, 5, 5)
+        self.ui.gridLayout.setHorizontalSpacing(2)
+        self.ui.gridLayout.setVerticalSpacing(2)
+        self.ui.gridLayout.setContentsMargins(2, 2, 2, 2)
+        # Set column stretch factors to force closer grouping
+        self.ui.gridLayout.setColumnStretch(0, 0)
+        self.ui.gridLayout.setColumnStretch(1, 0)
         
+        # Capture the original widgets
         self.labels = [
             self.ui.label_1,
             self.ui.label_2,
@@ -27,7 +31,9 @@ class BooleanDataDisplayHandler(QtWidgets.QWidget):
             self.ui.label_5,
             self.ui.label_6
         ]
-        self.values = [
+        # The auto-generated UI put the boolean status widgets as QLabels in column1.
+        # We discard those (they will be replaced by our custom indicator).
+        self.original_values = [
             self.ui.value_1,
             self.ui.value_2,
             self.ui.value_3,
@@ -35,8 +41,10 @@ class BooleanDataDisplayHandler(QtWidgets.QWidget):
             self.ui.value_5,
             self.ui.value_6
         ]
-        # Replace QLabel widgets with BooleanIndicator widgets
-        self.replaceValueWidgets()
+        
+        self.values = []  # This will hold the new BooleanIndicator instances
+        # Rebuild the grid layout for each row
+        self.rebuildRows()
         
         self.boolean_config = {}
         self.previous_values = {}  # Store previous boolean values
@@ -54,25 +62,29 @@ class BooleanDataDisplayHandler(QtWidgets.QWidget):
         
         logger.info("BooleanDataDisplayHandler initialized - waiting for cycle start")
         
-    def replaceValueWidgets(self):
+    def rebuildRows(self):
         """
-        Replace the QLabel widgets created by the auto-generated UI with our custom BooleanIndicator widgets.
-        This ensures that the values have the setState method.
+        Rebuild each row in the gridLayout so that the new BooleanIndicator widget is placed in column 0
+        and the corresponding label widget is placed in column 1.
         """
-        new_widgets = []
-        layout = self.ui.gridLayout  # assuming the layout is stored here
-        for idx, old_widget in enumerate(self.values):
-            # Get the row position from the layout; each indicator is in its own row (0..5)
-            row = idx
-            # Remove the old widget from the layout
-            layout.removeWidget(old_widget)
-            old_widget.deleteLater()
-            # Create a new BooleanIndicator instance
+        layout = self.ui.gridLayout
+        # Remove existing widgets from the layout in case they are still there
+        for widget in self.original_values + self.labels:
+            layout.removeWidget(widget)
+        # Delete the old value widgets
+        for widget in self.original_values:
+            widget.deleteLater()
+            
+        self.values = []
+        # Re-add each row in the new order.
+        # For each row index (0 through 5), add indicator in col0, then label in col1.
+        for idx in range(6):
+            # Create a new BooleanIndicator widget
             indicator = BooleanIndicator(0, parent=self)
-            # Add the new widget in the same location (row, column 1)
-            layout.addWidget(indicator, row, 1, 1, 1)
-            new_widgets.append(indicator)
-        self.values = new_widgets
+            self.values.append(indicator)
+            # Add indicator to column 0, and then add the label to column 1
+            layout.addWidget(indicator, idx, 0, 1, 1)
+            layout.addWidget(self.labels[idx], idx, 1, 1, 1)
 
     def load_boolean_config(self):
         """Load Boolean address configurations from the database"""
