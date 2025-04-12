@@ -243,7 +243,7 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         }
     else:
         for alarm in db_alarms:
-            alarm_mapping[str(alarm.address)] = alarm.alarm_text
+            alarm_mapping[str(alarm.channel)] = alarm.alarm_text
 
     active_alarms = []
     for addr, value in alarm_values.items():

@@ -139,11 +139,18 @@ class LiveDataVisualization:
         """
         Export the given plot widget as an image saved to save_path.
         Returns True if export succeeded.
+        
+        This method now uses pyqtgraph's ImageExporter to capture the complete plot,
+        including axis labels and all graphics items, to ensure a proper final report image.
         """
         try:
-            # Grab the plot widget as pixmap and save to file
-            pixmap = plot_widget.grab()
-            pixmap.save(save_path)
+            from pyqtgraph.exporters import ImageExporter
+            # Process any pending GUI events to guarantee all rendering is complete
+            QtCore.QCoreApplication.processEvents()
+            exporter = ImageExporter(plot_widget.plotItem)
+            # Optionally, set exporter parameters (for example, adjusting the resolution)
+            exporter.parameters()['width'] = plot_widget.width()
+            exporter.export(save_path)
             return True
         except Exception as e:
             import logging
