@@ -384,12 +384,12 @@ class Database:
             if not azure_alarm:
                 azure_alarm = Alarm(
                     id=alarm.id,
-                    address=alarm.address,
+                    address=alarm.channel,
                     alarm_text=alarm.alarm_text
                 )
                 azure_session.add(azure_alarm)
             else:
-                azure_alarm.address = alarm.address
+                azure_alarm.address = alarm.channel
                 azure_alarm.alarm_text = alarm.alarm_text
         azure_session.commit()
 
