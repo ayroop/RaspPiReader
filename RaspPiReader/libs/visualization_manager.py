@@ -130,7 +130,7 @@ class VisualizationManager:
                         'limit_high': safe_float(channel.limit_high, 0),
                         'decimal_point': safe_int(channel.decimal_point, 0),
                         'scale': bool(channel.scale),
-                        'axis_direction': channel.axis_direction,
+                        'axis_direction': channel.axis_direction if channel.axis_direction else 'L',  # Default to left axis
                         'color': channel.color,
                         'active': bool(channel.active),
                         'min_scale_range': safe_float(channel.min_scale_range, 0),
@@ -227,6 +227,10 @@ class VisualizationManager:
             )
             parent_window.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.dock_widget)
             self.dock_widget.hide()
+            
+            # Configure plot axes based on channel settings
+            self.configure_plot_axes()
+            
             logger.info("Visualization dashboard created")
     
     def start_visualization(self, cycle_id=None):
@@ -252,6 +256,9 @@ class VisualizationManager:
             self.dashboard.reset()  # Ensure this calls LiveDataVisualization.reset_data() to clear plot data
 
         self.load_channel_configs()
+        # Configure plot axes based on updated channel settings
+        self.configure_plot_axes()
+        
         self.dock_widget.show()
         self.dashboard.start_visualization()
         self.start_data_collection()
@@ -742,7 +749,69 @@ class VisualizationManager:
         """Reset the visualization dashboard"""
         if self.dashboard:
             self.dashboard.reset()
+            # Reconfigure plot axes after reset
+            self.configure_plot_axes()
             logger.info("Visualization reset")
+    
+    def configure_plot_axes(self):
+        """
+        Configure plot axes based on channel configuration settings.
+        Each channel can be configured to use either left or right axis
+        based on the 'axis_direction' value in its configuration.
+        """
+        if not self.dashboard or not hasattr(self.dashboard, "live_visualization"):
+            logger.warning("Cannot configure plot axes - dashboard not properly initialized")
+            return
+            
+        try:
+            live_vis = self.dashboard.live_visualization
+            
+            # Configure each channel's plot axis
+            for channel_number, config in self.channel_configs.items():
+                if not config.get('active', False):
+                    continue
+                    
+                # Get axis direction from config (default to 'L' if not specified)
+                axis_direction = config.get('axis_direction', 'L').strip().upper()
+                
+                # Configure the plot for this channel
+                if hasattr(live_vis, "configure_channel_axis"):
+                    live_vis.configure_channel_axis(channel_number, axis_direction, config.get('label', f'Channel {channel_number}'))
+                else:
+                    # Fallback if direct method not available
+                    self._configure_plot_axis_fallback(channel_number, axis_direction, config.get('label', f'Channel {channel_number}'))
+                    
+            logger.info("Plot axes configured based on channel settings")
+        except Exception as e:
+            logger.error(f"Error configuring plot axes: {e}")
+    
+    def _configure_plot_axis_fallback(self, channel_number, axis_direction, label):
+        """
+        Fallback method to configure plot axis if the visualization class
+        doesn't provide a direct method.
+        
+        Args:
+            channel_number: The channel number to configure
+            axis_direction: 'L' for left axis, 'R' for right axis
+            label: The label to display for the axis
+        """
+        try:
+            if hasattr(self.dashboard, "chart_widget"):
+                chart = self.dashboard.chart_widget
+                
+                # Implementation depends on the actual chart widget type
+                # This is a generic approach that may need customization
+                if hasattr(chart, "showAxis") and hasattr(chart, "setLabel"):
+                    if axis_direction == 'R':
+                        chart.showAxis('right')
+                        chart.setLabel('right', text=label)
+                    else:
+                        chart.showAxis('left')
+                        chart.setLabel('left', text=label)
+                        
+                logger.debug(f"Configured axis for channel {channel_number} to use {axis_direction} axis")
+        except Exception as e:
+            logger.error(f"Error in fallback axis configuration for channel {channel_number}: {e}")
 
     def _remove_existing_plots(self, file_paths):
         """Remove existing plot files to ensure fresh generation."""
