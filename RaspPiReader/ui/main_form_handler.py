@@ -680,7 +680,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             else:
                 # Fallback to database lookup if no mapping is configured
                 db = Database("sqlite:///local_database.db")
-                alarm_obj = db.session.query(Alarm).filter_by(address=str(code)).first()
+                alarm_obj = db.session.query(Alarm).filter_by(channel=str(code)).first()
                 if alarm_obj:
                     alarm_text = alarm_obj.alarm_text
                 else:

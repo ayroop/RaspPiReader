@@ -603,7 +603,7 @@ class StartCycleFormHandler(QMainWindow):
         alarms = db.session.query(Alarm).all()
         alarm_dict = {}
         for alarm in alarms:
-            alarm_dict[alarm.channel] = alarm.alarm_text
+            alarm_dict[alarm.address] = alarm.alarm_text
         return alarm_dict
 
     @staticmethod
