@@ -644,31 +644,30 @@ class MainFormHandler(QtWidgets.QMainWindow):
     def update_alarm_status(self):
         """
         Read the alarm register values using read_holding_register and map numeric codes
-        to alarm text using the configured alarm mapping for each address.
-        For each alarm address defined in the configuration, if its value is nonzero,
-        the corresponding text (from the mapping) is displayed.
-        The label is added to gridLayout_11 (as defined in mainForm.ui) in the next free row.
+        to alarm text using the AlarmMapping model.
+        
+        This method checks both:
+        1. Configured alarm addresses from pool.config
+        2. Channel-based alarms from the database
+        
+        For each alarm, if its value is nonzero, the corresponding text is displayed.
         """
-        # Retrieve alarm addresses from the configuration (default: single address 300)
-        alarm_addresses = pool.config("alarm_addresses", list, [300])
         active_alarms = []
         
+        # PART 1: Check address-based alarms from configuration
+        alarm_addresses = pool.config("alarm_addresses", list, [300])
         for addr in alarm_addresses:
             # Read the alarm value from the designated holding register
             alarm_value = plc_communication.read_holding_register(addr, 1)
-            if alarm_value is None:
+            if alarm_value is None or alarm_value == 0:
                 continue
+                
             try:
                 code = int(alarm_value)
             except (ValueError, TypeError):
                 continue
                 
-            # If the code is 0, there is no alarm for this address
-            if code == 0:
-                continue
-
             # Retrieve the mapping for this alarm address from configuration
-            # The mapping is expected to be a multi-line string where each line corresponds to a code
             mapping = pool.config("alarm_mapping", dict, {}).get(str(addr), "")
             if mapping:
                 mapping_lines = mapping.splitlines()
@@ -677,16 +676,50 @@ class MainFormHandler(QtWidgets.QMainWindow):
                     alarm_text = mapping_lines[code-1]  # Adjust index (code 1 = first line)
                 else:
                     alarm_text = f"Unknown alarm code {code}"
-            else:
-                # Fallback to database lookup if no mapping is configured
-                db = Database("sqlite:///local_database.db")
-                alarm_obj = db.session.query(Alarm).filter_by(channel=str(code)).first()
-                if alarm_obj:
-                    alarm_text = alarm_obj.alarm_text
-                else:
-                    alarm_text = f"Alarm code: {code}"
-                
-            active_alarms.append(f"Address {addr}: {alarm_text}")
+                active_alarms.append(f"Address {addr}: {alarm_text}")
+        
+        # PART 2: Check channel-based alarms from database
+        try:
+            # Get channel to address mapping from configuration
+            alarm_channels = {
+                "CH1": pool.config('alarm/CH1_address', int, 0),
+                "CH2": pool.config('alarm/CH2_address', int, 0),
+                "CH3": pool.config('alarm/CH3_address', int, 0),
+                "CH4": pool.config('alarm/CH4_address', int, 0),
+                # Add more channels as needed
+            }
+            
+            # Filter out channels with no configured address
+            alarm_channels = {ch: addr for ch, addr in alarm_channels.items() if addr > 0}
+            
+            # Check each channel
+            for channel, address in alarm_channels.items():
+                value = plc_communication.read_holding_register(address, 1)
+                if value is not None and value != 0:
+                    # Query the Alarm record by channel
+                    db = Database("sqlite:///local_database.db")
+                    alarm_obj = db.session.query(Alarm).filter_by(channel=channel).first()
+                    
+                    if alarm_obj:
+                        # Check if there are specific mappings for this value
+                        if hasattr(alarm_obj, 'mappings') and alarm_obj.mappings:
+                            # Find mapping with matching value
+                            mapping = next((m for m in alarm_obj.mappings if m.value == value), None)
+                            if mapping:
+                                display_message = mapping.message
+                            else:
+                                display_message = f"{alarm_obj.alarm_text} (Code: {value})"
+                        else:
+                            # Use default alarm text if no mappings exist
+                            display_message = alarm_obj.alarm_text
+                            
+                        active_alarms.append(f"{channel}: {display_message}")
+                    else:
+                        # No alarm configuration found, use generic message
+                        active_alarms.append(f"{channel}: Unknown alarm (Code: {value})")
+        except Exception as e:
+            logger.error(f"Error checking channel alarms: {e}")
+            active_alarms.append(f"Error checking channel alarms: {str(e)}")
 
         # Create or update the alarm label
         if self.labelAlarm is None:

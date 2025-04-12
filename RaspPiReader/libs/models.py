@@ -183,12 +183,25 @@ class DefaultProgram(Base):
     initial_set_cure_temp = Column(String, nullable=False)
     final_set_cure_temp = Column(String, nullable=False)
 
-# Updated Alarm model: Renamed the 'address' field to 'channel'
+# Updated Alarm model now represents an alarm channel
 class Alarm(Base):
     __tablename__ = 'alarms'
     id = Column(Integer, primary_key=True)
     channel = Column(String, nullable=False, unique=True)  # e.g., "CH1"
-    alarm_text = Column(String, nullable=False)
+    alarm_text = Column(String, nullable=False, default="Default alarm message")
+    # Relationship to the alarm mappings (multiple messages for different values)
+    mappings = relationship("AlarmMapping", back_populates="alarm", cascade="all, delete-orphan")
+
+# New model to store different messages for multiple alarm values
+class AlarmMapping(Base):
+    __tablename__ = 'alarm_mappings'
+    id = Column(Integer, primary_key=True)
+    alarm_id = Column(Integer, ForeignKey('alarms.id'), nullable=False)
+    value = Column(Integer, nullable=False)  # e.g., the numeric code from PLC (1 to 8)
+    message = Column(String, nullable=False)
+    # Ensure that each (alarm, value) pair is unique
+    __table_args__ = (UniqueConstraint('alarm_id', 'value', name='_alarm_value_uc'), )
+    alarm = relationship("Alarm", back_populates="mappings")
 
 class BooleanAddress(Base):
     __tablename__ = 'boolean_addresses'
