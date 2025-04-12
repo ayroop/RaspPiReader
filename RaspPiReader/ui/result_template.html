@@ -171,8 +171,14 @@
             <td colspan="6" class="center">
                 <table>
                     <tr>
-                        <td width="50%">TIME (Min) CORE TEMP &ge; {{data.core_temp_setpoint}}</td>
-                        <td width="50%">{{data.core_high_temp_time}} Min</td>
+                        <td width="50%">TIME (Min) CORE TEMP &ge; {{data.core_temp_setpoint}} °C</td>
+                        <td width="50%">
+                            {% if data.core_high_temp_time is defined and data.core_high_temp_time is not none %}
+                                {{data.core_high_temp_time}} Min
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
                     </tr>
                     <tr>
                         <td width="50%">CORE TEMP WHEN PRESSURE RELEASED</td>
