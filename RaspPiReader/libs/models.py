@@ -106,8 +106,6 @@ class CycleReport(Base):
     # Additional fields as needed
     cycle = relationship("CycleData", back_populates="report")
 
-
-
 class CycleData(Base):
     __tablename__ = 'cycle_data'
     id = Column(Integer, primary_key=True)
@@ -166,7 +164,6 @@ class BooleanStatus(Base):
     address = Column(Integer, nullable=False)
     status = Column(Boolean, nullable=False)
 
-
 class DefaultProgram(Base):
     __tablename__ = 'default_programs'
     id = Column(Integer, primary_key=True)
@@ -186,10 +183,11 @@ class DefaultProgram(Base):
     initial_set_cure_temp = Column(String, nullable=False)
     final_set_cure_temp = Column(String, nullable=False)
 
+# Updated Alarm model: Renamed the 'address' field to 'channel'
 class Alarm(Base):
     __tablename__ = 'alarms'
     id = Column(Integer, primary_key=True)
-    address = Column(String, nullable=False, unique=True)  # e.g. "100"
+    channel = Column(String, nullable=False, unique=True)  # e.g., "CH1"
     alarm_text = Column(String, nullable=False)
 
 class BooleanAddress(Base):

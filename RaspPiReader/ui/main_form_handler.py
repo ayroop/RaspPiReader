@@ -643,35 +643,67 @@ class MainFormHandler(QtWidgets.QMainWindow):
         
     def update_alarm_status(self):
         """
-        Read the alarm code from the PLC holding register, map it to an alarm text via
-        the database, and update (or create, if needed) the alarm status label.
+        Read the alarm register values using read_holding_register and map numeric codes
+        to alarm text using the configured alarm mapping for each address.
+        For each alarm address defined in the configuration, if its value is nonzero,
+        the corresponding text (from the mapping) is displayed.
         The label is added to gridLayout_11 (as defined in mainForm.ui) in the next free row.
         """
-        # Retrieve the dynamic alarm register address (default: 300)
-        alarm_reg_addr = pool.config('alarm_address', int, 300)
-        alarm_value = plc_communication.read_holding_register(alarm_reg_addr, 1)
-        db = Database("sqlite:///local_database.db")
+        # Retrieve alarm addresses from the configuration (default: single address 300)
+        alarm_addresses = pool.config("alarm_addresses", list, [300])
+        active_alarms = []
         
-        if alarm_value is not None and 0 <= alarm_value <= 8:
-            alarm_obj = db.session.query(Alarm).filter_by(address=str(alarm_value)).first()
-            if alarm_obj:
-                alarm_text = alarm_obj.alarm_text
-            else:
-                alarm_text = f"Alarm {alarm_value}"
-        else:
-            alarm_text = "No Alarm"
+        for addr in alarm_addresses:
+            # Read the alarm value from the designated holding register
+            alarm_value = plc_communication.read_holding_register(addr, 1)
+            if alarm_value is None:
+                continue
+            try:
+                code = int(alarm_value)
+            except (ValueError, TypeError):
+                continue
+                
+            # If the code is 0, there is no alarm for this address
+            if code == 0:
+                continue
 
-        # If the alarm label does not exist, create it and add it to gridLayout_11.
+            # Retrieve the mapping for this alarm address from configuration
+            # The mapping is expected to be a multi-line string where each line corresponds to a code
+            mapping = pool.config("alarm_mapping", dict, {}).get(str(addr), "")
+            if mapping:
+                mapping_lines = mapping.splitlines()
+                # Use the code as index to grab the corresponding alarm text
+                if 0 < code <= len(mapping_lines):
+                    alarm_text = mapping_lines[code-1]  # Adjust index (code 1 = first line)
+                else:
+                    alarm_text = f"Unknown alarm code {code}"
+            else:
+                # Fallback to database lookup if no mapping is configured
+                db = Database("sqlite:///local_database.db")
+                alarm_obj = db.session.query(Alarm).filter_by(address=str(code)).first()
+                if alarm_obj:
+                    alarm_text = alarm_obj.alarm_text
+                else:
+                    alarm_text = f"Alarm code: {code}"
+                
+            active_alarms.append(f"Address {addr}: {alarm_text}")
+
+        # Create or update the alarm label
         if self.labelAlarm is None:
-            self.labelAlarm = QLabel(f"Alarm: {alarm_text}", self)
+            self.labelAlarm = QLabel(self)
             self.labelAlarm.setFont(QFont("Segoe UI", 10))
             self.labelAlarm.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-            # Insert the label in gridLayout_11 at the next available row.
-            # (gridLayout_11 is defined in mainForm.ui)
+            # Insert the label in gridLayout_11 at the next available row
             row = self.gridLayout_11.rowCount()
             self.gridLayout_11.addWidget(self.labelAlarm, row, 0, 1, -1)
+        
+        # Update the label text
+        if active_alarms:
+            self.labelAlarm.setText("ALARMS:\n" + "\n".join(active_alarms))
+            self.labelAlarm.setStyleSheet("color: red; font-weight: bold;")
         else:
-            self.labelAlarm.setText(f"Alarm: {alarm_text}")
+            self.labelAlarm.setText("No Alarms")
+            self.labelAlarm.setStyleSheet("color: green;")
 
     def check_alarms(self):
         """

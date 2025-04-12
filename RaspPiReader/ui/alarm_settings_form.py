@@ -9,10 +9,11 @@ class AlarmSettingsForm(QtWidgets.QDialog):
 
     def setupUi(self):
         layout = QtWidgets.QVBoxLayout(self)
-        # Table to display alarms with 2 columns: Address and Alarm Text
+        # Table to display alarms with 2 columns: Channel and Alarm Mapping
         self.tableWidget = QtWidgets.QTableWidget(self)
         self.tableWidget.setColumnCount(2)
-        self.tableWidget.setHorizontalHeaderLabels(["Address", "Alarm Text"])
+        # Updated header label from "Address" to "Channel"
+        self.tableWidget.setHorizontalHeaderLabels(["Channel", "Alarm Mapping"])
         layout.addWidget(self.tableWidget)
 
         # Buttons to add, edit, remove alarms
