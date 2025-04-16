@@ -42,7 +42,7 @@ RaspPiReader is an advanced industrial monitoring system that integrates Program
 
 1. **Clone the Repository**:
    ```sh
-   git clone https://github.com/yourusername/RaspPiReader.git
+   git clone https://github.com/ayroop/RaspPiReader.git
    cd RaspPiReader
    ```
 
@@ -128,4 +128,4 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## Contact
 
-For support or inquiries, please contact [your-email@example.com](mailto:your-email@example.com)
+For support or inquiries, please visit [ayrop.com](https://ayrop.com)
