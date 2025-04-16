@@ -1,275 +1,131 @@
-# RaspPiReader
+# RaspPiReader - PLC Integration System
+
+## Project Overview
+
+RaspPiReader is an advanced industrial monitoring system that integrates Programmable Logic Controllers (PLCs) with Raspberry Pi devices for comprehensive data acquisition, real-time monitoring, and detailed reporting. The system is designed for industrial applications requiring robust performance, reliable data collection, and intuitive visualization.
+
+![RaspPiReader Dashboard](https://placeholder-for-dashboard-screenshot.com)
+
+## Key Features
+
+- **PLC Communication**: Direct interface with industrial PLCs via RS485 or TCP protocols
+- **Real-time Data Visualization**: Dynamic dashboard with matplotlib integration
+- **Cycle Management**: Start, monitor, and stop manufacturing cycles with proper resource handling
+- **Comprehensive Data Logging**: Automatic CSV and PDF report generation
+- **Alarm Monitoring**: Real-time detection and notification of system alarms
+- **User Authentication**: Role-based access control system
+- **Core Temperature Monitoring**: Specialized tracking for thermal processes
+- **Cloud Integration**: Automatic syncing with Azure SQL Database and OneDrive
+- **Serial Number Management**: Track manufactured items throughout production
+
+## System Architecture
+
+- **Python-based** application with PyQt UI framework
+- **Dual Database System**:
+  - Local SQLite database for immediate storage and offline operation
+  - Azure SQL Database for enterprise-level data management and remote access
+- **Modular Design** with separation of concerns for maintainability
+- **Thread-based** concurrent operations for responsive UI during data collection
+- **Resource Management** with proper cleanup mechanisms
+
+## Prerequisites
+
+1. **Python**: Version 3.6 or later ([python.org](https://www.python.org/downloads/))
+2. **Git**: For version control ([git-scm.com](https://git-scm.com/downloads/))
+3. **Azure Account**: For cloud database integration
+4. **OneDrive Account**: For cloud storage integration
+5. **ODBC Driver 17 for SQL Server**: Required for Azure SQL connectivity
 
 ## Deployment on Windows
 
-Follow these steps to deploy the RaspPiReader application on a Windows machine.
-
-### Prerequisites
-
-1. **Python**: Ensure that Python 3.6 or later is installed. You can download it from [python.org](https://www.python.org/downloads/).
-2. **Git**: Ensure that Git is installed. You can download it from [git-scm.com](https://git-scm.com/downloads/).
-3. **Azure Account**: Ensure that you have an Azure account to create an Azure SQL Database.
-4. **OneDrive Account**: Ensure that you have a OneDrive account for integration.
-
-### Steps
+### Installation
 
 1. **Clone the Repository**:
-    ```sh
-    git clone https://github.com/yourusername/RaspPiReader.git
-    cd RaspPiReader
-    ```
-
-2. **Create a Virtual Environment**:
-    ```sh
-    python -m venv venv
-    ```
-
-3. **Activate the Virtual Environment**:
-    ```sh
-    .\venv\Scripts\activate
-    ```
-
-4. **Install the Required Packages**:
-    ```sh
-    pip install -r requirements.txt
-    ```
-
-5. **Run the Application**:
-    ```sh
-    python run.py
-    ```
-
-### Setting Up Azure SQL Database
-
-1. **Create an Azure SQL Database**:
-    - Log in to the [Azure Portal](https://portal.azure.com/).
-    - Click on "Create a resource" and select "SQL Database".
-    - Fill in the required details and create a new SQL Database.
-
-2. **Configure Firewall Rules**:
-    - Go to your SQL Database resource in the Azure Portal.
-    - Click on "Set server firewall" and add your client IP address to the allowed IP addresses.
-
-3. **Get Connection String**:
-    - Go to your SQL Database resource in the Azure Portal.
-    - Click on "Connection strings" and copy the ADO.NET connection string.
-
-4. **Create Tables**:
-    - Connect to your Azure SQL Database using SQL Server Management Studio (SSMS) or any other SQL client.
-    - Run the following SQL script to create the necessary tables:
-    ```sql
-    CREATE TABLE Users (
-        id INT PRIMARY KEY IDENTITY,
-        username NVARCHAR(50) NOT NULL,
-        password NVARCHAR(50) NOT NULL,
-        settings BIT NOT NULL,
-        search BIT NOT NULL,
-        user_mgmt_page BIT NOT NULL
-    );
-
-    -- Add other necessary tables here
-    ```
-
-### Configuring OneDrive
-
-1. **Register an Application in Azure AD**:
-    - Go to the [Azure Portal](https://portal.azure.com/).
-    - Navigate to "Azure Active Directory" > "App registrations" > "New registration".
-    - Fill in the required details and register the application.
-    - Note down the "Application (client) ID" and "Directory (tenant) ID".
-
-2. **Configure API Permissions**:
-    - Go to your registered application in the Azure Portal.
-    - Navigate to "API permissions" > "Add a permission" > "Microsoft Graph" > "Delegated permissions".
-    - Add the necessary permissions for OneDrive (e.g., `Files.ReadWrite.All`).
-
-3. **Generate Client Secret**:
-    - Go to your registered application in the Azure Portal.
-    - Navigate to "Certificates & secrets" > "New client secret".
-    - Note down the generated client secret.
-
-4. **Configure OneDrive Settings in the Application**:
-    - Run the application and navigate to the OneDrive settings page.
-    - Enter the "Client ID", "Client Secret", and "Tenant ID" obtained from the Azure Portal.
-    - Test the connection and save the settings.
-
-### Configuring Database Settings
-
-1. **Run the Application**:
-    ```sh
-    python run.py
-    ```
-
-2. **Navigate to Database Settings**:
-    - In the application, go to the "Settings" menu and select "Database Settings".
-
-3. **Enter Database Connection Details**:
-    - Enter the database connection details (e.g., server name, database name, username, password).
-    - Test the connection and save the settings.
-
-### Creating Users
-
-To create an admin user in the SQLite database, follow these steps:
-
-1. **Run the Application**:
-    ```sh
-    python run.py
-    ```
-
-2. **Navigate to User Management**:
-    - In the application, go to the "Settings" menu and select "User Management".
-
-3. **Add a New User**:
-    - Click on "Add User" and fill in the required details.
-    - Ensure that the "Admin" checkbox is selected to grant admin privileges to the user.
-
-Alternatively, you can manually add an admin user to the SQLite database using a script:
-
-1. **Create a Script to Add an Admin User**:
-    ```python
-    # add_admin_user.py
-    from RaspPiReader.libs.database import Database
-    from RaspPiReader.libs.models import User
-
-    database_url = 'sqlite:///path_to_your_database.db'
-    db = Database(database_url)
-
-    admin_user = User(
-        username='admin',
-        password='admin_password',  # Ensure to hash the password
-        settings=True,
-        search=True,
-        user_mgmt_page=True
-    )
-
-    db.add_user(admin_user)
-    print("Admin user created successfully.")
-    ```
-
-2. **Run the Script**:
-    ```sh
-    python add_admin_user.py
-    ```
-### Configuring PLC Communication Settings
-
-1. **Run the Application**:
-    ```sh
-    python run.py
-    ```
-
-2. **Navigate to PLC Communication Settings**:
-    - In the application, go to the "Settings" menu and select "PLC Communication Settings".
-
-3. **Enter PLC Communication Details**:
-    - Enter the communication mode (e.g., RS485 or TCP).
-    - Enter the IP address and port for TCP communication.
-    - Enter the COM port for RS485 communication.
-    - Save the settings.
-
-### Configuring Database Settings
-1. **Create Tables**:
-    ```sh
-    python create_tables.py
-
-2. **Drop Tables**:
-    ```sh
-    python drop_tables.py
-   ``` 
-3. **Run the Application**:
-    ```sh
-    python run.py
-    ```
-
-4. **Navigate to Database Settings**:
-    - In the application, go to the "Settings" menu and select "Database Settings".
-
-5. **Enter Database Connection Details**:
-    - Enter the database connection details (e.g., server name, database name, username, password).
-    - Test the connection and save the settings.
-### Configuring OneDrive Settings
-
-1. **Run the Application**:
-    ```sh
-    python run.py
-    ```
-
-2. **Navigate to OneDrive Settings**:
-    - In the application, go to the "Settings" menu and select "OneDrive Settings".
-
-3. **Enter OneDrive Connection Details**:
-    - Enter the client ID, client secret, and tenant ID.
-    - Enter the update interval (in seconds).
-    - Test the connection and save the settings.
-
-### Configuring General Configuration Settings
-
-1. **Run the Application**:
-    ```sh
-    python run.py
-    ```
-2. **Enter General Configuration Details**:
-    - Enter the baudrate, parity, databits, stopbits, reading address, register read type, port, left V label, right V label, H label, time interval, panel time interval, accurate data time, signin status, signin email, CSV file path, CSV delimiter, GDrive update interval, core temp channel, and pressure channel.
-    - Save the settings.
-
-### Syncing to Azure Database
-
-The application will automatically sync the general configuration settings, OneDrive settings, database settings, PLC communication settings, and user data to the Azure database every 60 seconds.
-**Important:**
-- Ensure your Azure database URL is correctly constructed from your configuration in `pool.config`. This URL is used to build the connection string for the Azure SQL database.
-- Make sure that the **ODBC Driver 17 for SQL Server** is installed on your Windows machine. This driver is required for the connection string to work correctly with the Azure SQL database.
-
-### Additional Information
-
-- **Virtual Environment**: The virtual environment helps to manage dependencies and avoid conflicts with other projects.
-- **Requirements File**: The [requirements.txt](http://_vscodecontentref_/1) file contains all the necessary packages for the project.
-- **Running the Application**: The [run.py](http://_vscodecontentref_/2) script starts the application.
-
-### Building the Executable with PyInstaller
-
-To bundle the application into a single executable for easy distribution, follow these steps:
-
-1. **Ensure Dependencies are Installed:**  
-   Activate your virtual environment and install all required packages:
    ```sh
+   git clone https://github.com/yourusername/RaspPiReader.git
+   cd RaspPiReader
+   ```
+
+2. **Set Up Virtual Environment**:
+   ```sh
+   python -m venv venv
    .\venv\Scripts\activate
    pip install -r requirements.txt
    ```
 
-2. **Place the Icon and Database File:**  
-   Make sure that the icon file (`RaspPiReader-icon.ico`) and your database file (`local_database.db`) are in the project root or in the same folder as `run.py`.
-
-3. **Install PyInstaller:**  
-   If not already installed, install PyInstaller:
+3. **Initial Configuration**:
    ```sh
-   pip install pyinstaller
+   python create_tables.py
+   python run.py
    ```
 
-4. **Build the Executable:**  
-   Run the following command from the project root:
-   ```sh
-   pyinstaller --onefile --windowed --icon="RaspPiReader-icon.ico" --add-data "local_database.db;." run.py
-   ```
-   - `--onefile` bundles your application into a single executable.
-   - `--windowed` prevents a terminal window from opening when the GUI launches.
-   - `--icon="RaspPiReader-icon.ico"` sets your custom icon.
-   - `--add-data "local_database.db;."` includes the local database in the same folder as the executable.
+### Configuration
 
-5. **Test the Executable:**  
-   The generated executable will be located in the `dist` folder. Navigate to that folder and run the executable to verify that it works as expected.
-   
-### Troubleshooting
+#### PLC Communication Setup
 
-- If you encounter any issues, ensure that all dependencies are installed correctly.
-- Check the console output for any error messages and resolve them accordingly.
+1. Navigate to "Settings" > "PLC Communication Settings"
+2. Configure your connection:
+   - Select communication mode (RS485/TCP)
+   - For TCP: Enter IP address and port
+   - For RS485: Select COM port and configure baudrate, parity, databits, stopbits
+   - Set reading address and register read type
+   - Configure polling intervals
 
-### Notes
+#### Database Configuration
 
-- Make sure to replace `https://github.com/yourusername/RaspPiReader.git` with the actual URL of your repository.
-- If you need to deactivate the virtual environment, you can use the following command:
-    ```sh
-    deactivate
-    ```
+1. Navigate to "Settings" > "Database Settings"
+2. Enter your Azure SQL Database credentials:
+   - Server name
+   - Database name
+   - Username and password
+3. Test the connection before saving
 
-### License
+#### User Management
+
+1. Navigate to "Settings" > "User Management"
+2. Create users with appropriate permissions:
+   - Settings access
+   - Search capabilities
+   - User management rights
+
+#### Cloud Integration
+
+1. Navigate to "Settings" > "OneDrive Settings"
+2. Enter your Azure AD application details:
+   - Client ID
+   - Client Secret
+   - Tenant ID
+3. Set synchronization intervals
+
+## Building for Distribution
+
+Create a standalone executable using PyInstaller:
+
+```sh
+pip install pyinstaller
+pyinstaller --onefile --windowed --icon="RaspPiReader-icon.ico" --add-data "local_database.db;." run.py
+```
+
+The executable will be created in the `dist` folder.
+
+## Development Guidelines
+
+- Use feature branches for new development
+- Submit pull requests for code review
+- Follow PEP 8 style guidelines
+- Include unit tests for new functionality
+
+## Troubleshooting
+
+- **Connection Issues**: Verify firewall settings and network connectivity
+- **Database Errors**: Ensure ODBC Driver 17 is installed and Azure firewall rules are configured
+- **PLC Communication Failures**: Check physical connections and PLC settings
+- **Application Crashes**: Review log files in the application directory
+
+## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+## Contact
+
+For support or inquiries, please contact [your-email@example.com](mailto:your-email@example.com)
