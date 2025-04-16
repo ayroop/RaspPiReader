@@ -179,6 +179,7 @@ class StartCycleFormHandler(QMainWindow):
         self.reading_thread_running = False
         self.reading_thread = None
         self.running = False
+        self.cycle_started = False  # Track if a cycle is currently active
         self.data_reader_lock = Lock()
         
         # Initialize visualization integrator
@@ -344,6 +345,31 @@ class StartCycleFormHandler(QMainWindow):
 
     def close(self):
         self.running = False
+        
+        # If a cycle was started but not properly stopped, clean up resources
+        if self.cycle_started:
+            logger.info("Window closing with active cycle - performing cleanup")
+            try:
+                # Stop visualization if it's running
+                self.visualization.on_cycle_stop()
+                
+                # Stop the PLC cycle signal
+                self.stop_cycle_signal()
+                
+                # Reset UI state in main form
+                main_form = pool.get('main_form')
+                if main_form:
+                    main_form.cycle_timer.stop()
+                    main_form.actionStart.setEnabled(True)
+                    main_form.actionStop.setEnabled(False)
+                
+                # Clear cycle data from pool
+                pool.set("current_cycle", None)
+                
+                logger.info("Cycle cleanup completed during window close")
+            except Exception as e:
+                logger.error(f"Error during cycle cleanup on window close: {e}")
+        
         super().close()
 
     def load_cycle_data(self):
@@ -485,6 +511,7 @@ class StartCycleFormHandler(QMainWindow):
         from RaspPiReader.libs.plc_communication import write_coil
         write_coil(start_coil_addr, True)
         
+        # Update UI state
         main_form = pool.get('main_form')
         if main_form:
             main_form.actionStart.setEnabled(False)
@@ -492,7 +519,12 @@ class StartCycleFormHandler(QMainWindow):
             main_form.create_csv_file()
             main_form.cycle_timer.start(500)
             main_form.update_cycle_info_pannel()
+        
+        # Update internal state - this flag is crucial for proper cleanup
         self.running = True
+        self.cycle_started = True
+        
+        # Start threads
         self.hide()
         self.initiate_reader_thread()
         if self.read_thread:
@@ -503,23 +535,34 @@ class StartCycleFormHandler(QMainWindow):
         self.visualization.on_cycle_start()
         
         self.show()
+        
+        logger.info("Cycle started successfully")
 
     def stop_cycle(self):
         if not hasattr(self, "cycle_record") or self.cycle_record is None:
             QMessageBox.critical(self, "Error", "No active cycle record found.")
             return
+            
+        # Stop the PLC signal
         start_coil_addr = pool.config('cycle_start_coil_address', int, 100)
         from RaspPiReader.libs.plc_communication import write_coil
         write_coil(start_coil_addr, False)
+        
+        # Update cycle record with stop time
         self.cycle_record.stop_time = datetime.now()
+        
+        # Get serial numbers and other data
         try:
             serial_numbers = self.get_serial_numbers() or []
         except Exception as e:
             logger.error(f"Error retrieving serial numbers: {e}")
             QMessageBox.critical(self, "Error", f"Error retrieving serial numbers: {e}")
             return
+            
         supervisor_username = self.get_supervisor_override() or ""
         alarm_values = self.read_alarms() or {}
+        
+        # Finalize the cycle
         try:
             pdf_file, csv_file = finalize_cycle(
                 cycle_data=self.cycle_record,
@@ -533,16 +576,20 @@ class StartCycleFormHandler(QMainWindow):
             logger.error(f"Error finalizing cycle: {e}")
             QMessageBox.critical(self, "Report Generation Error", f"Error finalizing cycle: {e}")
             return
+            
+        # Update database
         db = Database("sqlite:///local_database.db")
         order_id = getattr(self.cycle_record, "order_id", "unknown")
         if order_id == "unknown":
             logger.warning("No order_id found in cycle record; using default 'unknown'.")
+            
         try:
             current_username = pool.get("current_user")
             user = db.session.query(User).filter_by(username=current_username).first()
             if not user:
                 QMessageBox.critical(self, "Database Error", "Logged-in user not found for finalizing cycle.")
                 return
+                
             self.cycle_record.pdf_report_path = pdf_file
             self.cycle_record.html_report_path = csv_file
             db.session.commit()
@@ -552,29 +599,49 @@ class StartCycleFormHandler(QMainWindow):
             logger.error(f"Database error updating cycle record: {e}")
             QMessageBox.critical(self, "Database Error", f"Could not update cycle record: {e}")
             return
-        QMessageBox.information(
+            
+        # Show confirmation with proper handling for cleaning up
+        result = QMessageBox.information(
             self,
             "Cycle Stopped",
-            f"Cycle stopped successfully!\nPDF Report: {pdf_file}\nCSV Report: {csv_file}"
+            f"Cycle stopped successfully!\nPDF Report: {pdf_file}\nCSV Report: {csv_file}",
+            QMessageBox.Ok
         )
+        
+        # Perform full cleanup regardless of user choice
+        logger.info("Performing post-cycle cleanup")
+        
+        # Stop data reading threads
+        self.stop_data_reading()
+        self.reading_thread_running = False
+        self.running = False
+        
+        # Close any open files
         if hasattr(self, "csv_file"):
             try:
                 self.csv_file.close()
-            except Exception:
-                pass
-        self.running = False
+            except Exception as e:
+                logger.error(f"Error closing CSV file: {e}")
         
         # Stop visualization dashboard
         self.visualization.on_cycle_stop()
         
-        self.close()
+        # Update UI state
         main_form = pool.get('main_form')
         if main_form:
             main_form.cycle_timer.stop()
             main_form.actionStart.setEnabled(True)
             main_form.actionStop.setEnabled(False)
+            
+        # Reset cycle state
+        self.cycle_started = False
         pool.set("start_cycle_form", None)
         pool.set("current_cycle", None)
+        
+        # Release any remaining resources
+        self.release_resources()
+        
+        logger.info("Cycle fully stopped and system reset for new cycle")
 
     def get_serial_numbers(self):
         try:

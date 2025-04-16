@@ -184,3 +184,34 @@ class NewCycleHandler(QtWidgets.QWidget):
         except Exception as e:
             logger.error(f"Error finalizing cycle: {e}")
             QMessageBox.critical(self, "Finalization Error", f"Error finalizing cycle: {str(e)}")
+            
+    def cancel_cycle(self):
+        """
+        Cancel the active cycle without finalizing reports.
+        This method stops boolean reading, resets timings, clears the cycle state and serial numbers,
+        making the system ready for a new cycle.
+        """
+        if self.cycle_active:
+            logger.info("Cancelling active cycle due to window close during serial number entry stage.")
+            self.reset_timing()
+            pool.set("current_cycle", None)
+            self.cycle_active = False
+
+            main_form = pool.get("main_form")
+            if main_form and hasattr(main_form, "stop_boolean_reading"):
+                main_form.stop_boolean_reading()
+                logger.info("Boolean reading stopped on cycle cancel.")
+            self.serial_numbers = []
+        else:
+            logger.info("No active cycle to cancel.")
+
+    def closeEvent(self, event):
+        """
+        Override the close event to cancel an active cycle if the window is closed
+        during the serial number entry stage.
+        """
+        if self.cycle_active:
+            # Cancel the cycle without finalizing
+            self.cancel_cycle()
+            logger.info("NewCycleHandler window closed: active cycle cancelled, state reset for new cycle.")
+        event.accept()
