@@ -51,18 +51,28 @@ class LiveDataVisualization:
         plot_widget.setBackground('w')
         plot_widget.showGrid(x=True, y=True, alpha=0.3)
         plot_widget.enableAutoRange()
+        
+        # Set axis labels if provided
         if y_label:
             plot_widget.setLabel('left', y_label)
         if x_label:
             plot_widget.setLabel('bottom', x_label)
         
+        # Configure pen with the specified color and width
         pen = pg.mkPen(color=color, width=line_width)
+        
+        # Create the plot curve with the specified title
         plot_curve = plot_widget.plot([], [], pen=pen, name=title)
         
+        # Store plot configuration
         self.plots[parameter_name] = {
             'widget': plot_widget,
             'curve': plot_curve,
-            'smooth': smooth
+            'smooth': smooth,
+            'color': color,
+            'title': title,
+            'y_label': y_label,
+            'x_label': x_label
         }
     
     def smooth_data(self, data, window=5):

@@ -1,4 +1,3 @@
-
 from PyQt5 import QtWidgets, QtCore, QtGui
 import pyqtgraph as pg
 import numpy as np
@@ -145,24 +144,35 @@ class VisualizationDashboard(QtWidgets.QWidget):
         self.combined_plot_widget.showGrid(x=True, y=True, alpha=0.3)
         self.combined_plot_widget.enableAutoRange()
         self.combined_plot_widget.addLegend()
+        
+        # Show both left and right axes for combined plot
+        self.combined_plot_widget.showAxis('left')
+        self.combined_plot_widget.showAxis('right')
+        self.combined_plot_widget.setLabel('left', 'Left Axis Values')
+        self.combined_plot_widget.setLabel('right', 'Right Axis Values')
+        self.combined_plot_widget.setLabel('bottom', 'Time (s)')
+        
         self.combined_layout.addWidget(self.combined_plot_widget)
         # Create a separate LiveDataVisualization instance for combined view
         self.combined_visualization = LiveDataVisualization(update_interval_ms=100)
-        # For each channel, add a curve with smoothing enabled (so the curve updates are not “jumpy” every 2 seconds)
+        # For each channel, add a curve with smoothing enabled
         for i in range(1, 15):
             channel_name = f"ch{i}"
             channel_config = self.channels_config.get(i, {})
             color = channel_config.get('color', self.get_default_color(i))
             label = channel_config.get('label', f"Channel {i}")
+            axis_direction = channel_config.get('axis_direction', 'normal')
+            
+            # Add the plot with proper axis configuration
             self.combined_visualization.add_time_series_plot(
                 self.combined_plot_widget,
                 channel_name,
                 color=color,
                 line_width=2,
-                title=label,
-                y_label="Value" if i == 1 else None,
-                x_label="Time (s)" if i == 1 else None,
-                smooth=True  # Enable smoothing for a better visual appearance
+                title=f"{label} ({axis_direction})",
+                y_label=None,  # We'll handle axis labels separately
+                x_label=None,  # We'll handle axis labels separately
+                smooth=True
             )
         
         # Plot View tab (existing code, create grid for individual plots)
@@ -265,10 +275,33 @@ class VisualizationDashboard(QtWidgets.QWidget):
             plot_widget = pg.PlotWidget()
             title = channel_config.get('label', f"Channel {i}")
             color = channel_config.get('color', self.get_default_color(i))
+            
             # Set Y-range from configuration if available
             plot_widget.setYRange(channel_config.get('min_scale_range', 0),
-                                  channel_config.get('max_scale_range', 100))
-            self.visualization.add_time_series_plot(plot_widget, channel_name, color=color, title=title, y_label=title)
+                                channel_config.get('max_scale_range', 100))
+            
+            # Configure axis labels based on channel configuration
+            axis_direction = channel_config.get('axis_direction', 'normal')
+            y_label = f"{title} ({axis_direction})"
+            
+            # Add the plot with proper axis configuration
+            self.visualization.add_time_series_plot(
+                plot_widget, 
+                channel_name, 
+                color=color, 
+                title=title, 
+                y_label=y_label,
+                x_label="Time (s)"
+            )
+            
+            # Show the appropriate axis based on configuration
+            if axis_direction == 'R':
+                plot_widget.showAxis('right')
+                plot_widget.hideAxis('left')
+            else:
+                plot_widget.showAxis('left')
+                plot_widget.hideAxis('right')
+            
             self.plots[channel_name] = plot_widget
             self.plot_grid_layout.addWidget(plot_widget, row, col)
     
