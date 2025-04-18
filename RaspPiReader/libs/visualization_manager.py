@@ -1,4 +1,3 @@
-
 import os
 import logging
 from datetime import datetime, timedelta
@@ -449,15 +448,25 @@ class VisualizationManager:
                 channel = point.channel
                 if channel not in channels_data:
                     channels_data[channel] = []
-                # Convert value to float and handle potential errors
                 try:
                     value = float(point.value)
                 except (ValueError, TypeError):
                     value = 0.0
                 channels_data[channel].append((point.timestamp, value))
             
-            # Create the plot
-            plt.figure(figsize=(10, 6))
+            # Create the plot with two y-axes
+            fig, ax1 = plt.subplots(figsize=(14, 10))
+            ax2 = ax1.twinx()  # Create a second y-axis
+            
+            # Set distinct colors for left and right axis labels
+            left_color = '#1f77b4'  # Blue for left axis
+            right_color = '#d62728'  # Red for right axis
+            
+            # Configure axis colors
+            ax1.yaxis.label.set_color(left_color)
+            ax1.tick_params(axis='y', colors=left_color)
+            ax2.yaxis.label.set_color(right_color)
+            ax2.tick_params(axis='y', colors=right_color)
             
             # Plot each channel with a different color
             colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', 
@@ -465,8 +474,8 @@ class VisualizationManager:
                      '#aec7e8', '#ffbb78', '#98df8a', '#ff9896']
             
             # Keep track of active lines for the legend
-            legend_lines = []
-            legend_labels = []
+            left_axis_channels = []
+            right_axis_channels = []
             
             for i, (channel, data_points) in enumerate(channels_data.items()):
                 if len(data_points) > 1:  # Only plot channels with multiple data points
@@ -477,9 +486,30 @@ class VisualizationManager:
                     timestamps = [point[0] for point in data_points]
                     values = [point[1] for point in data_points]
                     
+                    # Get channel configuration
+                    if channel.startswith('ch'):
+                        try:
+                            ch_num = int(channel[2:])
+                            if ch_num in self.channel_configs:
+                                channel_config = self.channel_configs[ch_num]
+                                axis_direction = channel_config.get('axis_direction', 'normal')
+                                display_name = channel_config.get('label', f"Channel {ch_num}")
+                                color = channel_config.get('color', colors[i % len(colors)])
+                            else:
+                                axis_direction = 'normal'
+                                display_name = f"Channel {ch_num}"
+                                color = colors[i % len(colors)]
+                        except (ValueError, KeyError):
+                            axis_direction = 'normal'
+                            display_name = channel
+                            color = colors[i % len(colors)]
+                    else:
+                        axis_direction = 'normal'
+                        display_name = channel
+                        color = colors[i % len(colors)]
+                    
                     # Smooth the values to prevent jagged lines
                     if len(values) > 3:
-                        # Apply simple moving average for smoothing
                         window_size = min(5, len(values) // 2)
                         if window_size >= 2:
                             smoothed_values = []
@@ -489,72 +519,91 @@ class VisualizationManager:
                                 smoothed_values.append(sum(values[start:end]) / (end - start))
                             values = smoothed_values
                     
-                    # Get color for this channel from config if available
-                    color_idx = i % len(colors)
-                    if channel.startswith('ch'):
-                        try:
-                            ch_num = int(channel[2:])
-                            if ch_num in self.channel_configs and self.channel_configs[ch_num].get('color'):
-                                channel_color = self.channel_configs[ch_num]['color']
-                            else:
-                                channel_color = colors[color_idx]
-                        except (ValueError, KeyError):
-                            channel_color = colors[color_idx]
+                    # Plot on appropriate axis with enhanced visual distinction
+                    if axis_direction == 'R':
+                        line, = ax2.plot(timestamps, values, 
+                                color=color,
+                                label=f"{display_name} (Right Axis)",
+                                linewidth=2.5,
+                                marker='o',
+                                markersize=4,
+                                linestyle='-',
+                                alpha=0.85)
+                        right_axis_channels.append((line, display_name))
                     else:
-                        channel_color = colors[color_idx]
-                    
-                    # Get channel display name
-                    if channel.startswith('ch'):
-                        try:
-                            ch_num = int(channel[2:])
-                            if ch_num in self.channel_configs and self.channel_configs[ch_num].get('label'):
-                                display_name = self.channel_configs[ch_num]['label']
-                            else:
-                                display_name = f"Channel {channel[2:]}"
-                        except (ValueError, KeyError):
-                            display_name = channel
-                    else:
-                        display_name = channel
-                    
-                    # Plot this channel with enhanced line quality
-                    line, = plt.plot(timestamps, values, 
-                            color=channel_color,
-                            label=display_name,
-                            linewidth=2,
-                            marker='o',
-                            markersize=3,
-                            linestyle='-',
-                            alpha=0.85)
-                    
-                    legend_lines.append(line)
-                    legend_labels.append(display_name)
+                        line, = ax1.plot(timestamps, values, 
+                                color=color,
+                                label=f"{display_name} (Left Axis)",
+                                linewidth=2.5,
+                                marker='o',
+                                markersize=4,
+                                linestyle='-',
+                                alpha=0.85)
+                        left_axis_channels.append((line, display_name))
             
-            # If we have plotted anything, add grid, labels, etc.
-            if legend_lines:
-                plt.title(f"Cycle {self.cycle_id} - Process Data")
-                plt.xlabel("Time")
-                plt.ylabel("Value")
-                plt.grid(True, linestyle='--', alpha=0.7)
-                plt.legend(legend_lines, legend_labels, loc='best')
-                plt.gcf().autofmt_xdate()
-                
-                # Add cycle ID and timestamp to the plot
-                plt.figtext(0.02, 0.02, f"Cycle ID: {self.cycle_id}", fontsize=8)
-                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                plt.figtext(0.98, 0.02, f"Generated: {current_time}", fontsize=8, horizontalalignment='right')
-                
-                # Save to all paths with improved quality
-                plt.savefig(unique_path, dpi=150, bbox_inches='tight')
-                plt.savefig(standard_path, dpi=150, bbox_inches='tight')
-                plt.savefig(main_path, dpi=150, bbox_inches='tight')
-                plt.close()
-                
-                logger.info(f"Successfully generated plot from database for cycle {self.cycle_id}")
-                return True
-            else:
-                logger.warning("No channels with sufficient data points to plot")
-                return False
+            # Configure axes with enhanced labels
+            ax1.set_xlabel('Time', fontsize=12, fontweight='bold')
+            ax1.set_ylabel('Left Axis Values', fontsize=12, fontweight='bold', color=left_color)
+            ax2.set_ylabel('Right Axis Values', fontsize=12, fontweight='bold', color=right_color)
             
+            # Add grid with enhanced visibility
+            ax1.grid(True, linestyle='--', alpha=0.5)
+            
+            # Create separate legends for left and right axis channels
+            if left_axis_channels or right_axis_channels:
+                # Create legend entries for both axes
+                legend_entries = []
+                legend_labels = []
+                
+                # Add left axis channels first
+                if left_axis_channels:
+                    legend_entries.extend([entry[0] for entry in left_axis_channels])
+                    legend_labels.extend([f"{entry[1]} (Left Axis)" for entry in left_axis_channels])
+                
+                # Add right axis channels
+                if right_axis_channels:
+                    legend_entries.extend([entry[0] for entry in right_axis_channels])
+                    legend_labels.extend([f"{entry[1]} (Right Axis)" for entry in right_axis_channels])
+                
+                # Create legend with enhanced formatting
+                legend = plt.legend(legend_entries, legend_labels, 
+                                  loc='upper left',
+                                  bbox_to_anchor=(1.02, 1),
+                                  borderaxespad=0.,
+                                  frameon=True,
+                                  fontsize=10)
+                legend.get_frame().set_facecolor('#f9f9f9')
+                legend.get_frame().set_alpha(0.8)
+            
+            # Add title with cycle information
+            plt.title(f"Cycle {self.cycle_id} - Process Data\nChannel Axis Configuration", 
+                     fontsize=14, fontweight='bold', pad=20)
+            
+            # Add cycle ID and timestamp to the plot
+            plt.figtext(0.02, 0.02, f"Cycle ID: {self.cycle_id}", fontsize=10, fontweight='bold')
+            current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            plt.figtext(0.98, 0.02, f"Generated: {current_time}", 
+                       fontsize=10, fontweight='bold', horizontalalignment='right')
+            
+            # Add axis information box
+            axis_info = "Axis Configuration:\n" + \
+                       "• Left Axis (Blue): " + ", ".join([entry[1] for entry in left_axis_channels]) + "\n" + \
+                       "• Right Axis (Red): " + ", ".join([entry[1] for entry in right_axis_channels])
+            plt.figtext(0.02, 0.95, axis_info, 
+                       fontsize=10, fontweight='bold',
+                       bbox=dict(facecolor='#f9f9f9', alpha=0.8, edgecolor='none', pad=5))
+            
+            # Adjust layout to prevent label cutoff
+            plt.tight_layout()
+            
+            # Save to all paths with improved quality
+            plt.savefig(unique_path, dpi=150, bbox_inches='tight')
+            plt.savefig(standard_path, dpi=150, bbox_inches='tight')
+            plt.savefig(main_path, dpi=150, bbox_inches='tight')
+            plt.close()
+            
+            logger.info(f"Successfully generated plot from database for cycle {self.cycle_id}")
+            return True
         except Exception as e:
             logger.error(f"Error generating plot from data: {e}")
             import traceback
