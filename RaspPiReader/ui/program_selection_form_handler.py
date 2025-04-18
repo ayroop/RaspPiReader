@@ -32,7 +32,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         if hasattr(self.ui, "cancelButton"):
             self.ui.cancelButton.setText("Cancel")
         self.ui.startCycleButton.clicked.connect(self.start_cycle)
-        self.ui.cancelButton.clicked.connect(self.close)
+        self.ui.cancelButton.clicked.connect(self.on_cancel)
         self.ui.programComboBox.currentIndexChanged.connect(self.update_program_info)
         self.update_program_info(self.ui.programComboBox.currentIndex())
     
@@ -224,4 +224,20 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             logger.error("Main form not found in pool; cannot start visualization and boolean data reading.")
 
         QtWidgets.QMessageBox.information(self, "Success", "Cycle started successfully!")
+        self.close()
+
+    def on_cancel(self):
+        """Handle form cancellation"""
+        logger.info("Program selection form cancelled")
+        
+        # Reset menu items in main form
+        main_form = pool.get('main_form')
+        if main_form:
+            main_form.actionStart.setEnabled(True)
+            main_form.actionStop.setEnabled(False)
+        
+        # Clear any cycle data that might have been set
+        pool.set("current_cycle", None)
+        
+        # Close the form
         self.close()

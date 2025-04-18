@@ -369,6 +369,12 @@ class StartCycleFormHandler(QMainWindow):
                 logger.info("Cycle cleanup completed during window close")
             except Exception as e:
                 logger.error(f"Error during cycle cleanup on window close: {e}")
+        else:
+            # If cycle wasn't started (green button not clicked), just reset the menu items
+            main_form = pool.get('main_form')
+            if main_form:
+                main_form.actionStart.setEnabled(True)
+                main_form.actionStop.setEnabled(False)
         
         super().close()
 
@@ -501,28 +507,32 @@ class StartCycleFormHandler(QMainWindow):
             logger.error("Failed to send cycle stop signal to PLC.")
 
     def start_cycle(self):
+        """
+        Prepare for cycle start but don't actually start it yet.
+        The actual cycle start will be triggered by the green button in the default program selection.
+        """
+        logger.info("Preparing for cycle start")
         self.cycle_start_time = datetime.now()
         self.save_cycle_data()  # Stores the cycle data in pool as "current_cycle"
         self.cycle_record = pool.get("current_cycle")
         pool.set("start_cycle_form", self)
-        self.start_cycle_signal()
-        # Write to the start cycle coil so the PLC knows the cycle has started.
-        start_coil_addr = pool.config('cycle_start_coil_address', int, 100)
-        from RaspPiReader.libs.plc_communication import write_coil
-        write_coil(start_coil_addr, True)
         
-        # Update UI state
+        # Update UI state - don't disable Action>Start or enable Action>Stop yet
         main_form = pool.get('main_form')
         if main_form:
-            main_form.actionStart.setEnabled(False)
-            main_form.actionStop.setEnabled(True)
             main_form.create_csv_file()
             main_form.cycle_timer.start(500)
             main_form.update_cycle_info_pannel()
         
-        # Update internal state - this flag is crucial for proper cleanup
+        # Update internal state
         self.running = True
-        self.cycle_started = True
+        self.cycle_started = False  # Set to False since cycle hasn't actually started yet
+        
+        # Initialize visualization
+        if not self.visualization:
+            main_form = pool.get('main_form')
+            self.visualization = VisualizationIntegrator(main_form if main_form else self)
+            self.visualization.setup_visualization()
         
         # Start threads
         self.hide()
@@ -531,12 +541,9 @@ class StartCycleFormHandler(QMainWindow):
             self.read_thread.start()
         self.initiate_onedrive_update_thread()
         
-        # Start visualization dashboard
-        self.visualization.on_cycle_start()
-        
         self.show()
         
-        logger.info("Cycle started successfully")
+        logger.info("Cycle preparation completed - waiting for green button click")
 
     def stop_cycle(self):
         if not hasattr(self, "cycle_record") or self.cycle_record is None:
@@ -822,22 +829,55 @@ class StartCycleFormHandler(QMainWindow):
             except Exception:
                 print('Unable to stop data reader')
 
-        def _start(self):
-            if not plc_communication.is_connected():
-                success = plc_communication.initialize_plc_communication()
-                if not success:
-                    QMessageBox.critical(self, "Connection Error",
-                                        "Failed to connect to PLC. Please check your connection settings.")
-                    return
-            dataReader.start()
-            main_form = pool.get('main_form')
-            if main_form is not None:
-                main_form.update_connection_status_display()
-            else:
-                import logging
-                logging.getLogger(__name__).error("Main form is not available; cannot update connection status.")
-            if not hasattr(self, "timer"):
-                from PyQt5.QtCore import QTimer
-                self.timer = QTimer(self)
-            self.timer.start(1000)
-            self.running = True
+    def onGreenStartButtonClicked(self):
+        """
+        Handler for the green Start Cycle button in the default program selection step.
+        This is the key method that triggers the actual cycle start.
+        """
+        logger.info("Green Start Cycle button clicked - starting cycle")
+        
+        # Get the start cycle form
+        start_cycle_form = pool.get("start_cycle_form")
+        if not start_cycle_form:
+            logger.error("No start cycle form found in pool")
+            QMessageBox.critical(self, "Error", "Cycle start form not found. Please try again.")
+            return
+            
+        # Start the actual cycle
+        start_cycle_form.cycle_started = True
+        start_cycle_form.start_cycle_signal()
+        
+        # Write to the start cycle coil so the PLC knows the cycle has started
+        start_coil_addr = pool.config('cycle_start_coil_address', int, 100)
+        from RaspPiReader.libs.plc_communication import write_coil
+        write_coil(start_coil_addr, True)
+        
+        # Start visualization
+        if hasattr(start_cycle_form, 'visualization'):
+            start_cycle_form.visualization.on_cycle_start()
+            logger.info("Visualization started")
+        
+        # Start live data updates
+        main_form = pool.get('main_form')
+        if main_form:
+            if hasattr(main_form, 'live_update_timer'):
+                main_form.live_update_timer.start(1000)  # Update every second
+            
+            # Start boolean data reading
+            if hasattr(main_form, 'start_boolean_reading'):
+                main_form.start_boolean_reading()
+            
+            # Start cycle timer
+            if hasattr(main_form, 'start_cycle_timer'):
+                main_form.start_cycle_timer(datetime.now())
+            
+            # Now disable Action>Start and enable Action>Stop since cycle has actually started
+            main_form.actionStart.setEnabled(False)
+            main_form.actionStop.setEnabled(True)
+        
+        # Update UI to indicate that cycle is active
+        if hasattr(self.parent(), "boolean_group_box"):
+            self.parent().boolean_group_box.setTitle("Boolean Data (Reading Active)")
+        
+        QMessageBox.information(self, "Cycle Started", 
+            "Cycle started successfully. Live data monitoring is now active.")

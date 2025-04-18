@@ -27,7 +27,7 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
         self.ui.importExcelButton.clicked.connect(self.import_from_excel)
         self.ui.searchButton.clicked.connect(self.search_serial)
         self.ui.nextButton.clicked.connect(self.next)
-        self.ui.cancelButton.clicked.connect(self.close)
+        self.ui.cancelButton.clicked.connect(self.on_cancel)
         self.db = Database("sqlite:///local_database.db")
         
         # Set placeholder text for search line edit
@@ -263,6 +263,21 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
             logger.error(f"Authentication error: {e}")
             return False
 
+    def on_cancel(self):
+        """Handle form cancellation"""
+        logger.info("Serial number entry form cancelled")
+        
+        # Reset menu items in main form
+        main_form = pool.get('main_form')
+        if main_form:
+            main_form.actionStart.setEnabled(True)
+            main_form.actionStop.setEnabled(False)
+        
+        # Clear any cycle data that might have been set
+        pool.set("current_cycle", None)
+        
+        # Close the form
+        self.close()
 
 class SerialNumberSearchFormHandler(QtWidgets.QWidget):
     def __init__(self, parent=None):

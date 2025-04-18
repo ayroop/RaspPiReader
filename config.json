@@ -1,0 +1,92 @@
+{
+    "AddrLabel": [
+        "Temp-1",
+        "Temp-2",
+        "Temp-3",
+        "Temp-4",
+        "Temp-5",
+        "Temp-6",
+        "Temp-7",
+        "Temp-8"
+    ],
+    "PV": [
+        4096,
+        4096,
+        4096,
+        4096,
+        4096,
+        4096,
+        4096,
+        4096
+    ],
+    "SV": [
+        1280,
+        1280,
+        1280,
+        1280,
+        1280,
+        1280,
+        1280,
+        1280
+    ],
+    "SetPoint": [
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120,
+        120
+    ],
+    "LowLimit": [
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20,
+        20
+    ],
+    "HighLimit": [
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200,
+        200
+    ],
+    "DecPoint": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+    ],
+    "Scale": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+    ],
+    "YLabel": "Temperature",
+    "XMax": 10,
+    "YMax": 100,
+    "ScaleRange": 1000,
+    "SampleTime": 5.0,
+    "Baudrate": 9600,
+    "Parity": "N",
+    "DataBits": 8,
+    "StopBits": 1,
+    "ReadingAddr": 0
+}

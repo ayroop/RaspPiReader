@@ -19,7 +19,23 @@ class WorkOrderFormHandler(QtWidgets.QWidget):
         self.ui.setupUi(self)
         self.ui.quantitySpinBox.setMaximum(250)
         self.ui.nextButton.clicked.connect(self.on_next)
-        self.ui.cancelButton.clicked.connect(self.close)
+        self.ui.cancelButton.clicked.connect(self.on_cancel)
+    
+    def on_cancel(self):
+        """Handle form cancellation"""
+        logger.info("Work order form cancelled")
+        
+        # Reset menu items in main form
+        main_form = pool.get('main_form')
+        if main_form:
+            main_form.actionStart.setEnabled(True)
+            main_form.actionStop.setEnabled(False)
+        
+        # Clear any cycle data that might have been set
+        pool.set("current_cycle", None)
+        
+        # Close the form
+        self.close()
     
     def on_next(self):
         work_order = self.ui.workOrderLineEdit.text().strip()
