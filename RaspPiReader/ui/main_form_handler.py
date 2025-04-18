@@ -92,7 +92,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.labelAlarm = None
 
         # New code – initialize new cycle widget.
-
         self.new_cycle_handler = NewCycleHandler(self)
         self.new_cycle_handler.show()
         logger.info("Initialized NewCycleHandler for new cycle workflow")
@@ -108,7 +107,10 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.pdf_path = None
         self.username = self.user_record.username if self.user_record else ''
 
+        # Initialize the cycle timer but don't start it yet
         self.cycle_timer = QTimer()
+        self.cycle_timer.timeout.connect(self.cycle_timer_update)
+        self.cycle_timer_active = False
 
         # Initialize the data stacks (data_stack and test_data_stack)
         self.create_stack()
@@ -166,11 +168,53 @@ class MainFormHandler(QtWidgets.QMainWindow):
         if hasattr(self.new_cycle_handler, "start_cycle_signal"):
             self.new_cycle_handler.start_cycle_signal.connect(self.start_boolean_reading)
 
-        logger.info("Live update timer started.")
-        self.showMaximized()
         logger.info("MainFormHandler initialized.")
+        self.showMaximized()
 
+    def start_cycle_timer(self, start_time):
+        """
+        Start the cycle timer which updates the cycle duration display and logs cycle time.
+        This method is called only after the full cycle input (work order, serial numbers, program selection)
+        has been completed via the final green 'Start Cycle' button.
+        It also optionally triggers live data logging via start_live_data().
+        """
+        if self.cycle_timer_active:
+            logger.warning("Cycle timer is already active. Ignoring start request.")
+            return
+
+        # Set the cycle start time in the new cycle handler
+        self.new_cycle_handler.cycle_start_time = start_time
         
+        # Start the cycle duration timer (updates every second)
+        self.cycle_timer.start(1000)
+        self.cycle_timer_active = True
+        
+        # Start the PLC cycle by writing to the start register
+        if hasattr(self, 'set_cycle_start_register'):
+            self.set_cycle_start_register(1)  # Write 1 to start the cycle
+        
+        logger.info(f"Cycle timer started at {start_time}.")
+        
+        # Optionally start live data logging
+        if hasattr(self, "start_live_data"):
+            self.start_live_data()
+        else:
+            logger.info("start_live_data() not defined; live data logging not initiated.")
+
+    def stop_cycle_timer(self):
+        """
+        Stop the cycle timer and reset its state.
+        """
+        if self.cycle_timer_active:
+            self.cycle_timer.stop()
+            self.cycle_timer_active = False
+            
+            # Stop the PLC cycle by writing to the stop register
+            if hasattr(self, 'set_cycle_start_register'):
+                self.set_cycle_start_register(0)  # Write 0 to stop the cycle
+                
+            logger.info("Cycle timer stopped.")
+
     def start_boolean_reading(self):
         """
         Start reading boolean addresses when the green Start Cycle button is clicked
@@ -466,12 +510,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
         return "N/A"
 
 
-    def start_cycle_timer(self, cycle_start):
-        self.cycle_start = cycle_start
-        self.cycle_timer = QTimer(self)
-        self.cycle_timer.timeout.connect(self.update_cycle_timer)
-        self.cycle_timer.start(1000)
-
     def safe_set_label_text(self, label, text):
         """Safely update a label's text, checking if it exists first"""
         if label is not None and not sip.isdeleted(label):
@@ -500,7 +538,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             self.safe_set_label_text(self.run_duration, str(elapsed).split('.')[0])
             self.safe_set_label_text(self.d6, end_time_str)
         else:
-            self.safe_set_label_text(self.run_duration, "0:00:00")
+            self.safe_set_label_text(self.run_duration, "00:00:00")
             self.safe_set_label_text(self.d6, "N/A")
     def add_alarm_settings_menu(self):
         # Create a new menu called "Alarms" and add the alarm settings action.
@@ -878,35 +916,69 @@ class MainFormHandler(QtWidgets.QMainWindow):
         return pool.set('active_channels', self.active_channels)
         pass
     def _start(self):
-        # Reset data stack and UI panels
-        self.create_stack()
-        self.active_channels = self.load_active_channels()
-        self.initialize_ui_panels()
-        # Start a new cycle using the new cycle handler
-        self.new_cycle_handler.start_cycle()
-  
-        if hasattr(self, "actionStart"):
-            self.actionStart.setEnabled(False)
-        if hasattr(self, "actionStop"):
-            self.actionStop.setEnabled(True)
+        try:
+            # Reset data stack and UI panels
+            self.create_stack()
+            self.active_channels = self.load_active_channels()
+            self.initialize_ui_panels()
+            
+            # Start a new cycle using the new cycle handler
+            self.new_cycle_handler.start_cycle()
+      
+            if hasattr(self, "actionStart"):
+                self.actionStart.setEnabled(False)
+            if hasattr(self, "actionStop"):
+                self.actionStop.setEnabled(True)
+                
+            # Reset timer display after cycle handler is started
+            QTimer.singleShot(100, self.reset_timer_display)
+            
+        except Exception as e:
+            logger.error(f"Error in _start: {str(e)}")
+            QtWidgets.QMessageBox.critical(
+                self,
+                "Error",
+                f"Failed to start cycle preparation: {str(e)}"
+            )
+            
+    def reset_timer_display(self):
+        """Safely reset the timer display labels"""
+        try:
+            if hasattr(self, 'run_duration') and self.run_duration is not None:
+                self.run_duration.setText("00:00:00")
+            if hasattr(self, 'd6') and self.d6 is not None:
+                self.d6.setText("N/A")
+        except Exception as e:
+            logger.warning(f"Could not reset timer display: {str(e)}")
 
     def _stop(self):
+        """
+        Stop the current cycle: stop all timers, finalize the cycle, and reset the UI state.
+        """
         try:
-            # Stop live update and connection timers as before.
+            # Stop all timers first
             if hasattr(self, 'live_update_timer') and self.live_update_timer.isActive():
                 self.live_update_timer.stop()
             if hasattr(self, 'connectionTimer') and self.connectionTimer.isActive():
                 self.connectionTimer.stop()
             if hasattr(self, 'status_timer') and self.status_timer.isActive():
                 self.status_timer.stop()
+            if hasattr(self, 'cycle_timer') and self.cycle_timer.isActive():
+                self.cycle_timer.stop()
+                self.cycle_timer_active = False
             
-            # Delegate stop action to the new cycle handler.
+            # Stop the PLC cycle by writing to the stop register
+            if hasattr(self, 'set_cycle_start_register'):
+                self.set_cycle_start_register(0)  # Write 0 to stop the cycle
+            
+            # Delegate stop action to the new cycle handler
             if self.new_cycle_handler and hasattr(self.new_cycle_handler, "stop_cycle"):
                 logger.info("Using new_cycle_handler to stop cycle")
                 self.new_cycle_handler.stop_cycle()
             else:
                 logger.warning("No active new_cycle_handler found; unable to stop cycle properly.")
             
+            # Update UI state
             if hasattr(self, 'actionStart'):
                 self.actionStart.setEnabled(True)
             if hasattr(self, 'actionStop'):
@@ -914,14 +986,19 @@ class MainFormHandler(QtWidgets.QMainWindow):
             if hasattr(self, 'actionPrint_results'):
                 self.actionPrint_results.setEnabled(True)
             
+            # Close CSV file
             if hasattr(self, 'close_csv_file'):
                 QTimer.singleShot(1000, self.close_csv_file)
             
             # Stop boolean data reading
             self.stop_boolean_reading()
         
-            # Update visualization
-            self.viz_manager.stop_visualization()
+            # Stop visualization
+            if hasattr(self, 'viz_manager'):
+                self.viz_manager.stop_visualization()
+            
+            # Reset timer display safely
+            QTimer.singleShot(100, self.reset_timer_display)
             
             logger.info("Cycle stopping completed successfully")
         except Exception as e:
@@ -932,8 +1009,9 @@ class MainFormHandler(QtWidgets.QMainWindow):
                 f"Failed to stop cycle: {str(e)}"
             )
         
-        # Stop visualization
-        self.viz_manager.stop_visualization()
+        # Ensure visualization is stopped
+        if hasattr(self, 'viz_manager'):
+            self.viz_manager.stop_visualization()
         logger.info("Cycle and visualization stopped")
 
     def _print_result(self):
@@ -1505,29 +1583,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
             logger.info("Channel updates enabled: Timer started for updating immediate channel values.")
         else:
             logger.info("Channel update timer is already active.")
-
-    def start_cycle_timer(self, start_time):
-        """
-        Start the cycle timer which updates the cycle duration display and logs cycle time.
-        This method is called only after the full cycle input (work order, serial numbers, program selection)
-        has been completed via the final green 'Start Cycle' button.
-        It also optionally triggers live data logging via start_live_data().
-        """
-        # Set the cycle start time in the new cycle handler
-        self.new_cycle_handler.cycle_start_time = start_time
-        # Stop any pre-existing cycle timer if running.
-        if hasattr(self, "cycle_timer") and self.cycle_timer.isActive():
-            self.cycle_timer.stop()
-        self.cycle_timer = QTimer(self)
-        self.cycle_timer.timeout.connect(self.update_cycle_timer)
-        # Start the cycle duration timer (updates every second)
-        self.cycle_timer.start(1000)
-        logger.info(f"Cycle timer started at {start_time}.")
-        # Optionally start live data logging
-        if hasattr(self, "start_live_data"):
-            self.start_live_data()
-        else:
-            logger.info("start_live_data() not defined; live data logging not initiated.")
 
     def set_cycle_start_register(self, value):
         """

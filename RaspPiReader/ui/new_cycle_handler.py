@@ -1,4 +1,3 @@
-
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import pyqtSignal
 from RaspPiReader import pool
@@ -58,14 +57,29 @@ class NewCycleHandler(QtWidgets.QWidget):
     def onGreenStartButtonClicked(self):
         """
         Handler for the green Start Cycle button in the default program selection step.
-        This is the key method that should trigger boolean reading.
+        This is the key method that should trigger boolean reading and cycle timer start.
         """
         logger.info("Green Start Cycle button clicked in default program selection")
         
-        # Start the cycle
-        self.start_cycle()
+        # Get the main form
+        main_form = pool.get("main_form")
+        if not main_form:
+            logger.error("Main form not found in pool")
+            QMessageBox.critical(self, "Error", "Main form not found. Cannot start cycle.")
+            return
+            
+        # Set the cycle start time
+        self.cycle_start_time = datetime.now()
         
-        # Important: Emit the signal to start boolean reading
+        # Start the cycle timer
+        if hasattr(main_form, "start_cycle_timer"):
+            main_form.start_cycle_timer(self.cycle_start_time)
+        else:
+            logger.error("Main form does not have start_cycle_timer method")
+            QMessageBox.critical(self, "Error", "Cannot start cycle timer. Please restart the application.")
+            return
+            
+        # Emit the signal to start boolean reading
         self.start_cycle_signal.emit()
         
         # Update UI to indicate that boolean reading is active
@@ -73,12 +87,17 @@ class NewCycleHandler(QtWidgets.QWidget):
             self.parent().boolean_group_box.setTitle("Boolean Data (Reading Active)")
         
         QMessageBox.information(self, "Cycle Started", 
-            "Cycle started. Boolean address reading is now active.")
+            "Cycle started successfully. Live data monitoring is now active.")
             
     def reset_timing(self):
+        """
+        Reset all timing-related variables to their initial state.
+        """
         self.cycle_start_time = None
         self.cycle_end_time = None
-        logger.info("Cycle timing reset: cycle_start_time and cycle_end_time set to None")
+        self.core_temp_above_setpoint_time = 0
+        self.pressure_drop_core_temp = None
+        logger.info("Cycle timing reset: all timing variables set to initial state")
 
     def start_cycle(self):
         """
@@ -88,16 +107,10 @@ class NewCycleHandler(QtWidgets.QWidget):
         """
         logger.info("Start Cycle button clicked - launching Work Order Form")
         self.reset_timing()
-        self.cycle_start_time = datetime.now()
+        self.cycle_start_time = None  # Don't set start time yet - wait for green button
         pool.set("current_cycle", self)
         self.cycle_active = True
         
-        # Emit signal to notify that cycle has started
-        # Note: This signal is now primarily used for the regular start button
-        # The green start button uses its own dedicated handler
-        self.start_cycle_signal.emit()
-        logger.info("Cycle start signal emitted")
-
         # Launch work order form for further user input.
         self.work_order_form = WorkOrderFormHandler()
         self.work_order_form.show()
@@ -106,16 +119,13 @@ class NewCycleHandler(QtWidgets.QWidget):
         main_form = pool.get("main_form")
         if main_form:
             # Call a method that updates channel labels or boolean displays continuously.
-            # (This method must be implemented in main_form_handler.py.)
             if hasattr(main_form, "enable_channel_updates"):
                 main_form.enable_channel_updates()
             else:
                 logger.info("Channel updates enabled (default behavior).")
-                
-            # Note: Boolean reading is now started by the green Start Cycle button
-            # via the onGreenStartButtonClicked method, not here
         else:
             logger.warning("Main form not available to enable channel updates.")
+
     def stop_cycle(self):
         """
         Stop the cycle: record the end time, calculate duration, create a CycleData
