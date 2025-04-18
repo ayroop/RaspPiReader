@@ -971,6 +971,14 @@ class MainFormHandler(QtWidgets.QMainWindow):
             if hasattr(self, 'set_cycle_start_register'):
                 self.set_cycle_start_register(0)  # Write 0 to stop the cycle
             
+            # Stop visualization and reset plots immediately
+            if hasattr(self, 'viz_manager'):
+                self.viz_manager.stop_visualization()
+                # Reset the plots to clear any existing data
+                if hasattr(self.viz_manager, 'dashboard') and self.viz_manager.dashboard is not None:
+                    self.viz_manager.dashboard.visualization.reset_data()
+                    self.viz_manager.dashboard.update_plots()
+            
             # Delegate stop action to the new cycle handler
             if self.new_cycle_handler and hasattr(self.new_cycle_handler, "stop_cycle"):
                 logger.info("Using new_cycle_handler to stop cycle")
@@ -992,10 +1000,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
             
             # Stop boolean data reading
             self.stop_boolean_reading()
-        
-            # Stop visualization
-            if hasattr(self, 'viz_manager'):
-                self.viz_manager.stop_visualization()
             
             # Reset timer display safely
             QTimer.singleShot(100, self.reset_timer_display)
@@ -1012,6 +1016,10 @@ class MainFormHandler(QtWidgets.QMainWindow):
         # Ensure visualization is stopped
         if hasattr(self, 'viz_manager'):
             self.viz_manager.stop_visualization()
+            # Double check to ensure plots are reset
+            if hasattr(self.viz_manager, 'dashboard') and self.viz_manager.dashboard is not None:
+                self.viz_manager.dashboard.visualization.reset_data()
+                self.viz_manager.dashboard.update_plots()
         logger.info("Cycle and visualization stopped")
 
     def _print_result(self):
