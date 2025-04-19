@@ -68,6 +68,24 @@ class AlarmMonitor:
             logger.error(f"Error checking thresholds for {channel}: {e}")
         return active_alarms
         
+    def start_monitoring(self):
+        """Start monitoring alarms"""
+        if not self.is_monitoring:
+            self.is_monitoring = True
+            logger.info("Alarm monitoring started")
+            # Clear any existing alarms when starting
+            self._active_alarms.clear()
+            self._last_values.clear()
+
+    def stop_monitoring(self):
+        """Stop monitoring alarms"""
+        if self.is_monitoring:
+            self.is_monitoring = False
+            logger.info("Alarm monitoring stopped")
+            # Clear alarms when stopping
+            self._active_alarms.clear()
+            self._last_values.clear()
+
     def check_alarms(self) -> Tuple[bool, Dict[str, List[str]]]:
         """
         Check all configured channel alarms.
@@ -79,6 +97,10 @@ class AlarmMonitor:
         has_active_alarms = False
         channel_alarms: Dict[str, List[str]] = {}
         
+        # Only check alarms if monitoring is active
+        if not self.is_monitoring:
+            return False, channel_alarms
+            
         try:
             # Get all configured channels
             channels = [f"CH{i}" for i in range(1, 15)]  # CH1 to CH14
@@ -116,6 +138,9 @@ class AlarmMonitor:
         Returns:
             str: Formatted alarm status text
         """
+        if not self.is_monitoring:
+            return "Alarm monitoring inactive"
+            
         has_alarms, channel_alarms = self.check_alarms()
         
         if not has_alarms:
@@ -186,21 +211,4 @@ class AlarmMonitor:
                         self._active_alarms[channel] = []
                     
         except Exception as e:
-            logger.error(f"Error updating alarm status for {channel}: {str(e)}")
-
-    def start_monitoring(self):
-        """Start monitoring alarms"""
-        if not self.is_monitoring:
-            self.is_monitoring = True
-            logger.info("Alarm monitoring started")
-            # The actual monitoring is done through the update_alarm_status method
-            # which is called by the main form's timer
-
-    def stop_monitoring(self):
-        """Stop monitoring alarms"""
-        if self.is_monitoring:
-            self.is_monitoring = False
-            logger.info("Alarm monitoring stopped")
-            if self.monitoring_timer:
-                self.monitoring_timer.stop()
-                self.monitoring_timer = None 
+            logger.error(f"Error updating alarm status for {channel}: {str(e)}") 
