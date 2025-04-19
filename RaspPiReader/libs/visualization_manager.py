@@ -104,6 +104,44 @@ class VisualizationManager:
         self.last_values = {}  # Cache for the last value of each channel
         self.last_update_time = {}  # Timestamps of the last update per channel
         self.current_plot_path = None  # Track the current cycle's plot path
+        
+        # Program settings
+        self.current_program = 1  # Default to Program 1
+        self.program_settings = {
+            'size': None,
+            'cycle_location': 76,
+            'dwell_time': 41,
+            'cool_down_temp': 76,
+            'core_temp_setpoint': 89,  # Set to 89°C as per your program
+            'temp_ramp': 75,
+            'set_pressure': 46,
+            'maintain_vacuum': 9,
+            'initial_set_cure_temp': 89,
+            'final_set_cure_temp': 77
+        }
+        
+        # Core temperature tracking
+        self.core_temp_above_threshold = False
+        self.core_temp_start_time = None
+        self.core_temp_duration = 0  # in minutes
+        self.pressure_release_temp = None
+        self.last_pressure_value = None
+        self.cycle_start_time = None
+        
+        # Test mode settings
+        self.is_test_mode = True  # Enable test mode for simulator data
+        self.test_scaling = {
+            12: {'min': 0, 'max': 100, 'decimal': 1},  # Core temperature (Channel 12)
+            13: {'min': 0, 'max': 100, 'decimal': 1}   # Pressure (Channel 13)
+        }
+        
+        # Cycle outcomes data for sharing
+        self.cycle_outcomes_data = {
+            'core_temp_setpoint': None,
+            'core_high_temp_time': None,
+            'release_temp': None
+        }
+        
         self.load_channel_configs()
         if self.dashboard is not None:
             self.dashboard.update()
@@ -233,12 +271,7 @@ class VisualizationManager:
             logger.info("Visualization dashboard created")
     
     def start_visualization(self, cycle_id=None):
-        """
-        Start the visualization with the current cycle.
-        
-        Args:
-            cycle_id: Optional ID of the current cycle for data association
-        """
+        """Start the visualization with the current cycle."""
         if self.dashboard is None:
             logger.warning("Cannot start visualization - dashboard not created")
             return
@@ -250,27 +283,26 @@ class VisualizationManager:
         self.last_update_time.clear()
         self.current_plot_path = None
         
+        # Reset core temperature tracking
+        self.core_temp_above_threshold = False
+        self.core_temp_start_time = None
+        self.core_temp_duration = 0
+        self.pressure_release_temp = None
+        self.last_pressure_value = None
+        self.cycle_start_time = QtCore.QTime.currentTime().msecsSinceStartOfDay() / 1000.0
+        
         # Reset dashboard and underlying plot data buffers
         if hasattr(self.dashboard, "reset"):
-            self.dashboard.reset()  # Ensure this calls LiveDataVisualization.reset_data() to clear plot data
+            self.dashboard.reset()
 
         self.load_channel_configs()
-        # Configure plot axes based on updated channel settings
         self.configure_plot_axes()
         
         self.dock_widget.show()
         self.dashboard.start_visualization()
         self.start_data_collection()
         logger.info(f"Visualization started for cycle ID: {cycle_id}")
-        
-        # Create reports directory if it doesn't exist
-        reports_dir = os.path.join(os.getcwd(), "reports")
-        os.makedirs(reports_dir, exist_ok=True)
-        
-        # Ensure the RaspPiReader/reports directory exists
-        default_reports_dir = os.path.join(os.getcwd(), "RaspPiReader", "reports")
-        os.makedirs(default_reports_dir, exist_ok=True)
-    
+
     def stop_visualization(self):
         """Stop visualization and create unique chart images for the current cycle."""
         if self.dashboard is None:
@@ -285,7 +317,7 @@ class VisualizationManager:
             reports_dir = os.path.join(os.getcwd(), "reports")
             os.makedirs(reports_dir, exist_ok=True)
             
-            # Ensure the RaspPiReader/reports directory exists for backward compatibility
+            # Ensure the RaspPiReader/reports directory exists
             default_reports_dir = os.path.join(os.getcwd(), "RaspPiReader", "reports")
             os.makedirs(default_reports_dir, exist_ok=True)
             
@@ -432,6 +464,21 @@ class VisualizationManager:
             logger.error(f"Error updating plot reference in database: {e}")
             self.db.session.rollback()
     
+    def get_cycle_outcomes(self):
+        """Get formatted cycle outcomes data for both plot and HTML template"""
+        core_temp_threshold = self.program_settings.get('core_temp_setpoint', 'N/A')
+        core_temp_duration = round(self.core_temp_duration, 2) if self.core_temp_duration > 0 else None
+        pressure_release_temp = round(self.pressure_release_temp, 1) if self.pressure_release_temp is not None else None
+        
+        # Update shared data
+        self.cycle_outcomes_data = {
+            'core_temp_setpoint': core_temp_threshold,
+            'core_high_temp_time': core_temp_duration,
+            'release_temp': pressure_release_temp
+        }
+        
+        return self.cycle_outcomes_data
+
     def generate_plot_from_data(self, unique_path, standard_path, main_path):
         """Generate a plot directly from collected data points in the database."""
         try:
@@ -593,6 +640,23 @@ class VisualizationManager:
                        fontsize=10, fontweight='bold',
                        bbox=dict(facecolor='#f9f9f9', alpha=0.8, edgecolor='none', pad=5))
             
+            # Get formatted cycle outcomes
+            outcomes = self.get_cycle_outcomes()
+            
+            # Format the outcomes text for the plot
+            core_temp_duration_text = f"{outcomes['core_high_temp_time']} Min" if outcomes['core_high_temp_time'] is not None else 'N/A'
+            release_temp_text = f"{outcomes['release_temp']}°C" if outcomes['release_temp'] is not None else 'N/A'
+            
+            outcomes_text = (
+                f"Cycle Outcomes (Program {self.current_program}):\n"
+                f"TIME (min) CORE TEMP ≥ {outcomes['core_temp_setpoint']}°C: {core_temp_duration_text}\n"
+                f"CORE TEMP WHEN PRESSURE RELEASED: {release_temp_text}"
+            )
+            
+            plt.figtext(0.02, 0.15, outcomes_text, 
+                       fontsize=10, fontweight='bold',
+                       bbox=dict(facecolor='#f9f9f9', alpha=0.8, edgecolor='none', pad=5))
+            
             # Adjust layout to prevent label cutoff
             plt.tight_layout()
             
@@ -727,22 +791,49 @@ class VisualizationManager:
                                 value = value[0]
                             numeric_value = safe_int(value)
                             
-                            # Log raw value only if changed from last logged value (will be filtered by PLCDataFilter)
-                            if channel_number not in self.last_values or self.last_values[channel_number] != numeric_value:
-                                logger.debug(f"Raw value read from PLC for CH{channel_number}: {numeric_value}")
-                            if not channel_config.get('label', '').upper().startswith("LA"):
-                                decimal_point = safe_int(channel_config.get('decimal_point', 0))
-                                if decimal_point > 0:
-                                    numeric_value = safe_float(numeric_value) / (10 ** decimal_point)
-                                if channel_config.get('scale', False):
-                                    raw_min = 0
-                                    raw_max = 32767
-                                    limit_low = safe_float(channel_config.get('limit_low', 0))
-                                    limit_high = safe_float(channel_config.get('limit_high', 0))
-                                    if (limit_high - limit_low) != 0:
-                                        numeric_value = limit_low + (numeric_value - raw_min) * (limit_high - limit_low) / (raw_max - raw_min)
-                                    else:
-                                        logger.debug(f"Scaling skipped for CH{channel_number} because limit_high equals limit_low")
+                            # Apply test mode scaling for simulator data
+                            if self.is_test_mode and channel_number in self.test_scaling:
+                                scaling = self.test_scaling[channel_number]
+                                if channel_number == 12:  # Core temperature
+                                    # Scale 5132.0 to a reasonable temperature range
+                                    numeric_value = (numeric_value / 5132.0) * (scaling['max'] - scaling['min']) + scaling['min']
+                                elif channel_number == 13:  # Pressure
+                                    # Scale 5132.0 to a reasonable pressure range
+                                    numeric_value = (numeric_value / 5132.0) * (scaling['max'] - scaling['min']) + scaling['min']
+                            
+                            # Track core temperature (Channel 12) above program setpoint
+                            if channel_number == 12:  # Core temperature channel
+                                core_temp_threshold = self.program_settings.get('core_temp_setpoint')
+                                if core_temp_threshold is not None:
+                                    if numeric_value >= core_temp_threshold and not self.core_temp_above_threshold:
+                                        self.core_temp_above_threshold = True
+                                        self.core_temp_start_time = current_time
+                                        logger.info(f"Core temperature reached threshold: {core_temp_threshold}°C")
+                                    elif numeric_value < core_temp_threshold and self.core_temp_above_threshold:
+                                        self.core_temp_above_threshold = False
+                                        if self.core_temp_start_time is not None:
+                                            self.core_temp_duration = (current_time - self.core_temp_start_time) / 60  # Convert to minutes
+                                            logger.info(f"Core temperature duration above threshold: {self.core_temp_duration:.2f} minutes")
+                                            self.core_temp_start_time = None
+                                            # Update shared data
+                                            self.get_cycle_outcomes()
+                            
+                            # Track pressure release temperature
+                            if channel_number == 13:  # Pressure channel
+                                set_pressure = self.program_settings.get('set_pressure')
+                                if set_pressure is not None and self.last_pressure_value is not None:
+                                    # Detect significant pressure drop (20% of set pressure)
+                                    pressure_drop_threshold = set_pressure * 0.2
+                                    if numeric_value < self.last_pressure_value - pressure_drop_threshold:
+                                        core_temp_channel = self.channel_configs.get(12)
+                                        if core_temp_channel:
+                                            core_temp = self.last_values.get(12)
+                                            if core_temp is not None:
+                                                self.pressure_release_temp = core_temp
+                                                logger.info(f"Pressure release detected at core temperature: {core_temp:.1f}°C")
+                                                # Update shared data
+                                                self.get_cycle_outcomes()
+                                self.last_pressure_value = numeric_value
                             
                             # Throttle updates: only update if value changed or if throttle_interval seconds have passed
                             last_update = self.last_update_time.get(channel_number, 0)
@@ -798,6 +889,12 @@ class VisualizationManager:
         """Reset the visualization dashboard"""
         if self.dashboard:
             self.dashboard.reset()
+            # Reset core temperature tracking
+            self.core_temp_above_threshold = False
+            self.core_temp_start_time = None
+            self.core_temp_duration = 0
+            self.pressure_release_temp = None
+            self.last_pressure_value = None
             # Reconfigure plot axes after reset
             self.configure_plot_axes()
             logger.info("Visualization reset")
@@ -887,3 +984,18 @@ class VisualizationManager:
         # Fall back to standard path with timestamp
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         return f"plot_export.png?t={timestamp}"
+
+    def set_program_settings(self, program_number, settings):
+        """Set the current program settings for tracking"""
+        self.current_program = program_number
+        self.program_settings.update(settings)
+        logger.info(f"Program {program_number} settings updated: {settings}")
+
+    def get_cycle_outcomes_for_template(self):
+        """Get cycle outcomes data specifically formatted for the HTML template"""
+        outcomes = self.get_cycle_outcomes()
+        return {
+            'core_temp_setpoint': outcomes['core_temp_setpoint'],
+            'core_high_temp_time': outcomes['core_high_temp_time'],
+            'release_temp': outcomes['release_temp']
+        }

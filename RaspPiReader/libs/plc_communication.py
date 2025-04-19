@@ -63,6 +63,11 @@ connection_monitor = None
 CONNECTION_RETRY_ATTEMPTS = 3
 CONNECTION_RETRY_DELAY = 1  # seconds
 
+# UI thread warning rate limiting
+_ui_thread_warned = False
+_ui_thread_last_log_time = 0
+_UI_THREAD_LOG_INTERVAL = 30  # Only log this message every 30 seconds
+
 class SimplifiedModbusTcp:
     """
     A simplified wrapper for ModbusTcpClient.
@@ -544,8 +549,9 @@ def ensure_connection(force_reconnect=False):
     Returns:
         bool: True if connected, False otherwise
     """
-    global modbus_comm, direct_client
+    global modbus_comm, direct_client, _ui_thread_warned, _ui_thread_last_log_time, _UI_THREAD_LOG_INTERVAL
     from PyQt5.QtCore import QCoreApplication, QThread
+    import time
 
     # If demo mode is active, skip actual PLC connection.
     if pool.config('demo', bool, False):
@@ -563,7 +569,11 @@ def ensure_connection(force_reconnect=False):
 
     # Unless forced, if this is called on the UI thread, skip blocking attempts.
     if not force_reconnect and QThread.currentThread() == QCoreApplication.instance().thread():
-        logger.debug("ensure_connection() called on UI thread, skipping blocking reconnection attempts.")
+        now = time.time()
+        if (not _ui_thread_warned) or (now - _ui_thread_last_log_time > _UI_THREAD_LOG_INTERVAL):
+            logger.debug("ensure_connection() called on UI thread, skipping blocking reconnection attempts.")
+            _ui_thread_warned = True
+            _ui_thread_last_log_time = now
         return getattr(modbus_comm, 'connected', False)
 
     # Now, use the modbus_comm with plc_lock.

@@ -47,6 +47,7 @@ from RaspPiReader.libs.visualization_manager import VisualizationManager
 from .boolean_data_display_handler import BooleanDataDisplayHandler
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox
 from RaspPiReader.libs.models import CycleSerialNumber
+from RaspPiReader.libs.alarm_monitor import AlarmMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.add_database_menu()
 
         self.db = Database("sqlite:///local_database.db")
+        self.db.update_alarm_schema()
         self.integrate_new_cycle_widget()
 
         # Start timers.
@@ -140,11 +142,17 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.live_update_timer = QTimer(self)
         self.live_update_timer.timeout.connect(self.update_live_data)
         
+        # Initialize the alarm monitor
+        self.alarm_monitor = AlarmMonitor(self.db)
+        
+        # Initialize the alarm label
+        self.init_alarm_label()
+        
         # Start the alarm timer to update the alarm status.
         self.alarmTimer = QTimer(self)
         self.alarmTimer.timeout.connect(self.update_alarm_status)
-        self.alarmTimer.start(1000)
-
+        self.alarmTimer.start(1000)  # Check every second
+        
         # UI visualization
         self.init_visualization()
     
@@ -176,44 +184,87 @@ class MainFormHandler(QtWidgets.QMainWindow):
         Start the cycle timer which updates the cycle duration display and logs cycle time.
         This method is called only after the full cycle input (work order, serial numbers, program selection)
         has been completed via the final green 'Start Cycle' button.
-        It also optionally triggers live data logging via start_live_data().
         """
-        if self.cycle_timer_active:
-            logger.warning("Cycle timer is already active. Ignoring start request.")
-            return
-
-        # Set the cycle start time in the new cycle handler
-        self.new_cycle_handler.cycle_start_time = start_time
-        
-        # Start the cycle duration timer (updates every second)
-        self.cycle_timer.start(1000)
-        self.cycle_timer_active = True
-        
-        # Start the PLC cycle by writing to the start register
-        if hasattr(self, 'set_cycle_start_register'):
-            self.set_cycle_start_register(1)  # Write 1 to start the cycle
-        
-        logger.info(f"Cycle timer started at {start_time}.")
-        
-        # Optionally start live data logging
-        if hasattr(self, "start_live_data"):
-            self.start_live_data()
-        else:
-            logger.info("start_live_data() not defined; live data logging not initiated.")
+        try:
+            # Reset cycle state
+            self.cycle_timer_active = False
+            if self.cycle_timer.isActive():
+                self.cycle_timer.stop()
+                
+            # Set the cycle start time in the new cycle handler
+            self.new_cycle_handler.cycle_start_time = start_time
+            self.new_cycle_handler.cycle_end_time = None  # Reset end time
+            
+            # Start the cycle duration timer
+            self.cycle_timer.start(1000)
+            self.cycle_timer_active = True
+            
+            # Start the PLC cycle
+            if hasattr(self, 'set_cycle_start_register'):
+                self.set_cycle_start_register(1)  # Write 1 to start the cycle
+            
+            # Start alarm monitoring if available
+            if hasattr(self, 'alarm_monitor'):
+                try:
+                    self.alarm_monitor.start_monitoring()
+                except Exception as e:
+                    logger.error(f"Error starting alarm monitoring: {e}")
+                    # Continue with cycle start even if alarm monitoring fails
+            
+            # Update UI state
+            if hasattr(self, "actionStart"):
+                self.actionStart.setEnabled(False)
+            if hasattr(self, "actionStop"):
+                self.actionStop.setEnabled(True)
+            
+            logger.info(f"Cycle timer started at {start_time}")
+            
+            # Start live data logging if available
+            if hasattr(self, "start_live_data"):
+                self.start_live_data()
+                
+        except Exception as e:
+            logger.error(f"Error starting cycle timer: {e}")
+            # Reset state on error
+            self.cycle_timer_active = False
+            if self.cycle_timer.isActive():
+                self.cycle_timer.stop()
+            raise
 
     def stop_cycle_timer(self):
-        """
-        Stop the cycle timer and reset its state.
-        """
-        if self.cycle_timer_active:
-            self.cycle_timer.stop()
-            self.cycle_timer_active = False
-            
-            # Stop the PLC cycle by writing to the stop register
-            if hasattr(self, 'set_cycle_start_register'):
-                self.set_cycle_start_register(0)  # Write 0 to stop the cycle
+        """Stop the cycle timer and reset its state"""
+        try:
+            if self.cycle_timer_active:
+                # Set the cycle end time
+                if hasattr(self.new_cycle_handler, "cycle_start_time"):
+                    self.new_cycle_handler.cycle_end_time = datetime.now()
                 
-            logger.info("Cycle timer stopped.")
+                # Stop the cycle timer
+                if self.cycle_timer.isActive():
+                    self.cycle_timer.stop()
+                self.cycle_timer_active = False
+                
+                # Stop the PLC cycle
+                if hasattr(self, 'set_cycle_start_register'):
+                    self.set_cycle_start_register(0)  # Write 0 to stop the cycle
+                
+                # Stop alarm monitoring if available
+                if hasattr(self, 'alarm_monitor'):
+                    try:
+                        self.alarm_monitor.stop_monitoring()
+                    except Exception as e:
+                        logger.error(f"Error stopping alarm monitoring: {e}")
+                
+                # Update UI state
+                if hasattr(self, "actionStart"):
+                    self.actionStart.setEnabled(True)
+                if hasattr(self, "actionStop"):
+                    self.actionStop.setEnabled(False)
+                
+                logger.info("Cycle timer stopped")
+        except Exception as e:
+            logger.error(f"Error stopping cycle timer: {e}")
+            raise
 
     def start_boolean_reading(self):
         """
@@ -504,277 +555,167 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.update_plots()
 
     def _calculate_cycle_duration(self):
-        if hasattr(self.new_cycle_handler, "cycle_start_time"):
+        """
+        Calculate the duration of the current cycle with robust None handling.
+        
+        Returns:
+            str: The formatted duration or "N/A" if no valid start time
+        """
+        if not hasattr(self, "new_cycle_handler") or self.new_cycle_handler is None:
+            return "N/A"
+            
+        if not hasattr(self.new_cycle_handler, "cycle_start_time") or not self.new_cycle_handler.cycle_start_time:
+            return "N/A"
+            
+        try:
             duration = datetime.now() - self.new_cycle_handler.cycle_start_time
             return str(duration).split('.')[0]
-        return "N/A"
+        except Exception as e:
+            logger.error(f"Error calculating cycle duration: {e}")
+            return "N/A"
 
 
     def safe_set_label_text(self, label, text):
-        """Safely update a label's text, checking if it exists first"""
-        if label is not None and not sip.isdeleted(label):
-            try:
-                label.setText(text)
-            except RuntimeError:
-                # Label was deleted, get a new reference
-                if label == self.d6:
-                    self.d6 = self.findChild(QtWidgets.QLabel, "d6")
-                    if self.d6:
+        """
+        Safely update a label's text, checking if it exists first
+        
+        Args:
+            label: The QLabel object to update
+            text: The text to set on the label
+            
+        Returns:
+            bool: True if the update was successful, False otherwise
+        """
+        if label is None:
+            logger.debug("Label is None, cannot update text")
+            return False
+            
+        if sip.isdeleted(label):
+            logger.debug("Label was deleted, attempting to find a new reference")
+            # Label was deleted, get a new reference
+            if hasattr(self, 'd6') and label == self.d6:
+                self.d6 = self.findChild(QtWidgets.QLabel, "d6")
+                if self.d6:
+                    try:
                         self.d6.setText(text)
-                elif label == self.run_duration:
-                    self.run_duration = self.findChild(QtWidgets.QLabel, "run_duration")
-                    if self.run_duration:
+                        return True
+                    except Exception as e:
+                        logger.error(f"Error setting text on recovered d6 label: {e}")
+                        return False
+                return False
+            elif hasattr(self, 'run_duration') and label == self.run_duration:
+                self.run_duration = self.findChild(QtWidgets.QLabel, "run_duration")
+                if self.run_duration:
+                    try:
                         self.run_duration.setText(text)
+                        return True
+                    except Exception as e:
+                        logger.error(f"Error setting text on recovered run_duration label: {e}")
+                        return False
+                return False
+            return False
+        
+        try:
+            label.setText(text)
+            return True
+        except Exception as e:
+            logger.error(f"Error setting label text: {e}")
+            return False
 
-    def update_cycle_timer(self):
-        start_time = self.new_cycle_handler.cycle_start_time
-        if start_time is not None:
-            if self.new_cycle_handler.cycle_end_time is not None:
-                elapsed = self.new_cycle_handler.cycle_end_time - start_time
-                end_time_str = self.new_cycle_handler.cycle_end_time.strftime("%H:%M:%S")
-            else:
-                elapsed = datetime.now() - start_time
-                end_time_str = "N/A"
-            self.safe_set_label_text(self.run_duration, str(elapsed).split('.')[0])
-            self.safe_set_label_text(self.d6, end_time_str)
-        else:
+    def cycle_timer_update(self):
+        """Update the cycle timer display with robust null checks"""
+        try:
+            # First check if new_cycle_handler exists
+            if not hasattr(self, 'new_cycle_handler') or self.new_cycle_handler is None:
+                self.safe_set_label_text(self.run_duration, "00:00:00")
+                self.safe_set_label_text(self.d6, "N/A")
+                return
+
+            # Check if we have a valid start time
+            if not hasattr(self.new_cycle_handler, "cycle_start_time") or not self.new_cycle_handler.cycle_start_time:
+                self.safe_set_label_text(self.run_duration, "00:00:00")
+                self.safe_set_label_text(self.d6, "N/A")
+                return
+
+            # Calculate elapsed time
+            elapsed = datetime.now() - self.new_cycle_handler.cycle_start_time
+            self.safe_set_label_text(self.run_duration, timedelta2str(elapsed))
+            
+            # Handle end time display with extra safety checks
+            try:
+                end_time = getattr(self.new_cycle_handler, "cycle_end_time", None)
+                if end_time is not None and hasattr(end_time, 'strftime'):
+                    self.safe_set_label_text(self.d6, end_time.strftime("%H:%M:%S"))
+                else:
+                    # If no end time or invalid, show N/A
+                    self.safe_set_label_text(self.d6, "N/A")
+            except Exception as e:
+                logger.error(f"Error formatting time in cycle_timer_update: {e}")
+                self.safe_set_label_text(self.d6, "N/A")
+            
+        except Exception as e:
+            logger.error(f"Error in cycle_timer_update: {e}")
             self.safe_set_label_text(self.run_duration, "00:00:00")
             self.safe_set_label_text(self.d6, "N/A")
-    def add_alarm_settings_menu(self):
-        # Create a new menu called "Alarms" and add the alarm settings action.
-        menubar = self.menuBar()
-        alarms_menu = menubar.addMenu("Alarms")
-        alarm_settings_action = QAction("Manage Alarms", self)
-        alarm_settings_action.triggered.connect(self.open_alarm_settings)
-        alarms_menu.addAction(alarm_settings_action)
-    
-    def open_alarm_settings(self):
-        # Instantiate and show the Alarm Settings dialog.
-        dialog = AlarmSettingsFormHandler(self)
-        dialog.exec_()
 
-    def new_cycle_start(self):
-        self.workOrderForm = WorkOrderFormHandler()
-        self.workOrderForm.show()
-
-    def add_default_program_menu(self):
-        menubar = self.menuBar()
-        defaultProgMenu = menubar.addMenu("Default Programs")
-        manageAction = QtWidgets.QAction("Manage Default Programs", self)
-        manageAction.triggered.connect(self.open_default_program_management)
-        defaultProgMenu.addAction(manageAction)
-
-    def open_default_program_management(self):
-        dlg = DefaultProgramForm(self)
-        dlg.exec_()
-    def integrate_new_cycle_widget(self):
-        """
-        Integrate the new cycle widget and Boolean status widget into the main window layout.
-        After adding the new cycle widget, hide its Start/Stop buttons.
-        """
-        central_widget = self.centralWidget()
-        central_layout = central_widget.layout()
-        if central_layout is None:
-            central_layout = QtWidgets.QVBoxLayout(central_widget)
-            central_widget.setLayout(central_layout)
-
-        # Ensure new cycle widget is re-parented to the central widget.
-        if self.new_cycle_handler.parent() is not central_widget:
-            self.new_cycle_handler.setParent(central_widget)
-            
-        # Hide the new cycle widget buttons
-        if hasattr(self.new_cycle_handler, "ui"):
-            self.new_cycle_handler.ui.startCycleButton.hide()
-            self.new_cycle_handler.ui.stopCycleButton.hide()
-            
-        self.new_cycle_handler.hide()  # Initially hide before integration if needed.
-
-    def init_custom_status_bar(self):
-        """
-        Create a custom composite widget in the status bar that consists of
-        a fixed-size label (for connection info) and an expanding label for dynamic messages.
-        """
-        from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel, QSizePolicy
-        if not hasattr(self, 'customStatusWidget'):
-            self.customStatusWidget = QWidget()
-            layout = QHBoxLayout(self.customStatusWidget)
-            layout.setContentsMargins(0, 0, 0, 0)
-            # Fixed-size label for connection info (and optionally, username/admin info)
-            self.connectionInfoLabel = QLabel()
-            self.connectionInfoLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
-            self.connectionInfoLabel.setMinimumWidth(150)
-            layout.addWidget(self.connectionInfoLabel)
-            # Expanding label for dynamic status messages
-            self.dynamicStatusLabel = QLabel()
-            self.dynamicStatusLabel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
-            layout.addWidget(self.dynamicStatusLabel)
-            # Remove any previous permanent widgets if needed
-            self.statusbar.clearMessage()
-            self.statusbar.addPermanentWidget(self.customStatusWidget, stretch=1)
-    
-    def update_connection_status_display(self):
-        """
-        Update the custom status bar widget:
-          - The connectionInfoLabel shows connection type information.
-          - The dynamicStatusLabel displays a temporary status message with color coding.
-        
-        It checks for PLC connection as well as active alarms.
-        """
-        # Make sure the custom status bar is initialized
-        if not hasattr(self, 'customStatusWidget'):
-            self.init_custom_status_bar()
-        
-        # Update the connection info (permanent) part.
-        connection_type = pool.config('plc/connection_type', str, 'rtu')
-        if connection_type == 'tcp':
-            host = pool.config('plc/host', str, 'Not Set')
-            port = pool.config('plc/tcp_port', int, 502)
-            self.connectionInfoLabel.setText(f"TCP: {host}:{port}")
-            self.connectionInfoLabel.setStyleSheet("color: blue;")
-        else:
-            port = pool.config('plc/port', str, 'Not Set')
-            self.connectionInfoLabel.setText(f"RTU: {port}")
-            self.connectionInfoLabel.setStyleSheet("color: green;")
-        
-        # Now update dynamic status (temporary message) area.
-        try:
-            # Check connection status via PLC communication module.
-            is_connected = plc_communication.is_connected()
-            # Optional: Check alarms (if check_alarms method exists).
-            if hasattr(self, 'check_alarms'):
-                alarm_active, alarm_msg = self.check_alarms()
-            else:
-                alarm_active, alarm_msg = False, ""
-            
-            if alarm_active:
-                msg = alarm_msg
-                bgcolor = "#FADBD8"
-                fgcolor = "red"
-            elif is_connected:
-                msg = "Connected to PLC"
-                bgcolor = "#D5F5E3"
-                fgcolor = "#196F3D"
-            else:
-                msg = "Not connected to PLC - Check settings"
-                bgcolor = "#FADBD8"
-                fgcolor = "#943126"
-            
-            self.dynamicStatusLabel.setText(msg)
-            self.dynamicStatusLabel.setStyleSheet(f"background-color: {bgcolor}; color: {fgcolor};")
-        except Exception as e:
-            self.dynamicStatusLabel.setText(f"Error: {str(e)}")
-            self.dynamicStatusLabel.setStyleSheet("background-color: #FADBD8; color: #943126;")
-    
-    def update_status_bar(self, msg, ms_timeout, color):
-        """
-        Update the dynamic portion of the custom status bar.
-        This method may be used by other parts of the code to temporarily override
-        the status message.
-        """
-        # Update dynamicStatusLabel; since this is our expanding label it will display
-        # the full message.
-        if not hasattr(self, 'dynamicStatusLabel'):
-            self.init_custom_status_bar()
-        self.dynamicStatusLabel.setText(msg)
-        self.dynamicStatusLabel.setStyleSheet(f"color: {color.lower()};")
-        # The ms_timeout parameter can be used if you later decide to clear the message after some time.
-        
     def update_alarm_status(self):
-        """
-        Read the alarm register values using read_holding_register and map numeric codes
-        to alarm text using the AlarmMapping model.
-        
-        This method checks both:
-        1. Configured alarm addresses from pool.config
-        2. Channel-based alarms from the database
-        
-        For each alarm, if its value is nonzero, the corresponding text is displayed.
-        """
-        active_alarms = []
-        
-        # PART 1: Check address-based alarms from configuration
-        alarm_addresses = pool.config("alarm_addresses", list, [300])
-        for addr in alarm_addresses:
-            # Read the alarm value from the designated holding register
-            alarm_value = plc_communication.read_holding_register(addr, 1)
-            if alarm_value is None or alarm_value == 0:
-                continue
-                
-            try:
-                code = int(alarm_value)
-            except (ValueError, TypeError):
-                continue
-                
-            # Retrieve the mapping for this alarm address from configuration
-            mapping = pool.config("alarm_mapping", dict, {}).get(str(addr), "")
-            if mapping:
-                mapping_lines = mapping.splitlines()
-                # Use the code as index to grab the corresponding alarm text
-                if 0 < code <= len(mapping_lines):
-                    alarm_text = mapping_lines[code-1]  # Adjust index (code 1 = first line)
-                else:
-                    alarm_text = f"Unknown alarm code {code}"
-                active_alarms.append(f"Address {addr}: {alarm_text}")
-        
-        # PART 2: Check channel-based alarms from database
+        """Update the alarm status display using the enhanced alarm monitor."""
         try:
-            # Get channel to address mapping from configuration
-            alarm_channels = {
-                "CH1": pool.config('alarm/CH1_address', int, 0),
-                "CH2": pool.config('alarm/CH2_address', int, 0),
-                "CH3": pool.config('alarm/CH3_address', int, 0),
-                "CH4": pool.config('alarm/CH4_address', int, 0),
-                # Add more channels as needed
-            }
+            # Check if the label exists and is valid
+            if not hasattr(self, 'labelAlarm') or self.labelAlarm is None:
+                logger.warning("Alarm label not initialized, attempting to reinitialize")
+                self.init_alarm_label()
+                if not hasattr(self, 'labelAlarm') or self.labelAlarm is None:
+                    logger.error("Failed to initialize alarm label")
+                    return
             
-            # Filter out channels with no configured address
-            alarm_channels = {ch: addr for ch, addr in alarm_channels.items() if addr > 0}
+            # Only check alarms if cycle is active
+            if not self.cycle_timer_active:
+                self.labelAlarm.setText("No active cycle - waiting for start")
+                self.labelAlarm.setStyleSheet("color: gray;")
+                return
             
-            # Check each channel
-            for channel, address in alarm_channels.items():
-                value = plc_communication.read_holding_register(address, 1)
-                if value is not None and value != 0:
-                    # Query the Alarm record by channel
-                    db = Database("sqlite:///local_database.db")
-                    alarm_obj = db.session.query(Alarm).filter_by(channel=channel).first()
-                    
-                    if alarm_obj:
-                        # Check if there are specific mappings for this value
-                        if hasattr(alarm_obj, 'mappings') and alarm_obj.mappings:
-                            # Find mapping with matching value
-                            mapping = next((m for m in alarm_obj.mappings if m.value == value), None)
-                            if mapping:
-                                display_message = mapping.message
-                            else:
-                                display_message = f"{alarm_obj.alarm_text} (Code: {value})"
-                        else:
-                            # Use default alarm text if no mappings exist
-                            display_message = alarm_obj.alarm_text
+            # Get current values for all channels
+            for channel in ['CH1', 'CH2', 'CH3', 'CH4']:
+                try:
+                    # Get the current value from the PLC
+                    value = self.alarm_monitor._get_channel_value(channel)
+                    if value is not None:
+                        # Update the alarm status with the current value
+                        status = self.alarm_monitor.get_alarm_status(channel)
+                        if status is None:
+                            logger.warning(f"No alarm status returned for {channel}")
+                            continue
+                        
+                        message, style = status
+                        logger.info(f"Channel {channel} value: {value}, status: {message}")
+                        
+                        # Check if label still exists before updating
+                        if not sip.isdeleted(self.labelAlarm):
+                            # Update the display
+                            self.labelAlarm.setText(f"{channel}: {message}")
+                            self.labelAlarm.setStyleSheet(style)
                             
-                        active_alarms.append(f"{channel}: {display_message}")
+                            # If we have an alarm, break and show it
+                            if 'red' in style:
+                                break
+                        else:
+                            logger.warning("Alarm label was deleted, reinitializing")
+                            self.init_alarm_label()
+                            break
                     else:
-                        # No alarm configuration found, use generic message
-                        active_alarms.append(f"{channel}: Unknown alarm (Code: {value})")
+                        logger.warning(f"No value returned for {channel}")
+                except Exception as e:
+                    logger.error(f"Error updating alarm status for {channel}: {e}")
+                    continue
+            
         except Exception as e:
-            logger.error(f"Error checking channel alarms: {e}")
-            active_alarms.append(f"Error checking channel alarms: {str(e)}")
-
-        # Create or update the alarm label
-        if self.labelAlarm is None:
-            self.labelAlarm = QLabel(self)
-            self.labelAlarm.setFont(QFont("Segoe UI", 10))
-            self.labelAlarm.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-            # Insert the label in gridLayout_11 at the next available row
-            row = self.gridLayout_11.rowCount()
-            self.gridLayout_11.addWidget(self.labelAlarm, row, 0, 1, -1)
-        
-        # Update the label text
-        if active_alarms:
-            self.labelAlarm.setText("ALARMS:\n" + "\n".join(active_alarms))
-            self.labelAlarm.setStyleSheet("color: red; font-weight: bold;")
-        else:
-            self.labelAlarm.setText("No Alarms")
-            self.labelAlarm.setStyleSheet("color: green;")
+            logger.error(f"Error updating alarm status: {e}")
+            # Attempt to reinitialize the alarm label if there was an error
+            try:
+                self.init_alarm_label()
+            except Exception as e2:
+                logger.error(f"Failed to reinitialize alarm label: {e2}")
 
     def check_alarms(self):
         """
@@ -916,6 +857,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
         return pool.set('active_channels', self.active_channels)
         pass
     def _start(self):
+        """Handle the start action from the UI"""
         try:
             # Reset data stack and UI panels
             self.create_stack()
@@ -923,14 +865,19 @@ class MainFormHandler(QtWidgets.QMainWindow):
             self.initialize_ui_panels()
             
             # Start a new cycle using the new cycle handler
-            self.new_cycle_handler.start_cycle()
+            if hasattr(self.new_cycle_handler, "start_cycle"):
+                self.new_cycle_handler.start_cycle()
+            else:
+                logger.error("new_cycle_handler does not have start_cycle method")
+                return
       
+            # Update UI state
             if hasattr(self, "actionStart"):
                 self.actionStart.setEnabled(False)
             if hasattr(self, "actionStop"):
                 self.actionStop.setEnabled(True)
                 
-            # Reset timer display after cycle handler is started
+            # Reset timer display
             QTimer.singleShot(100, self.reset_timer_display)
             
         except Exception as e:
@@ -1116,19 +1063,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
             logger.error(f"Error updating immediate values panel: {e}")
         finally:
             self.immediate_panel_update_locked = False
-
-    def cycle_timer_update(self):
-        if hasattr(self.new_cycle_handler, "cycle_start_time"):
-            self.run_duration.setText(timedelta2str(datetime.now() - self.new_cycle_handler.cycle_start_time))
-        else:
-            self.run_duration.setText("00:00:00")
-        # Optionally, if a cycle_end_time is already set, display it:
-        if hasattr(self.new_cycle_handler, "cycle_end_time"):
-            self.d6.setText(self.new_cycle_handler.cycle_end_time.strftime("%H:%M:%S"))
-        else:
-            self.d6.setText(datetime.now().strftime("%H:%M:%S"))
-
-
 
     def update_cycle_info_pannel(self, program=None):
         # Cycle Info Panel – basic data:
@@ -1669,5 +1603,236 @@ class MainFormHandler(QtWidgets.QMainWindow):
         # Update the UI labels with formatted outputs
         self.labelCycleOutcomesTime.setText(f"TIME (min) CORE TEMP ≥ {threshold:.1f} °C: {time_str}")
         self.labelCycleOutcomesPressure.setText(f"CORE TEMP WHEN PRESSURE RELEASED (°C): {pressure_str}")
+
+    def init_alarm_label(self):
+        """Initialize the alarm label widget"""
+        try:
+            # Create a group box for alarms
+            self.alarmGroupBox = QGroupBox("Alarm Status", self)
+            self.alarmGroupBox.setStyleSheet("QGroupBox { font-weight: bold; }")
+            
+            # Create layout for the group box
+            alarmLayout = QVBoxLayout(self.alarmGroupBox)
+            
+            # Create and configure the alarm label
+            self.labelAlarm = QLabel(self)
+            self.labelAlarm.setFont(QFont("Segoe UI", 10))
+            self.labelAlarm.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
+            self.labelAlarm.setWordWrap(True)
+            self.labelAlarm.setMinimumHeight(50)
+            
+            # Add the label to the layout
+            alarmLayout.addWidget(self.labelAlarm)
+            
+            # Add the group box to the main layout
+            # Find the grid layout where we want to add the alarm group box
+            gridLayout = self.findChild(QtWidgets.QGridLayout, "gridLayout_11")
+            if gridLayout:
+                # Add to the next available row
+                row = gridLayout.rowCount()
+                gridLayout.addWidget(self.alarmGroupBox, row, 0, 1, -1)
+            else:
+                # Fallback: add to central widget's layout
+                centralWidget = self.centralWidget()
+                if centralWidget.layout():
+                    centralWidget.layout().addWidget(self.alarmGroupBox)
+                else:
+                    layout = QVBoxLayout(centralWidget)
+                    layout.addWidget(self.alarmGroupBox)
+                
+            # Set initial text and style
+            self.labelAlarm.setText("No active alarms")
+            self.labelAlarm.setStyleSheet("color: green;")
+            
+        except Exception as e:
+            logger.error(f"Error initializing alarm label: {e}")
+
+    def integrate_new_cycle_widget(self):
+        """
+        Integrate the new cycle widget and Boolean status widget into the main window layout.
+        After adding the new cycle widget, hide its Start/Stop buttons.
+        """
+        try:
+            central_widget = self.centralWidget()
+            central_layout = central_widget.layout()
+            if central_layout is None:
+                central_layout = QtWidgets.QVBoxLayout(central_widget)
+                central_widget.setLayout(central_layout)
+
+            # Ensure new cycle widget is re-parented to the central widget.
+            if self.new_cycle_handler.parent() is not central_widget:
+                self.new_cycle_handler.setParent(central_widget)
+            
+            # Hide the new cycle widget buttons
+            if hasattr(self.new_cycle_handler, "ui"):
+                self.new_cycle_handler.ui.startCycleButton.hide()
+                self.new_cycle_handler.ui.stopCycleButton.hide()
+            
+            self.new_cycle_handler.hide()  # Initially hide before integration if needed.
+            logger.info("New cycle widget integrated successfully")
+        except Exception as e:
+            logger.error(f"Error integrating new cycle widget: {e}")
+            raise
+
+    def add_default_program_menu(self):
+        """Add the default program menu to the menu bar"""
+        try:
+            menubar = self.menuBar()
+            defaultProgMenu = menubar.addMenu("Default Programs")
+            manageAction = QtWidgets.QAction("Manage Default Programs", self)
+            manageAction.triggered.connect(self.open_default_program_management)
+            defaultProgMenu.addAction(manageAction)
+            logger.info("Default program menu added successfully")
+        except Exception as e:
+            logger.error(f"Error adding default program menu: {e}")
+            raise
+
+    def open_default_program_management(self):
+        """Open the default program management dialog"""
+        try:
+            dlg = DefaultProgramForm(self)
+            dlg.exec_()
+            logger.info("Default program management dialog opened")
+        except Exception as e:
+            logger.error(f"Error opening default program management: {e}")
+            raise
+
+    def add_alarm_settings_menu(self):
+        """Add the alarm settings menu to the menu bar"""
+        try:
+            menubar = self.menuBar()
+            alarms_menu = menubar.addMenu("Alarms")
+            alarm_settings_action = QAction("Manage Alarms", self)
+            alarm_settings_action.triggered.connect(self.open_alarm_settings)
+            alarms_menu.addAction(alarm_settings_action)
+            logger.info("Alarm settings menu added successfully")
+        except Exception as e:
+            logger.error(f"Error adding alarm settings menu: {e}")
+            raise
+
+    def open_alarm_settings(self):
+        """Open the alarm settings dialog"""
+        try:
+            dialog = AlarmSettingsFormHandler(self)
+            dialog.exec_()
+            logger.info("Alarm settings dialog opened")
+        except Exception as e:
+            logger.error(f"Error opening alarm settings: {e}")
+            raise
+
+    def new_cycle_start(self):
+        """Start a new cycle by opening the work order form"""
+        try:
+            self.workOrderForm = WorkOrderFormHandler()
+            self.workOrderForm.show()
+            logger.info("New cycle started - work order form opened")
+        except Exception as e:
+            logger.error(f"Error starting new cycle: {e}")
+            raise
+
+    def init_custom_status_bar(self):
+        """
+        Create a custom composite widget in the status bar that consists of
+        a fixed-size label (for connection info) and an expanding label for dynamic messages.
+        """
+        try:
+            from PyQt5.QtWidgets import QWidget, QHBoxLayout, QLabel, QSizePolicy
+            if not hasattr(self, 'customStatusWidget'):
+                self.customStatusWidget = QWidget()
+                layout = QHBoxLayout(self.customStatusWidget)
+                layout.setContentsMargins(0, 0, 0, 0)
+                # Fixed-size label for connection info
+                self.connectionInfoLabel = QLabel()
+                self.connectionInfoLabel.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Preferred)
+                self.connectionInfoLabel.setMinimumWidth(150)
+                layout.addWidget(self.connectionInfoLabel)
+                # Expanding label for dynamic status messages
+                self.dynamicStatusLabel = QLabel()
+                self.dynamicStatusLabel.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+                layout.addWidget(self.dynamicStatusLabel)
+                # Remove any previous permanent widgets if needed
+                self.statusbar.clearMessage()
+                self.statusbar.addPermanentWidget(self.customStatusWidget, stretch=1)
+            logger.info("Custom status bar initialized successfully")
+        except Exception as e:
+            logger.error(f"Error initializing custom status bar: {e}")
+            raise
+
+    def update_connection_status_display(self):
+        """
+        Update the custom status bar widget:
+          - The connectionInfoLabel shows connection type information.
+          - The dynamicStatusLabel displays a temporary status message with color coding.
+        
+        It checks for PLC connection as well as active alarms.
+        """
+        try:
+            # Make sure the custom status bar is initialized
+            if not hasattr(self, 'customStatusWidget'):
+                self.init_custom_status_bar()
+            
+            # Update the connection info (permanent) part.
+            connection_type = pool.config('plc/connection_type', str, 'rtu')
+            if connection_type == 'tcp':
+                host = pool.config('plc/host', str, 'Not Set')
+                port = pool.config('plc/tcp_port', int, 502)
+                self.connectionInfoLabel.setText(f"TCP: {host}:{port}")
+                self.connectionInfoLabel.setStyleSheet("color: blue;")
+            else:
+                port = pool.config('plc/port', str, 'Not Set')
+                self.connectionInfoLabel.setText(f"RTU: {port}")
+                self.connectionInfoLabel.setStyleSheet("color: green;")
+            
+            # Now update dynamic status (temporary message) area.
+            try:
+                # Check connection status via PLC communication module.
+                is_connected = plc_communication.is_connected()
+                # Optional: Check alarms (if check_alarms method exists).
+                if hasattr(self, 'check_alarms'):
+                    alarm_active, alarm_msg = self.check_alarms()
+                else:
+                    alarm_active, alarm_msg = False, ""
+                
+                if alarm_active:
+                    msg = alarm_msg
+                    bgcolor = "#FADBD8"
+                    fgcolor = "red"
+                elif is_connected:
+                    msg = "Connected to PLC"
+                    bgcolor = "#D5F5E3"
+                    fgcolor = "#196F3D"
+                else:
+                    msg = "Not connected to PLC - Check settings"
+                    bgcolor = "#FADBD8"
+                    fgcolor = "#943126"
+                
+                self.dynamicStatusLabel.setText(msg)
+                self.dynamicStatusLabel.setStyleSheet(f"background-color: {bgcolor}; color: {fgcolor};")
+            except Exception as e:
+                self.dynamicStatusLabel.setText(f"Error: {str(e)}")
+                self.dynamicStatusLabel.setStyleSheet("background-color: #FADBD8; color: #943126;")
+                logger.error(f"Error updating connection status: {e}")
+        except Exception as e:
+            logger.error(f"Error in update_connection_status_display: {e}")
+            raise
+
+    def update_status_bar(self, msg, ms_timeout, color):
+        """
+        Update the dynamic portion of the custom status bar.
+        This method may be used by other parts of the code to temporarily override
+        the status message.
+        """
+        try:
+            # Update dynamicStatusLabel; since this is our expanding label it will display
+            # the full message.
+            if not hasattr(self, 'dynamicStatusLabel'):
+                self.init_custom_status_bar()
+            self.dynamicStatusLabel.setText(msg)
+            self.dynamicStatusLabel.setStyleSheet(f"color: {color.lower()};")
+            # The ms_timeout parameter can be used if you later decide to clear the message after some time.
+            logger.debug(f"Status bar updated with message: {msg}")
+        except Exception as e:
+            logger.error(f"Error updating status bar: {e}")
+            raise
 
     

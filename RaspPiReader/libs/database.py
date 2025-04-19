@@ -10,6 +10,9 @@ from RaspPiReader.libs.models import (
 )
 from RaspPiReader.libs.models import CycleReport
 import os 
+from sqlalchemy import inspect
+from sqlalchemy import text
+
 DB_DIR = os.path.dirname(os.path.abspath(__file__))
 
 logger = logging.getLogger(__name__)
@@ -412,6 +415,34 @@ class Database:
         except Exception as e:
             logger.error(f"Error retrieving cycle report details: {e}")
             return []
+
+    def update_alarm_schema(self):
+        """Update the alarm_mappings table schema to match the new model."""
+        try:
+            inspector = inspect(self.engine)
+            columns = inspector.get_columns('alarm_mappings')
+            column_names = [col['name'] for col in columns]
+            
+            with self.engine.connect() as conn:
+                # Add threshold column if it doesn't exist
+                if 'threshold' not in column_names:
+                    conn.execute(text("ALTER TABLE alarm_mappings ADD COLUMN threshold FLOAT NOT NULL DEFAULT 0"))
+                    logger.info("Added threshold column to alarm_mappings table")
+                    
+                # Add active column if it doesn't exist
+                if 'active' not in column_names:
+                    conn.execute(text("ALTER TABLE alarm_mappings ADD COLUMN active BOOLEAN NOT NULL DEFAULT 1"))
+                    logger.info("Added active column to alarm_mappings table")
+                    
+                # Update any NULL threshold values to 0
+                conn.execute(text("UPDATE alarm_mappings SET threshold = 0 WHERE threshold IS NULL"))
+                logger.info("Updated NULL threshold values to 0")
+                
+                conn.commit()
+                
+        except Exception as e:
+            logger.error(f"Error updating alarm schema: {str(e)}")
+            raise
 
 # Top-level wrapper can be defined outside the class if needed:
 def get_cycle_report_details():

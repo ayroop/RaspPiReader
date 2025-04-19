@@ -1,6 +1,7 @@
 from RaspPiReader.ui.boolean_data_display import Ui_BooleanDataDisplay
 from PyQt5.QtWidgets import QLabel
 from PyQt5.QtGui import QPainter, QColor, QBrush
+from PyQt5.QtCore import Qt
 
 class BooleanIndicator(QLabel):
     """
@@ -12,12 +13,16 @@ class BooleanIndicator(QLabel):
         super().__init__(parent)
         self._state = state  # 0 for False, 1 for True
         self.setFixedSize(40, 40)
+        self.setText("OFF" if state == 0 else "ON")
+        self.setAlignment(Qt.AlignCenter)
+        self.setStyleSheet("color: white; font-weight: bold;")
 
     def setState(self, state):
         """
         Update the widget's state and trigger a redraw.
         """
         self._state = state
+        self.setText("OFF" if state == 0 else "ON")
         self.update()
 
     def paintEvent(self, event):
@@ -27,6 +32,8 @@ class BooleanIndicator(QLabel):
         painter = QPainter(self)
         color = QColor("green") if self._state == 0 else QColor("red")
         painter.fillRect(self.rect(), QBrush(color))
+        # Call the parent's paintEvent to draw the text
+        super().paintEvent(event)
 
 def update_boolean_indicator(widget, new_value):
     """
