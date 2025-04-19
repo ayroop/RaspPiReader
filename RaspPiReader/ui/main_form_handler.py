@@ -889,6 +889,14 @@ class MainFormHandler(QtWidgets.QMainWindow):
                     self.viz_manager.dashboard.visualization.reset_data()
                     self.viz_manager.dashboard.update_plots()
             
+            # Stop alarm monitoring if available
+            if hasattr(self, 'alarm_monitor'):
+                try:
+                    self.alarm_monitor.stop_monitoring()
+                    logger.info("Alarm monitoring stopped")
+                except Exception as e:
+                    logger.error(f"Error stopping alarm monitoring: {e}")
+            
             # Delegate stop action to the new cycle handler
             if self.new_cycle_handler and hasattr(self.new_cycle_handler, "stop_cycle"):
                 logger.info("Using new_cycle_handler to stop cycle")
