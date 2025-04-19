@@ -18,9 +18,10 @@ DB_DIR = os.path.dirname(os.path.abspath(__file__))
 logger = logging.getLogger(__name__)
 
 class Database:
-    def __init__(self, database_url):
-        self.engine = create_engine(database_url)
+    def __init__(self, connection_string):
+        self.engine = create_engine(connection_string)
         self.Session = sessionmaker(bind=self.engine)
+        self.logger = logging.getLogger(__name__)
         self.session = self.Session()
         # Automatically create any missing tables
         self.create_tables()
@@ -44,14 +45,14 @@ class Database:
         try:
             self.session.add(cycle_data)
             self.session.commit()
-            logger.info(f"Added cycle data for order {cycle_data.order_id}")
+            self.logger.info(f"Added cycle data for order {cycle_data.order_id}")
             return True
         except RecursionError:
-            logger.error("RecursionError when adding cycle data - possible circular reference")
+            self.logger.error("RecursionError when adding cycle data - possible circular reference")
             self.session.rollback()
             return False
         except Exception as e:
-            logger.error(f"Error adding cycle data: {e}")
+            self.logger.error(f"Error adding cycle data: {e}")
             self.session.rollback()
             return False
 
@@ -70,7 +71,7 @@ class Database:
             if result:
                 return result.cycle  # Return the associated cycle
         except Exception as e:
-            logger.error(f"Error searching for serial number {sn}: {e}")
+            self.logger.error(f"Error searching for serial number {sn}: {e}")
         return None
 
     def check_duplicate_serial(self, sn):
@@ -84,7 +85,7 @@ class Database:
                 .first()
             return duplicate is not None
         except Exception as e:
-            logger.error(f"Error checking for duplicate serial: {e}")
+            self.logger.error(f"Error checking for duplicate serial: {e}")
         return False
 
     def get_managed_serials(self):
@@ -413,7 +414,7 @@ class Database:
                 })
             return details
         except Exception as e:
-            logger.error(f"Error retrieving cycle report details: {e}")
+            self.logger.error(f"Error retrieving cycle report details: {e}")
             return []
 
     def update_alarm_schema(self):
@@ -427,21 +428,21 @@ class Database:
                 # Add threshold column if it doesn't exist
                 if 'threshold' not in column_names:
                     conn.execute(text("ALTER TABLE alarm_mappings ADD COLUMN threshold FLOAT NOT NULL DEFAULT 0"))
-                    logger.info("Added threshold column to alarm_mappings table")
+                    self.logger.info("Added threshold column to alarm_mappings table")
                     
                 # Add active column if it doesn't exist
                 if 'active' not in column_names:
                     conn.execute(text("ALTER TABLE alarm_mappings ADD COLUMN active BOOLEAN NOT NULL DEFAULT 1"))
-                    logger.info("Added active column to alarm_mappings table")
+                    self.logger.info("Added active column to alarm_mappings table")
                     
                 # Update any NULL threshold values to 0
                 conn.execute(text("UPDATE alarm_mappings SET threshold = 0 WHERE threshold IS NULL"))
-                logger.info("Updated NULL threshold values to 0")
+                self.logger.info("Updated NULL threshold values to 0")
                 
                 conn.commit()
                 
         except Exception as e:
-            logger.error(f"Error updating alarm schema: {str(e)}")
+            self.logger.error(f"Error updating alarm schema: {str(e)}")
             raise
 
 # Top-level wrapper can be defined outside the class if needed:

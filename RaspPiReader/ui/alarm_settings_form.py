@@ -61,7 +61,7 @@ class AlarmSettingsForm(QDialog):
         
         # Add channel combo box
         channel_combo = QtWidgets.QComboBox()
-        channel_combo.addItems([f"CH{i}" for i in range(1, 5)])
+        channel_combo.addItems([f"CH{i}" for i in range(1, 15)])
         self.tableWidget.setCellWidget(row, 0, channel_combo)
         
         # Add threshold spin box
@@ -98,7 +98,7 @@ class AlarmSettingsForm(QDialog):
             channel_layout = QHBoxLayout()
             channel_layout.addWidget(QLabel("Channel:"))
             channel_combo = QtWidgets.QComboBox()
-            channel_combo.addItems([f"CH{i}" for i in range(1, 5)])
+            channel_combo.addItems([f"CH{i}" for i in range(1, 15)])
             channel_combo.setCurrentText(channel)
             channel_layout.addWidget(channel_combo)
             layout.addLayout(channel_layout)
@@ -160,7 +160,7 @@ class AlarmSettingsForm(QDialog):
             for row, alarm in enumerate(alarms):
                 # Channel
                 channel_combo = QtWidgets.QComboBox()
-                channel_combo.addItems([f"CH{i}" for i in range(1, 5)])
+                channel_combo.addItems([f"CH{i}" for i in range(1, 15)])
                 channel_combo.setCurrentText(alarm.channel)
                 self.tableWidget.setCellWidget(row, 0, channel_combo)
                 
@@ -200,20 +200,31 @@ class AlarmSettingsForm(QDialog):
                 alarm_text = self.tableWidget.cellWidget(row, 2).text()
                 active = self.tableWidget.cellWidget(row, 3).isChecked()
                 
-                if channel and alarm_text:
-                    alarm = Alarm(
-                        channel=channel,
-                        threshold=threshold,
-                        alarm_text=alarm_text,
-                        active=active
-                    )
-                    self.db.session.add(alarm)
+                # Validate required fields
+                if not channel:
+                    raise ValueError(f"Channel is required for row {row + 1}")
+                if threshold is None:
+                    raise ValueError(f"Threshold value is required for {channel}")
+                if not alarm_text:
+                    raise ValueError(f"Alarm message is required for {channel}")
+                
+                alarm = Alarm(
+                    channel=channel,
+                    threshold=threshold,
+                    alarm_text=alarm_text,
+                    active=active
+                )
+                self.db.session.add(alarm)
             
             # Commit changes
             self.db.session.commit()
             logger.info("Alarm settings saved successfully")
             QtWidgets.QMessageBox.information(self, "Success", "Alarm settings saved successfully")
             
+        except ValueError as e:
+            self.db.session.rollback()
+            logger.error(f"Validation error saving alarm settings: {e}")
+            QtWidgets.QMessageBox.critical(self, "Error", f"Failed to save alarm settings: {str(e)}")
         except Exception as e:
             self.db.session.rollback()
             logger.error(f"Error saving alarm settings: {e}")

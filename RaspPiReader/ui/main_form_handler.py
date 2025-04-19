@@ -659,63 +659,26 @@ class MainFormHandler(QtWidgets.QMainWindow):
             self.safe_set_label_text(self.d6, "N/A")
 
     def update_alarm_status(self):
-        """Update the alarm status display using the enhanced alarm monitor."""
+        """Update the alarm status display"""
         try:
-            # Check if the label exists and is valid
-            if not hasattr(self, 'labelAlarm') or self.labelAlarm is None:
-                logger.warning("Alarm label not initialized, attempting to reinitialize")
+            # Check if the alarm label exists
+            if not hasattr(self, '_alarm_label') or self._alarm_label is None:
+                logger.warning("Alarm label not found, reinitializing...")
                 self.init_alarm_label()
-                if not hasattr(self, 'labelAlarm') or self.labelAlarm is None:
-                    logger.error("Failed to initialize alarm label")
-                    return
-            
-            # Only check alarms if cycle is active
-            if not self.cycle_timer_active:
-                self.labelAlarm.setText("No active cycle - waiting for start")
-                self.labelAlarm.setStyleSheet("color: gray;")
                 return
+
+            # Get alarm status from monitor
+            alarm_text = self.alarm_monitor.get_alarm_status_text()
+            alarm_style = self.alarm_monitor.get_alarm_style()
             
-            # Get current values for all channels
-            for channel in ['CH1', 'CH2', 'CH3', 'CH4']:
-                try:
-                    # Get the current value from the PLC
-                    value = self.alarm_monitor._get_channel_value(channel)
-                    if value is not None:
-                        # Update the alarm status with the current value
-                        status = self.alarm_monitor.get_alarm_status(channel)
-                        if status is None:
-                            logger.warning(f"No alarm status returned for {channel}")
-                            continue
-                        
-                        message, style = status
-                        logger.info(f"Channel {channel} value: {value}, status: {message}")
-                        
-                        # Check if label still exists before updating
-                        if not sip.isdeleted(self.labelAlarm):
-                            # Update the display
-                            self.labelAlarm.setText(f"{channel}: {message}")
-                            self.labelAlarm.setStyleSheet(style)
-                            
-                            # If we have an alarm, break and show it
-                            if 'red' in style:
-                                break
-                        else:
-                            logger.warning("Alarm label was deleted, reinitializing")
-                            self.init_alarm_label()
-                            break
-                    else:
-                        logger.warning(f"No value returned for {channel}")
-                except Exception as e:
-                    logger.error(f"Error updating alarm status for {channel}: {e}")
-                    continue
+            # Update the label
+            self._alarm_label.setText(alarm_text)
+            self._alarm_label.setStyleSheet(alarm_style)
             
         except Exception as e:
             logger.error(f"Error updating alarm status: {e}")
-            # Attempt to reinitialize the alarm label if there was an error
-            try:
-                self.init_alarm_label()
-            except Exception as e2:
-                logger.error(f"Failed to reinitialize alarm label: {e2}")
+            # Attempt to reinitialize the alarm label
+            self.init_alarm_label()
 
     def check_alarms(self):
         """
@@ -1643,6 +1606,9 @@ class MainFormHandler(QtWidgets.QMainWindow):
             # Set initial text and style
             self.labelAlarm.setText("No active alarms")
             self.labelAlarm.setStyleSheet("color: green;")
+            
+            # Store the alarm label reference
+            self._alarm_label = self.labelAlarm
             
         except Exception as e:
             logger.error(f"Error initializing alarm label: {e}")

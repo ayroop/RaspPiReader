@@ -12,6 +12,16 @@ def configure_alarm_addresses():
         "CH2": 301,  # Base address for CH2 alarms
         "CH3": 302,  # Base address for CH3 alarms
         "CH4": 303,  # Base address for CH4 alarms
+        "CH5": 304,  # Base address for CH5 alarms
+        "CH6": 305,  # Base address for CH6 alarms
+        "CH7": 306,  # Base address for CH7 alarms
+        "CH8": 307,  # Base address for CH8 alarms
+        "CH9": 308,  # Base address for CH9 alarms
+        "CH10": 309,  # Base address for CH10 alarms
+        "CH11": 310,  # Base address for CH11 alarms
+        "CH12": 311,  # Base address for CH12 alarms
+        "CH13": 312,  # Base address for CH13 alarms
+        "CH14": 313,  # Base address for CH14 alarms
     }
     
     try:
