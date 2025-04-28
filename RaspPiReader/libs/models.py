@@ -189,15 +189,11 @@ class Alarm(Base):
     
     id = Column(Integer, primary_key=True)
     channel = Column(String(10), nullable=False)
-    threshold = Column(Float, nullable=False)
-    alarm_text = Column(String(255), nullable=False)
     active = Column(Boolean, default=True)
-    
-    # Relationship with AlarmMapping
     mappings = relationship("AlarmMapping", back_populates="alarm", cascade="all, delete-orphan")
-    
+
     def __repr__(self):
-        return f"<Alarm(channel='{self.channel}', threshold={self.threshold}, text='{self.alarm_text}', active={self.active})>"
+        return f"<Alarm(channel='{self.channel}', active={self.active})>"
 
 class BooleanAddress(Base):
     __tablename__ = 'boolean_addresses'
@@ -215,13 +211,12 @@ class AlarmMapping(Base):
     __tablename__ = 'alarm_mappings'
     
     id = Column(Integer, primary_key=True)
-    alarm_id = Column(Integer, ForeignKey('alarms.id'), nullable=False)  # Changed to reference 'alarms' table
-    value = Column(Integer, nullable=False)  # The value that triggers this mapping (e.g., 0, 1, 2)
-    message = Column(String(255), nullable=False)  # The message to display for this value
-    threshold = Column(Float, nullable=False, default=0)  # The threshold value for this mapping
-    
-    # Relationship with parent Alarm
+    alarm_id = Column(Integer, ForeignKey('alarms.id'), nullable=False)
+    value = Column(Integer, nullable=False)  # 1 for low threshold, 2 for high threshold
+    threshold = Column(Float, nullable=False)
+    message = Column(String(255), nullable=False)
+    active = Column(Boolean, default=True)
     alarm = relationship("Alarm", back_populates="mappings")
     
     def __repr__(self):
-        return f"<AlarmMapping(alarm_id={self.alarm_id}, value={self.value}, message='{self.message}', threshold={self.threshold})>"
+        return f"<AlarmMapping(alarm_id={self.alarm_id}, value={self.value}, message='{self.message}', threshold={self.threshold}, active={self.active})>"

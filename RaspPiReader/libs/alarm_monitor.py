@@ -57,13 +57,12 @@ class AlarmMonitor:
             with Session(self.db.engine) as session:
                 alarm = session.query(Alarm).filter_by(channel=channel).first()
                 if alarm:
-                    mappings = session.query(AlarmMapping).filter_by(alarm_id=alarm.id).all()
+                    mappings = session.query(AlarmMapping).filter_by(alarm_id=alarm.id, active=True).all()
                     for mapping in mappings:
-                        if mapping.active:
-                            if mapping.value == 1 and value < mapping.threshold:  # Low threshold
-                                active_alarms.append(mapping.message)
-                            elif mapping.value == 2 and value > mapping.threshold:  # High threshold
-                                active_alarms.append(mapping.message)
+                        if mapping.value == 1 and value < mapping.threshold:  # Low threshold
+                            active_alarms.append(f"Low Threshold ({mapping.threshold:.2f}): {mapping.message}")
+                        elif mapping.value == 2 and value > mapping.threshold:  # High threshold
+                            active_alarms.append(f"High Threshold ({mapping.threshold:.2f}): {mapping.message}")
         except Exception as e:
             logger.error(f"Error checking thresholds for {channel}: {e}")
         return active_alarms
@@ -114,14 +113,13 @@ class AlarmMonitor:
                 self._last_values[channel] = value
                 
                 # Check thresholds
-                with Session(self.db.engine) as session:
-                    alarm = session.query(Alarm).filter_by(channel=channel).first()
-                    if alarm and value > alarm.threshold:
-                        channel_alarms[channel] = [alarm.alarm_text]
-                        has_active_alarms = True
-                        logger.warning(f"Alarm triggered for {channel} at value {value} (threshold: {alarm.threshold})")
-                    else:
-                        channel_alarms[channel] = []
+                active_alarms = self._check_thresholds(channel, value)
+                if active_alarms:
+                    channel_alarms[channel] = active_alarms
+                    has_active_alarms = True
+                    logger.warning(f"Alarms triggered for {channel} at value {value}: {active_alarms}")
+                else:
+                    channel_alarms[channel] = []
                         
                 # Update active alarms
                 self._active_alarms[channel] = channel_alarms[channel]
@@ -151,8 +149,9 @@ class AlarmMonitor:
         for channel, alarms in channel_alarms.items():
             if alarms:  # Only include channels with active alarms
                 current_value = self._last_values.get(channel, 0)
-                alarm_msg = alarms[0]  # Take the first alarm message
-                alarm_lines.append(f"{channel} ({current_value:.2f}): {alarm_msg}")
+                # Join all alarm messages for this channel
+                alarm_msgs = "\n".join(alarms)
+                alarm_lines.append(f"{channel} ({current_value:.2f}):\n{alarm_msgs}")
                 
         if not alarm_lines:
             return "No Alarms"

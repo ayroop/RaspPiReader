@@ -665,20 +665,48 @@ class MainFormHandler(QtWidgets.QMainWindow):
             if not hasattr(self, '_alarm_label') or self._alarm_label is None:
                 logger.warning("Alarm label not found, reinitializing...")
                 self.init_alarm_label()
-                return
 
             # Get alarm status from monitor
             alarm_text = self.alarm_monitor.get_alarm_status_text()
             alarm_style = self.alarm_monitor.get_alarm_style()
-            
+
             # Update the label
             self._alarm_label.setText(alarm_text)
             self._alarm_label.setStyleSheet(alarm_style)
-            
+
         except Exception as e:
             logger.error(f"Error updating alarm status: {e}")
             # Attempt to reinitialize the alarm label
             self.init_alarm_label()
+
+    def get_alarm_status_text(self) -> str:
+        """
+        Get formatted alarm status text for display.
+        
+        Returns:
+            str: Formatted alarm status text
+        """
+        if not self.is_monitoring:
+            return "Alarm monitoring inactive"
+            
+        has_alarms, channel_alarms = self.check_alarms()
+        
+        if not has_alarms:
+            return "No Alarms"
+            
+        # Format active alarms
+        alarm_lines = []
+        for channel, alarms in channel_alarms.items():
+            if alarms:  # Only include channels with active alarms
+                current_value = self._last_values.get(channel, 0)
+                # Join all alarm messages for this channel
+                alarm_msgs = "\n".join(alarms)
+                alarm_lines.append(f"{channel} ({current_value:.2f}):\n{alarm_msgs}")
+                
+        if not alarm_lines:
+            return "No Alarms"
+            
+        return "ALARMS:\n" + "\n".join(alarm_lines)
 
     def check_alarms(self):
         """

@@ -10,8 +10,9 @@ from RaspPiReader.libs.plc_communication import write_bool_address
 from RaspPiReader.libs.onedrive_api import OneDriveAPI
 from RaspPiReader import pool
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import Alarm, OneDriveSettings, CycleSerialNumber, CycleData, CycleReport
+from RaspPiReader.libs.models import Alarm, OneDriveSettings, CycleSerialNumber, CycleData, CycleReport, AlarmMapping
 import sqlalchemy.exc
+from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -227,23 +228,20 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         .outerjoin(CycleReport, CycleData.id == CycleReport.cycle_id)\
         .filter(CycleData.id == cycle_data.id)\
         .one_or_none()
-    # Build alarm mapping from DB or use defaults.
+    
+    # Build alarm mapping from DB
     alarm_mapping = {}
     db_alarms = db.session.query(Alarm).all()
-    if not db_alarms:
-        alarm_mapping = {
-            "100": "Temperature High Alarm",
-            "101": "Temperature Low Alarm",
-            "102": "Pressure High Alarm",
-            "103": "Pressure Low Alarm",
-            "104": "Voltage High Alarm",
-            "105": "Voltage Low Alarm",
-            "106": "Flow High Alarm",
-            "107": "Flow Low Alarm",
-        }
-    else:
-        for alarm in db_alarms:
-            alarm_mapping[str(alarm.channel)] = alarm.alarm_text
+    for alarm in db_alarms:
+        # Get all active mappings for this alarm
+        mappings = db.session.query(AlarmMapping).filter_by(
+            alarm_id=alarm.id,
+            active=True
+        ).all()
+        
+        for mapping in mappings:
+            threshold_type = "Low" if mapping.value == 1 else "High"
+            alarm_mapping[str(alarm.channel)] = f"{threshold_type} Threshold ({mapping.threshold:.2f}) - {mapping.message}"
 
     active_alarms = []
     for addr, value in alarm_values.items():
