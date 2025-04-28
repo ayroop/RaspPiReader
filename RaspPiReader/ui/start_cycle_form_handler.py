@@ -699,11 +699,9 @@ class StartCycleFormHandler(QMainWindow):
         handler.pressure_drop_core_temp = None
         core_temp_above_setpoint_start_time = None
         handler.core_temp_above_setpoint_time = 0
-        pressure_drop_recorded = False  # To avoid multiple recordings for same drop event
+        pressure_drop_recorded = False
 
         # Helper function: perform pressure drop check.
-        # It looks back over the timestamp stack (index CHANNEL_COUNT+1) for a reading at least 5 seconds older.
-        # If the pressure drop from that reading to the current one is >=10 units, record the current core temp.
         def check_pressure_drop():
             nonlocal pressure_drop_recorded
             current_time = datetime.now()
@@ -739,11 +737,9 @@ class StartCycleFormHandler(QMainWindow):
                 for i in range(CHANNEL_COUNT):
                     data_stack[i + 1].append(temp_arr[i])
                 if process_data:
-                    # Append elapsed time (in minutes) and current timestamp (to slot CHANNEL_COUNT+1)
                     elapsed_minutes = round((datetime.now() - handler.cycle_start_time).total_seconds() / 60, 2)
                     data_stack[0].append(elapsed_minutes)
                     data_stack[CHANNEL_COUNT + 1].append(datetime.now())
-                    # Core temp setpoint logic
                     if (not core_temp_above_setpoint_start_time and 
                         data_stack[core_temp_channel][-1] >= core_temp_setpoint):
                         core_temp_above_setpoint_start_time = datetime.now()
@@ -751,7 +747,6 @@ class StartCycleFormHandler(QMainWindow):
                         handler.core_temp_above_setpoint_time += round(
                             (datetime.now() - core_temp_above_setpoint_start_time).total_seconds() / 60, 2)
                         core_temp_above_setpoint_start_time = None
-                    # Pressure drop check based on channel 13
                     if len(data_stack[CHANNEL_COUNT + 1]) >= 2:
                         check_pressure_drop()
                 new_data = {"data_stack": data_stack, "timestamp": datetime.now()}
@@ -779,14 +774,35 @@ class StartCycleFormHandler(QMainWindow):
                             dec_point = pool.config('decimal_point' + str(i + 1), int, 0)
                             if dec_point > 0:
                                 temp = temp / pow(10, dec_point)
-                            if pool.config('scale' + str(i + 1), bool, False):
-                                input_low = pool.config('limit_low' + str(i + 1), float, 0.0)
-                                input_high = pool.config('limit_high' + str(i + 1), float, 0.0)
-                                if input_high >= input_low + 10 and temp >= input_low:
-                                    output_high = pool.config('max_scale_range' + str(i + 1), float, 1000.0)
+                            
+                            # Special handling for channels 12 and 13
+                            if i + 1 == 12:  # Core temperature channel
+                                if pool.config('scale' + str(i + 1), bool, False):
+                                    input_low = pool.config('limit_low' + str(i + 1), float, 0.0)
+                                    input_high = pool.config('limit_high' + str(i + 1), float, 100.0)
                                     output_low = pool.config('min_scale_range' + str(i + 1), float, 0.0)
-                                    temp = (output_high - output_low) / (input_high - input_low) * (temp - input_low) + output_low
-                                    temp = round(temp, dec_point)
+                                    output_high = pool.config('max_scale_range' + str(i + 1), float, 200.0)
+                                    if input_high > input_low:
+                                        temp = (output_high - output_low) / (input_high - input_low) * (temp - input_low) + output_low
+                                        temp = round(temp, dec_point)
+                            elif i + 1 == 13:  # Pressure channel
+                                if pool.config('scale' + str(i + 1), bool, False):
+                                    input_low = pool.config('limit_low' + str(i + 1), float, 0.0)
+                                    input_high = pool.config('limit_high' + str(i + 1), float, 100.0)
+                                    output_low = pool.config('min_scale_range' + str(i + 1), float, 0.0)
+                                    output_high = pool.config('max_scale_range' + str(i + 1), float, 10.0)
+                                    if input_high > input_low:
+                                        temp = (output_high - output_low) / (input_high - input_low) * (temp - input_low) + output_low
+                                        temp = round(temp, dec_point)
+                            else:  # Other channels
+                                if pool.config('scale' + str(i + 1), bool, False):
+                                    input_low = pool.config('limit_low' + str(i + 1), float, 0.0)
+                                    input_high = pool.config('limit_high' + str(i + 1), float, 0.0)
+                                    if input_high >= input_low + 10 and temp >= input_low:
+                                        output_high = pool.config('max_scale_range' + str(i + 1), float, 1000.0)
+                                        output_low = pool.config('min_scale_range' + str(i + 1), float, 0.0)
+                                        temp = (output_high - output_low) / (input_high - input_low) * (temp - input_low) + output_low
+                                        temp = round(temp, dec_point)
                         except Exception as e:
                             print(f"Failed to read or process data from channel {i + 1}.\n{e}")
                             try:

@@ -1291,12 +1291,27 @@ class MainFormHandler(QtWidgets.QMainWindow):
             cycle_date = self.new_cycle_handler.cycle_start_time.strftime("%Y/%m/%d")
             cycle_start = self.new_cycle_handler.cycle_start_time.strftime("%H:%M:%S")
             cycle_end = self.new_cycle_handler.cycle_end_time.strftime("%H:%M:%S")
-            core_high_temp_time = round(getattr(self.new_cycle_handler, "core_temp_above_setpoint_time", 0), 2)
-            if not core_high_temp_time:
-                core_high_temp_time = "-"
-            release_temp = getattr(self.new_cycle_handler, "pressure_drop_core_temp", "-")
+            
+            # Get core temperature values
+            core_high_temp_time = None
+            if hasattr(self.new_cycle_handler, "core_temp_above_setpoint_time"):
+                core_high_temp_time = round(self.new_cycle_handler.core_temp_above_setpoint_time, 2)
+            
+            # Get pressure release temperature
+            release_temp = None
+            if hasattr(self.new_cycle_handler, "pressure_drop_core_temp"):
+                release_temp = round(self.new_cycle_handler.pressure_drop_core_temp, 1)
         else:
-            cycle_date = cycle_start = cycle_end = core_high_temp_time = release_temp = "-"
+            cycle_date = cycle_start = cycle_end = "-"
+            core_high_temp_time = None
+            release_temp = None
+
+        # Get core temperature setpoint from current program or config
+        core_temp_setpoint = None
+        if hasattr(self, 'current_program') and self.current_program:
+            core_temp_setpoint = self.current_program.core_temp_setpoint
+        if core_temp_setpoint is None:
+            core_temp_setpoint = pool.config("core_temp_setpoint", float, 100.0)
 
         # Retrieve current cycle id from pool configuration.
         current_cycle_id = pool.config("cycle_id")
@@ -1322,7 +1337,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             "cycle_location": pool.config("cycle_location") or "-",
             "dwell_time": int(pool.config("dwell_time")) if pool.config("dwell_time") else "-",
             "cool_down_temp": pool.config("cool_down_temp") or "-",
-            "core_temp_setpoint": pool.config("core_temp_setpoint") or "-",
+            "core_temp_setpoint": core_temp_setpoint,
             "temp_ramp": pool.config("temp_ramp") or "-",
             "set_pressure": pool.config("set_pressure") or "-",
             "maintain_vacuum": pool.config("maintain_vacuum") or "-",
@@ -1335,7 +1350,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             "cycle_end_time": cycle_end,
             "image_path": image_path,
             "logo_path": os.path.join(os.getcwd(), 'ui\\logo.jpg'),
-            "serial_numbers": serial_numbers    # <-- Added key for serial numbers
+            "serial_numbers": serial_numbers
         }
         self.render_print_template(template_file='result_template.html', data=report_data)
 
@@ -1549,31 +1564,36 @@ class MainFormHandler(QtWidgets.QMainWindow):
          - pressure_drop_core_temp (the core temp value when a pressure drop occurred)
         If no valid value exists, "N/A" is displayed.
         """
-        # Retrieve the dynamic core temperature setpoint as a float (default: 100.0)
-        threshold = pool.config('core_temp_setpoint', float, 100.0)
-        logger.debug(f"Current core_temp_setpoint: {threshold}")
+        try:
+            # Retrieve the dynamic core temperature setpoint from the current program
+            threshold = None
+            if hasattr(self, 'current_program') and self.current_program:
+                threshold = self.current_program.core_temp_setpoint
+            if threshold is None:
+                threshold = pool.config('core_temp_setpoint', float, 100.0)
+            logger.debug(f"Current core_temp_setpoint: {threshold}")
 
-        # Check for the accumulated time above setpoint
-        if hasattr(self.new_cycle_handler, 'core_temp_above_setpoint_time'):
-            time_value = self.new_cycle_handler.core_temp_above_setpoint_time
-            logger.debug(f"core_temp_above_setpoint_time: {time_value}")
-            time_str = f"{time_value:.2f}" if time_value and time_value > 0 else "N/A"
-        else:
-            logger.warning("new_cycle_handler is missing core_temp_above_setpoint_time attribute")
-            time_str = "N/A"
+            # Check for the accumulated time above setpoint
+            time_value = None
+            if hasattr(self.new_cycle_handler, 'core_temp_above_setpoint_time'):
+                time_value = self.new_cycle_handler.core_temp_above_setpoint_time
+                logger.debug(f"core_temp_above_setpoint_time: {time_value}")
+            time_str = f"{time_value:.2f}" if time_value is not None and time_value > 0 else "N/A"
 
-        # Check for the pressure drop core temperature
-        if hasattr(self.new_cycle_handler, 'pressure_drop_core_temp'):
-            pressure_value = self.new_cycle_handler.pressure_drop_core_temp
-            logger.debug(f"pressure_drop_core_temp: {pressure_value}")
+            # Check for the pressure drop core temperature
+            pressure_value = None
+            if hasattr(self.new_cycle_handler, 'pressure_drop_core_temp'):
+                pressure_value = self.new_cycle_handler.pressure_drop_core_temp
+                logger.debug(f"pressure_drop_core_temp: {pressure_value}")
             pressure_str = f"{pressure_value:.1f}" if pressure_value is not None else "N/A"
-        else:
-            logger.warning("new_cycle_handler is missing pressure_drop_core_temp attribute")
-            pressure_str = "N/A"
 
-        # Update the UI labels with formatted outputs
-        self.labelCycleOutcomesTime.setText(f"TIME (min) CORE TEMP ≥ {threshold:.1f} °C: {time_str}")
-        self.labelCycleOutcomesPressure.setText(f"CORE TEMP WHEN PRESSURE RELEASED (°C): {pressure_str}")
+            # Update the UI labels with formatted outputs
+            self.labelCycleOutcomesTime.setText(f"TIME (min) CORE TEMP ≥ {threshold:.1f} °C: {time_str}")
+            self.labelCycleOutcomesPressure.setText(f"CORE TEMP WHEN PRESSURE RELEASED (°C): {pressure_str}")
+        except Exception as e:
+            logger.error(f"Error updating cycle outcomes: {e}")
+            self.labelCycleOutcomesTime.setText(f"TIME (min) CORE TEMP ≥ N/A °C: N/A")
+            self.labelCycleOutcomesPressure.setText("CORE TEMP WHEN PRESSURE RELEASED (°C): N/A")
 
     def init_alarm_label(self):
         """Initialize the alarm label widget"""

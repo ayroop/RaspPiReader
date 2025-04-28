@@ -179,26 +179,29 @@ class PLCConfigHelper(QMainWindow):
         control_widget = QWidget()
         control_layout = QVBoxLayout(control_widget)
         
-        # Cycle Control Address
-        cycle_group = QGroupBox("Cycle Control")
-        cycle_layout = QFormLayout(cycle_group)
+        # Create control addresses group
+        control_group = QGroupBox("Control Addresses")
+        control_form = QFormLayout(control_group)
         
+        # Cycle start address
         self.cycle_start_address = QSpinBox()
         self.cycle_start_address.setRange(0, 65535)
-        cycle_layout.addRow("Cycle Start/Stop Address (Coil):", self.cycle_start_address)
+        self.cycle_start_address.setPrefix("Address: ")
+        control_form.addRow("Cycle Start Address", self.cycle_start_address)
         
-        # Alarm Address
-        alarm_group = QGroupBox("Alarm Settings")
-        alarm_layout = QFormLayout(alarm_group)
-        
+        # Alarm address
         self.alarm_address = QSpinBox()
         self.alarm_address.setRange(0, 65535)
-        alarm_layout.addRow("Alarm Status Address (Register):", self.alarm_address)
+        self.alarm_address.setPrefix("Address: ")
+        control_form.addRow("Alarm Address", self.alarm_address)
         
-        control_layout.addWidget(cycle_group)
-        control_layout.addWidget(alarm_group)
-        control_layout.addStretch()
+        # Selected program address
+        self.selected_program_address = QSpinBox()
+        self.selected_program_address.setRange(0, 65535)
+        self.selected_program_address.setPrefix("Address: ")
+        control_form.addRow("Selected Program Address", self.selected_program_address)
         
+        control_layout.addWidget(control_group)
         self.tab_widget.addTab(control_widget, "Control Addresses")
     
     def load_data(self):
@@ -242,6 +245,11 @@ class PLCConfigHelper(QMainWindow):
                     decimals_array[idx].setValue(decimal_value)
                 except (ValueError, TypeError):
                     decimals_array[idx].setValue(0)
+        
+        # Load control addresses
+        self.cycle_start_address.setValue(pool.config('cycle_control_address', int, 0))
+        self.alarm_address.setValue(pool.config('alarm_address', int, 0))
+        self.selected_program_address.setValue(pool.config('selected_program_address', int, 100))
     
     def save_all(self):
         try:
@@ -331,6 +339,9 @@ class PLCConfigHelper(QMainWindow):
             
             alarm_addr = self.alarm_address.value()
             pool.set_config('alarm_address', int(alarm_addr))
+            
+            selected_program_addr = self.selected_program_address.value()
+            pool.set_config('selected_program_address', int(selected_program_addr))
             
             # Commit changes to the database
             self.db.session.commit()

@@ -1217,3 +1217,17 @@ def start_connection_monitor(interval=30000):
         logger.info(f"PLC connection monitor started with interval {interval}ms")
         return True
     return False
+
+def write_holding_register(address, value, device_id=1):
+    """
+    Write a single value to a holding register in the PLC.
+    
+    Args:
+        address (int): The address of the holding register
+        value (int): The value to write
+        device_id (int): The unit ID of the slave device
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    return write_register(address, value, device_id)

@@ -6,6 +6,7 @@ from RaspPiReader.ui.start_cycle_form_handler import StartCycleFormHandler
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import CycleData, DefaultProgram, User, CycleSerialNumber
 from RaspPiReader import pool
+from RaspPiReader.libs.plc_communication import write_holding_register
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,99 +17,138 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         self.ui = Ui_ProgramSelectionForm()
         self.ui.setupUi(self)
         self.work_order = work_order
-        self.quantity = quantity      # store user set quantity
-        self.serial_numbers = serial_numbers  # list of (processed) serial numbers
+        self.quantity = quantity
+        self.serial_numbers = serial_numbers
         self.db = Database("sqlite:///local_database.db")
+        self.selected_program = None
+        
         logger.info(f"ProgramSelectionFormHandler initiated with quantity: {self.quantity}")
         self.setWindowTitle(f"Select Program for Order: {work_order}")
-        self.resize(800, 600)
-        self.setMinimumSize(800, 600)
-        self.setStyleSheet("QWidget { font-size: 16px; }")
-        if hasattr(self.ui, "programLabel"):
-            self.ui.programLabel.setText("Select Program:")
-        self.populate_program_combo()
-        if hasattr(self.ui, "startCycleButton"):
-            self.ui.startCycleButton.setText("Start Cycle")
-        if hasattr(self.ui, "cancelButton"):
-            self.ui.cancelButton.setText("Cancel")
+        self.resize(1200, 800)
+        self.setMinimumSize(1200, 800)
+        self.setStyleSheet("""
+            QGroupBox {
+                font-size: 16px;
+                border: 2px solid #CCCCCC;
+                border-radius: 5px;
+                margin-top: 1ex;
+                padding: 10px;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 3px 0 3px;
+            }
+            QPushButton {
+                font-size: 14px;
+                padding: 8px;
+                background-color: #007bff;
+                color: white;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #0056b3;
+            }
+            QLabel {
+                font-size: 14px;
+            }
+        """)
+        
+        # Connect program selection buttons
+        self.ui.selectProgram1Button.clicked.connect(lambda: self.select_program(1))
+        self.ui.selectProgram2Button.clicked.connect(lambda: self.select_program(2))
+        self.ui.selectProgram3Button.clicked.connect(lambda: self.select_program(3))
+        self.ui.selectProgram4Button.clicked.connect(lambda: self.select_program(4))
+        
+        # Connect start and cancel buttons
         self.ui.startCycleButton.clicked.connect(self.start_cycle)
         self.ui.cancelButton.clicked.connect(self.on_cancel)
-        self.ui.programComboBox.currentIndexChanged.connect(self.update_program_info)
-        self.update_program_info(self.ui.programComboBox.currentIndex())
+        
+        # Load program information
+        self.load_program_info()
     
-    def populate_program_combo(self):
-        if self.ui.programComboBox.count() == 0:
-            self.ui.programComboBox.addItem("Program 1")
-            self.ui.programComboBox.addItem("Program 2")
-            self.ui.programComboBox.addItem("Program 3")
-            self.ui.programComboBox.addItem("Program 4")
-    
-    def update_program_info(self, index):
-        program_index = index + 1
+    def load_program_info(self):
+        """Load and display information for all four programs"""
         current_user = pool.get("current_user")
-        default_program = self.db.session.query(DefaultProgram).filter_by(
-            username=current_user, program_number=program_index
-        ).first()
-
-        if default_program:
-            pool.set_config("cycle_location", default_program.cycle_location or "N/A")
-            pool.set_config("dwell_time", default_program.dwell_time if default_program.dwell_time is not None else 0.0)
-            pool.set_config("core_temp_setpoint", default_program.core_temp_setpoint if default_program.core_temp_setpoint is not None else 0.0)
-            pool.set_config("cool_down_temp", default_program.cool_down_temp if default_program.cool_down_temp is not None else 0.0)
-            pool.set_config("temp_ramp", default_program.temp_ramp if default_program.temp_ramp is not None else 0.0)
-            pool.set_config("set_pressure", default_program.set_pressure if default_program.set_pressure is not None else 0.0)
-            pool.set_config("maintain_vacuum", default_program.maintain_vacuum if default_program.maintain_vacuum is not None else 0.0)
-            pool.set_config("initial_set_cure_temp", default_program.initial_set_cure_temp if default_program.initial_set_cure_temp is not None else 0.0)
-            pool.set_config("final_set_cure_temp", default_program.final_set_cure_temp if default_program.final_set_cure_temp is not None else 0.0)
-            pool.set_config("quantity", self.quantity)
-            # Pass along any pre‐existing cycle_id (may be empty)
-            pool.set_config("cycle_id", default_program.cycle_id if hasattr(default_program, "cycle_id") and default_program.cycle_id is not None else "")
-            info_text = f"""
-            <div style="font-family:Arial; font-size:16px; margin:10px;">
-                <h3 style="margin-bottom:10px;">Program {program_index} Settings</h3>
-                <table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; width:100%;">
-                    <tr style="background-color:#f0f0f0;">
-                        <th align="left">Field</th>
-                        <th align="left">Value</th>
-                    </tr>
-                    <tr><td>Size</td><td>{default_program.size or 'N/A'}</td></tr>
-                    <tr><td>Cycle ID</td><td>{default_program.cycle_id or 'N/A'}</td></tr>
-                    <tr><td>Cycle Location</td><td>{default_program.cycle_location or 'N/A'}</td></tr>
-                    <tr><td>Dwell Time</td><td>{default_program.dwell_time or 'N/A'}</td></tr>
-                    <tr><td>Cool Down Temperature</td><td>{default_program.cool_down_temp or 'N/A'}°C</td></tr>
-                    <tr><td>Core Temperature Setpoint</td><td>{default_program.core_temp_setpoint or 'N/A'}°C</td></tr>
-                    <tr><td>Temperature Ramp</td><td>{default_program.temp_ramp or 'N/A'}°C/min</td></tr>
-                    <tr><td>Set Pressure</td><td>{default_program.set_pressure or 'N/A'} kPa</td></tr>
-                    <tr><td>Maintain Vacuum</td><td>{default_program.maintain_vacuum or 'N/A'} %</td></tr>
-                    <tr><td>Initial Set Cure Temperature</td><td>{default_program.initial_set_cure_temp or 'N/A'}°C</td></tr>
-                    <tr><td>Final Set Cure Temperature</td><td>{default_program.final_set_cure_temp or 'N/A'}°C</td></tr>
-                    <tr><td>Quantity</td><td>{self.quantity}</td></tr>
-                </table>
-            </div>
-            """
-        else:
-            info_text = f"""
-            <div style="font-family:Arial; font-size:16px; margin:10px;">
-                <h3>Program {program_index}</h3>
-                <p>No default settings found for this program.</p>
-            </div>
-            """
-        if hasattr(self.ui, "programInfoLabel"):
-            self.ui.programInfoLabel.setMinimumWidth(500)
-            self.ui.programInfoLabel.setMinimumHeight(400)
-            self.ui.programInfoLabel.setTextFormat(QtCore.Qt.RichText)
-            self.ui.programInfoLabel.setText(info_text)
+        for program_num in range(1, 5):
+            default_program = self.db.session.query(DefaultProgram).filter_by(
+                username=current_user, program_number=program_num
+            ).first()
+            
+            info_label = getattr(self.ui, f"program{program_num}InfoLabel")
+            if default_program:
+                info_text = f"""
+                <div style="font-family:Arial; font-size:14px; margin:10px;">
+                    <table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; width:100%;">
+                        <tr style="background-color:#f0f0f0;">
+                            <th align="left">Field</th>
+                            <th align="left">Value</th>
+                        </tr>
+                        <tr><td>Size</td><td>{default_program.size or 'N/A'}</td></tr>
+                        <tr><td>Cycle Location</td><td>{default_program.cycle_location or 'N/A'}</td></tr>
+                        <tr><td>Dwell Time</td><td>{default_program.dwell_time or 'N/A'}</td></tr>
+                        <tr><td>Cool Down Temperature</td><td>{default_program.cool_down_temp or 'N/A'}°C</td></tr>
+                        <tr><td>Core Temperature Setpoint</td><td>{default_program.core_temp_setpoint or 'N/A'}°C</td></tr>
+                        <tr><td>Temperature Ramp</td><td>{default_program.temp_ramp or 'N/A'}°C/min</td></tr>
+                        <tr><td>Set Pressure</td><td>{default_program.set_pressure or 'N/A'} kPa</td></tr>
+                        <tr><td>Maintain Vacuum</td><td>{default_program.maintain_vacuum or 'N/A'} %</td></tr>
+                        <tr><td>Initial Set Cure Temperature</td><td>{default_program.initial_set_cure_temp or 'N/A'}°C</td></tr>
+                        <tr><td>Final Set Cure Temperature</td><td>{default_program.final_set_cure_temp or 'N/A'}°C</td></tr>
+                    </table>
+                </div>
+                """
+            else:
+                info_text = f"""
+                <div style="font-family:Arial; font-size:14px; margin:10px;">
+                    <p>No default settings found for Program {program_num}.</p>
+                </div>
+                """
+            
+            info_label.setTextFormat(QtCore.Qt.RichText)
+            info_label.setText(info_text)
+    
+    def select_program(self, program_number):
+        """Handle program selection and update UI accordingly"""
+        # Reset all program group boxes
+        for i in range(1, 5):
+            group_box = getattr(self.ui, f"program{i}GroupBox")
+            group_box.setStyleSheet("QGroupBox { border: 2px solid #CCCCCC; }")
+        
+        # Highlight selected program
+        selected_group_box = getattr(self.ui, f"program{program_number}GroupBox")
+        selected_group_box.setStyleSheet("QGroupBox { border: 2px solid #007bff; }")
+        
+        self.selected_program = program_number
+        
+        # Write the selected program number to the PLC
+        try:
+            plc_address = pool.config('selected_program_address', int, 100)  # Default address if not configured
+            write_holding_register(plc_address, program_number)
+            logger.info(f"Selected program {program_number} written to PLC address {plc_address}")
+        except Exception as e:
+            logger.error(f"Error writing to PLC: {e}")
+            QtWidgets.QMessageBox.warning(
+                self, "PLC Communication Error",
+                f"Could not update PLC with selected program: {str(e)}"
+            )
     
     def start_cycle(self):
-        logger.info("Start Cycle button pressed")
-        program_index = self.ui.programComboBox.currentIndex() + 1
+        if not self.selected_program:
+            QtWidgets.QMessageBox.warning(
+                self, "Warning", "Please select a program before starting the cycle."
+            )
+            return
+            
+        logger.info(f"Start Cycle button pressed for Program {self.selected_program}")
         current_user = pool.get("current_user")
         default_program = self.db.session.query(DefaultProgram).filter_by(
-            username=current_user, program_number=program_index
+            username=current_user, program_number=self.selected_program
         ).first()
+        
         if not default_program:
             QtWidgets.QMessageBox.warning(
-                self, "Warning", f"No default program found for Program {program_index}"
+                self, "Warning", f"No default program found for Program {self.selected_program}"
             )
             return
 
@@ -137,7 +177,6 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             )
             new_cycle.user = user
 
-            # Ensure cycle_id is valid. If missing, empty, or "N/A", generate a new one.
             if not new_cycle.cycle_id or new_cycle.cycle_id.strip() in ["", "N/A"]:
                 from RaspPiReader.ui.default_program_form import DefaultProgramForm
                 new_cycle.cycle_id = DefaultProgramForm().generate_cycle_id()
@@ -146,21 +185,16 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             self.db.session.commit()
             self.cycle_record = new_cycle
 
-            # Immediately update the pool config so that later modules see the correct cycle_id.
             pool.set_config("cycle_id", new_cycle.cycle_id)
-            # Ensure the current cycle in pool is this CycleData record.
             pool.set("current_cycle", new_cycle)
 
-            # Handle serial numbers properly
             valid_serials = [sn.strip() for sn in self.serial_numbers if sn.strip()]
-            inserted_serials = set()  # local set to track serial numbers already added
+            inserted_serials = set()
             if valid_serials:
-                # Insert all valid serial numbers, skipping duplicates
                 for sn in valid_serials:
                     if sn in inserted_serials:
                         logger.warning(f"Serial number {sn} already processed in this cycle. Skipping duplicate insertion.")
                         continue
-                    # Check for duplicates within the current cycle only.
                     existing_serial = self.db.session.query(CycleSerialNumber).filter_by(cycle_id=new_cycle.id, serial_number=sn).first()
                     if existing_serial:
                         logger.warning(f"Serial number {sn} already exists in cycle {new_cycle.id}. Skipping insertion.")
@@ -181,7 +215,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                     logger.error(f"Error inserting placeholder serial number: {e}")
 
             self.db.session.commit()
-            logger.info(f"New cycle created: Order {self.work_order}, Program {program_index}, Quantity {self.quantity}, {len(self.serial_numbers)} serial numbers")
+            logger.info(f"New cycle created: Order {self.work_order}, Program {self.selected_program}, Quantity {self.quantity}, {len(self.serial_numbers)} serial numbers")
         except Exception as e:
             self.db.session.rollback()
             error_details = traceback.format_exc()
@@ -209,10 +243,8 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         else:
             logger.warning("Main form not available for finalizing cycle start.")
 
-        # Start visualization and boolean reading using the main form
         if main_form:
             current_cycle = pool.get("current_cycle")
-            # Ensure we have a proper CycleData record (with an 'id' attribute)
             if not hasattr(current_cycle, "id"):
                 current_cycle = self.cycle_record
                 pool.set("current_cycle", current_cycle)
