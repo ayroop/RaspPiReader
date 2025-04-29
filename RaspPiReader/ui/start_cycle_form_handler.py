@@ -483,172 +483,143 @@ class StartCycleFormHandler(QMainWindow):
     def start_cycle_signal(self):
         """
         Send a signal to the PLC that the cycle is starting. 
-        Writes True (coil=1) to the dedicated coil address.
+        Writes True (coil=1) to the dedicated coil address and sends the selected program number.
         """
-        coil_addr = pool.config("cycle_start_coil_address", int, 100)
-        success = plc_communication.write_coil(coil_addr, True)
-        if success:
+        try:
+            # Get the cycle start coil address from configuration
+            start_coil_addr = pool.config("cycle_start_coil_address", int, 100)
+            program_addr = pool.config("selected_program_address", int, 101)
+            
+            # Get the selected program number
+            selected_program = self.ui.programComboBox.currentIndex() + 1  # Convert to 1-based index
+            
+            # Write the cycle start signal (True)
+            success = plc_communication.write_coil(start_coil_addr, True)
+            if success:
+                logger.info(f"Cycle start signal sent (coil {start_coil_addr} set to True)")
+            else:
+                logger.error(f"Failed to send cycle start signal to PLC (coil {start_coil_addr})")
+            
+            # Write the selected program number
+            success = plc_communication.write_register(program_addr, selected_program)
+            if success:
+                logger.info(f"Selected program {selected_program} written to PLC (address {program_addr})")
+            else:
+                logger.error(f"Failed to write program number to PLC (address {program_addr})")
+                
             self.cycle_start_time = datetime.now()
-            logger.info(f"Cycle start signal sent (coil {coil_addr} set to True).")
-        else:
-            logger.error("Failed to send cycle start signal to PLC.")
+            
+        except Exception as e:
+            logger.error(f"Error in start_cycle_signal: {e}")
+            QMessageBox.critical(self, "PLC Error", f"Failed to start cycle: {str(e)}")
 
     def stop_cycle_signal(self):
         """
         Send a signal to the PLC that the cycle is stopping.
         Writes False (coil=0) to the dedicated coil address.
         """
-        coil_addr = pool.config("cycle_start_coil_address", int, 100)
-        success = plc_communication.write_coil(coil_addr, False)
-        if success:
+        try:
+            # Get the cycle start coil address from configuration
+            start_coil_addr = pool.config("cycle_start_coil_address", int, 100)
+            
+            # Write the cycle stop signal (False)
+            success = plc_communication.write_coil(start_coil_addr, False)
+            if success:
+                logger.info(f"Cycle stop signal sent (coil {start_coil_addr} set to False)")
+            else:
+                logger.error(f"Failed to send cycle stop signal to PLC (coil {start_coil_addr})")
+                
             self.cycle_end_time = datetime.now()
-            logger.info(f"Cycle stop signal sent (coil {coil_addr} set to False).")
-        else:
-            logger.error("Failed to send cycle stop signal to PLC.")
+            
+        except Exception as e:
+            logger.error(f"Error in stop_cycle_signal: {e}")
+            QMessageBox.critical(self, "PLC Error", f"Failed to stop cycle: {str(e)}")
 
     def start_cycle(self):
         """
-        Prepare for cycle start but don't actually start it yet.
-        The actual cycle start will be triggered by the green button in the default program selection.
+        Start a new cycle, initialize data collection, and send signals to PLC.
         """
-        logger.info("Preparing for cycle start")
-        self.cycle_start_time = datetime.now()
-        self.save_cycle_data()  # Stores the cycle data in pool as "current_cycle"
-        self.cycle_record = pool.get("current_cycle")
-        pool.set("start_cycle_form", self)
-        
-        # Update UI state - don't disable Action>Start or enable Action>Stop yet
-        main_form = pool.get('main_form')
-        if main_form:
-            main_form.create_csv_file()
-            main_form.cycle_timer.start(500)
-            main_form.update_cycle_info_pannel()
-        
-        # Update internal state
-        self.running = True
-        self.cycle_started = False  # Set to False since cycle hasn't actually started yet
-        
-        # Initialize visualization
-        if not self.visualization:
-            main_form = pool.get('main_form')
-            self.visualization = VisualizationIntegrator(main_form if main_form else self)
-            self.visualization.setup_visualization()
-        
-        # Start threads
-        self.hide()
-        self.initiate_reader_thread()
-        if self.read_thread:
-            self.read_thread.start()
-        self.initiate_onedrive_update_thread()
-        
-        self.show()
-        
-        logger.info("Cycle preparation completed - waiting for green button click")
+        try:
+            logger.info("Starting new cycle")
+            
+            # Initialize cycle data
+            self.cycle_record = CycleData()
+            self.cycle_record.start_time = datetime.now()
+            self.cycle_record.program_number = self.ui.programComboBox.currentIndex() + 1
+            
+            # Start data reading
+            self.start_data_reading()
+            
+            # Send start signal to PLC
+            self.start_cycle_signal()
+            
+            # Update UI state
+            self.ui.startPushButton.setEnabled(False)
+            self.ui.startPushButton.setEnabled(True)
+            
+            # Start visualization if available
+            if hasattr(self, 'visualization'):
+                self.visualization.on_cycle_start()
+                
+            logger.info(f"Cycle started successfully with program {self.cycle_record.program_number}")
+            
+        except Exception as e:
+            logger.error(f"Error starting cycle: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to start cycle: {str(e)}")
+            # Clean up on error
+            self.stop_cycle()
 
     def stop_cycle(self):
-        if not hasattr(self, "cycle_record") or self.cycle_record is None:
-            QMessageBox.critical(self, "Error", "No active cycle record found.")
-            return
-            
-        # Stop the PLC signal
-        start_coil_addr = pool.config('cycle_start_coil_address', int, 100)
-        from RaspPiReader.libs.plc_communication import write_coil
-        write_coil(start_coil_addr, False)
-        
-        # Update cycle record with stop time
-        self.cycle_record.stop_time = datetime.now()
-        
-        # Get serial numbers and other data
+        """
+        Stop the current cycle, finalize data collection, and send signals to PLC.
+        """
         try:
-            serial_numbers = self.get_serial_numbers() or []
-        except Exception as e:
-            logger.error(f"Error retrieving serial numbers: {e}")
-            QMessageBox.critical(self, "Error", f"Error retrieving serial numbers: {e}")
-            return
+            logger.info("Stopping cycle")
             
-        supervisor_username = self.get_supervisor_override() or ""
-        alarm_values = self.read_alarms() or {}
-        
-        # Finalize the cycle
-        try:
-            pdf_file, csv_file = finalize_cycle(
-                cycle_data=self.cycle_record,
-                serial_numbers=serial_numbers,
-                supervisor_username=supervisor_username,
-                alarm_values=alarm_values,
-                reports_folder="reports",
-                template_file="RaspPiReader/ui/result_template.html"
-            )
-        except Exception as e:
-            logger.error(f"Error finalizing cycle: {e}")
-            QMessageBox.critical(self, "Report Generation Error", f"Error finalizing cycle: {e}")
-            return
+            # Stop data reading
+            self.stop_data_reading()
             
-        # Update database
-        db = Database("sqlite:///local_database.db")
-        order_id = getattr(self.cycle_record, "order_id", "unknown")
-        if order_id == "unknown":
-            logger.warning("No order_id found in cycle record; using default 'unknown'.")
+            # Send stop signal to PLC
+            self.stop_cycle_signal()
             
-        try:
-            current_username = pool.get("current_user")
-            user = db.session.query(User).filter_by(username=current_username).first()
-            if not user:
-                QMessageBox.critical(self, "Database Error", "Logged-in user not found for finalizing cycle.")
-                return
+            # Update cycle record
+            if hasattr(self, "cycle_record") and self.cycle_record:
+                self.cycle_record.stop_time = datetime.now()
                 
-            self.cycle_record.pdf_report_path = pdf_file
-            self.cycle_record.html_report_path = csv_file
-            db.session.commit()
-            logger.info(f"Cycle record updated for order_id: {order_id}")
+                # Get serial numbers and other data
+                try:
+                    serial_numbers = self.get_serial_numbers() or []
+                    supervisor_username = self.get_supervisor_override() or ""
+                    alarm_values = self.read_alarms() or {}
+                    
+                    # Finalize the cycle
+                    pdf_file, csv_file = finalize_cycle(
+                        cycle_data=self.cycle_record,
+                        serial_numbers=serial_numbers,
+                        supervisor_username=supervisor_username,
+                        alarm_values=alarm_values,
+                        reports_folder="reports",
+                        template_file="RaspPiReader/ui/result_template.html"
+                    )
+                    
+                    logger.info(f"Cycle finalized successfully. Reports generated: {pdf_file}, {csv_file}")
+                except Exception as e:
+                    logger.error(f"Error finalizing cycle: {e}")
+                    QMessageBox.warning(self, "Warning", f"Error finalizing cycle: {str(e)}")
+            
+            # Update UI state
+            self.ui.startPushButton.setEnabled(True)
+            self.ui.startPushButton.setEnabled(False)
+            
+            # Stop visualization if available
+            if hasattr(self, 'visualization'):
+                self.visualization.on_cycle_stop()
+                
+            logger.info("Cycle stopped successfully")
+            
         except Exception as e:
-            db.session.rollback()
-            logger.error(f"Database error updating cycle record: {e}")
-            QMessageBox.critical(self, "Database Error", f"Could not update cycle record: {e}")
-            return
-            
-        # Show confirmation with proper handling for cleaning up
-        result = QMessageBox.information(
-            self,
-            "Cycle Stopped",
-            f"Cycle stopped successfully!\nPDF Report: {pdf_file}\nCSV Report: {csv_file}",
-            QMessageBox.Ok
-        )
-        
-        # Perform full cleanup regardless of user choice
-        logger.info("Performing post-cycle cleanup")
-        
-        # Stop data reading threads
-        self.stop_data_reading()
-        self.reading_thread_running = False
-        self.running = False
-        
-        # Close any open files
-        if hasattr(self, "csv_file"):
-            try:
-                self.csv_file.close()
-            except Exception as e:
-                logger.error(f"Error closing CSV file: {e}")
-        
-        # Stop visualization dashboard
-        self.visualization.on_cycle_stop()
-        
-        # Update UI state
-        main_form = pool.get('main_form')
-        if main_form:
-            main_form.cycle_timer.stop()
-            main_form.actionStart.setEnabled(True)
-            main_form.actionStop.setEnabled(False)
-            
-        # Reset cycle state
-        self.cycle_started = False
-        pool.set("start_cycle_form", None)
-        pool.set("current_cycle", None)
-        
-        # Release any remaining resources
-        self.release_resources()
-        
-        logger.info("Cycle fully stopped and system reset for new cycle")
+            logger.error(f"Error stopping cycle: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to stop cycle: {str(e)}")
 
     def get_serial_numbers(self):
         try:

@@ -29,32 +29,117 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         self.setWindowTitle(f"Select Program for Order: {work_order}")
         self.resize(1200, 800)
         self.setMinimumSize(1200, 800)
+        
+        # Enhanced stylesheet for better visual appearance
         self.setStyleSheet("""
+            QWidget {
+                font-family: 'Segoe UI', Arial, sans-serif;
+            }
+            
             QGroupBox {
                 font-size: 16px;
+                font-weight: bold;
                 border: 2px solid #CCCCCC;
-                border-radius: 5px;
-                margin-top: 1ex;
-                padding: 10px;
+                border-radius: 8px;
+                margin-top: 1.5ex;
+                padding: 15px;
+                background-color: #FFFFFF;
             }
+            
             QGroupBox::title {
                 subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 3px 0 3px;
+                left: 15px;
+                padding: 0 5px 0 5px;
+                color: #333333;
             }
+            
             QPushButton {
                 font-size: 14px;
-                padding: 8px;
-                background-color: #007bff;
+                font-weight: bold;
+                padding: 10px 20px;
+                border-radius: 5px;
+                min-width: 120px;
+            }
+            
+            QPushButton#selectProgram1Button {
+                background-color: #4CAF50;
                 color: white;
                 border: none;
-                border-radius: 4px;
             }
-            QPushButton:hover {
-                background-color: #0056b3;
+            
+            QPushButton#selectProgram1Button:hover {
+                background-color: #45a049;
             }
+            
+            QPushButton#selectProgram2Button {
+                background-color: #2196F3;
+                color: white;
+                border: none;
+            }
+            
+            QPushButton#selectProgram2Button:hover {
+                background-color: #0b7dda;
+            }
+            
+            QPushButton#selectProgram3Button {
+                background-color: #FF9800;
+                color: white;
+                border: none;
+            }
+            
+            QPushButton#selectProgram3Button:hover {
+                background-color: #e68a00;
+            }
+            
+            QPushButton#selectProgram4Button {
+                background-color: #9C27B0;
+                color: white;
+                border: none;
+            }
+            
+            QPushButton#selectProgram4Button:hover {
+                background-color: #7b1fa2;
+            }
+            
+            QPushButton#startCycleButton {
+                background-color: #2E7D32;
+                color: white;
+                font-size: 16px;
+                padding: 12px 24px;
+                border: none;
+            }
+            
+            QPushButton#startCycleButton:hover {
+                background-color: #1B5E20;
+            }
+            
+            QPushButton#cancelButton {
+                background-color: #F44336;
+                color: white;
+                font-size: 16px;
+                padding: 12px 24px;
+                border: none;
+            }
+            
+            QPushButton#cancelButton:hover {
+                background-color: #D32F2F;
+            }
+            
             QLabel {
                 font-size: 14px;
+                color: #333333;
+                padding: 5px;
+            }
+            
+            QLabel[objectName^="program"] {
+                background-color: #F5F5F5;
+                border-radius: 4px;
+                padding: 10px;
+                margin: 5px 0;
+            }
+            
+            QLabel[objectName^="program"]:hover {
+                background-color: #EEEEEE;
             }
         """)
         
@@ -125,12 +210,28 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         # Reset all program group boxes
         for i in range(1, 5):
             group_box = getattr(self.ui, f"program{i}GroupBox")
-            group_box.setStyleSheet("QGroupBox { border: 2px solid #CCCCCC; }")
+            group_box.setStyleSheet("""
+                QGroupBox {
+                    border: 2px solid #CCCCCC;
+                    background-color: #FFFFFF;
+                }
+                QGroupBox::title {
+                    color: #333333;
+                }
+            """)
             logger.debug(f"Reset style for Program {i} group box")
         
         # Highlight selected program
         selected_group_box = getattr(self.ui, f"program{program_number}GroupBox")
-        selected_group_box.setStyleSheet("QGroupBox { border: 2px solid #007bff; }")
+        selected_group_box.setStyleSheet(f"""
+            QGroupBox {{
+                border: 3px solid #{'4CAF50' if program_number == 1 else '2196F3' if program_number == 2 else 'FF9800' if program_number == 3 else '9C27B0'};
+                background-color: #F8F8F8;
+            }}
+            QGroupBox::title {{
+                color: #{'4CAF50' if program_number == 1 else '2196F3' if program_number == 2 else 'FF9800' if program_number == 3 else '9C27B0'};
+            }}
+        """)
         logger.info(f"Highlighted Program {program_number} group box")
         
         self.selected_program = program_number
