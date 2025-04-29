@@ -14,6 +14,9 @@ logger = logging.getLogger(__name__)
 class ProgramSelectionFormHandler(QtWidgets.QWidget):
     def __init__(self, work_order, serial_numbers, quantity, parent=None):
         super(ProgramSelectionFormHandler, self).__init__(parent)
+        logger.info("Initializing ProgramSelectionFormHandler")
+        logger.info(f"Parameters - Work Order: {work_order}, Quantity: {quantity}, Serial Numbers: {serial_numbers}")
+        
         self.ui = Ui_ProgramSelectionForm()
         self.ui.setupUi(self)
         self.work_order = work_order
@@ -70,16 +73,21 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
     
     def load_program_info(self):
         """Load and display information for all four programs"""
+        logger.info("Loading program information for all four programs")
         current_user = pool.get("current_user")
+        logger.info(f"Current user: {current_user}")
+        
         for program_num in range(1, 5):
+            logger.info(f"Loading information for Program {program_num}")
             default_program = self.db.session.query(DefaultProgram).filter_by(
                 username=current_user, program_number=program_num
             ).first()
-            
+
             info_label = getattr(self.ui, f"program{program_num}InfoLabel")
             if default_program:
+                logger.info(f"Found default program {program_num} for user {current_user}")
                 info_text = f"""
-                <div style="font-family:Arial; font-size:14px; margin:10px;">
+                    <div style="font-family:Arial; font-size:14px; margin:10px;">
                     <table border="1" cellspacing="0" cellpadding="4" style="border-collapse: collapse; width:100%;">
                         <tr style="background-color:#f0f0f0;">
                             <th align="left">Field</th>
@@ -99,54 +107,69 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                 </div>
                 """
             else:
+                logger.warning(f"No default program found for Program {program_num}")
                 info_text = f"""
-                <div style="font-family:Arial; font-size:14px; margin:10px;">
-                    <p>No default settings found for Program {program_num}.</p>
+                    <div style="font-family:Arial; font-size:14px; margin:10px;">
+                        <p>No default settings found for Program {program_num}.</p>
                 </div>
                 """
             
             info_label.setTextFormat(QtCore.Qt.RichText)
             info_label.setText(info_text)
+            logger.info(f"Program {program_num} information displayed")
     
     def select_program(self, program_number):
         """Handle program selection and update UI accordingly"""
+        logger.info(f"Program {program_number} selected")
+        
         # Reset all program group boxes
         for i in range(1, 5):
             group_box = getattr(self.ui, f"program{i}GroupBox")
             group_box.setStyleSheet("QGroupBox { border: 2px solid #CCCCCC; }")
+            logger.debug(f"Reset style for Program {i} group box")
         
         # Highlight selected program
         selected_group_box = getattr(self.ui, f"program{program_number}GroupBox")
         selected_group_box.setStyleSheet("QGroupBox { border: 2px solid #007bff; }")
+        logger.info(f"Highlighted Program {program_number} group box")
         
         self.selected_program = program_number
+        logger.info(f"Set selected_program to {program_number}")
         
         # Write the selected program number to the PLC
         try:
-            plc_address = pool.config('selected_program_address', int, 100)  # Default address if not configured
+            plc_address = pool.config('selected_program_address', int, 100)
+            logger.info(f"Writing program number {program_number} to PLC address {plc_address}")
             write_holding_register(plc_address, program_number)
-            logger.info(f"Selected program {program_number} written to PLC address {plc_address}")
+            logger.info(f"Successfully wrote program number {program_number} to PLC address {plc_address}")
         except Exception as e:
-            logger.error(f"Error writing to PLC: {e}")
+            error_msg = f"Error writing to PLC: {str(e)}"
+            logger.error(error_msg)
+            logger.error(f"Stack trace: {traceback.format_exc()}")
             QtWidgets.QMessageBox.warning(
                 self, "PLC Communication Error",
                 f"Could not update PLC with selected program: {str(e)}"
             )
     
     def start_cycle(self):
+        logger.info("Start Cycle button pressed")
         if not self.selected_program:
+            logger.warning("No program selected when trying to start cycle")
             QtWidgets.QMessageBox.warning(
                 self, "Warning", "Please select a program before starting the cycle."
             )
             return
             
-        logger.info(f"Start Cycle button pressed for Program {self.selected_program}")
+        logger.info(f"Starting cycle for Program {self.selected_program}")
         current_user = pool.get("current_user")
+        logger.info(f"Current user: {current_user}")
+        
         default_program = self.db.session.query(DefaultProgram).filter_by(
             username=current_user, program_number=self.selected_program
         ).first()
         
         if not default_program:
+            logger.error(f"No default program found for Program {self.selected_program}")
             QtWidgets.QMessageBox.warning(
                 self, "Warning", f"No default program found for Program {self.selected_program}"
             )
@@ -154,16 +177,22 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
 
         user = self.db.session.query(User).filter_by(username=current_user).first()
         if not user:
+            logger.error(f"User {current_user} not found in database")
             QtWidgets.QMessageBox.critical(self, "Database Error", "Logged-in user not found.")
             return
 
         try:
+            logger.info("Creating new cycle record")
             core_temp_setpoint = float(default_program.core_temp_setpoint)
             cool_down_temp = float(default_program.cool_down_temp)
             set_pressure = float(default_program.set_pressure)
             maintain_vacuum = bool(int(default_program.maintain_vacuum))
             initial_set_cure_temp = float(default_program.initial_set_cure_temp)
             final_set_cure_temp = float(default_program.final_set_cure_temp)
+
+            logger.info(f"Program parameters - Core Temp: {core_temp_setpoint}, Cool Down: {cool_down_temp}, "
+                      f"Pressure: {set_pressure}, Maintain Vacuum: {maintain_vacuum}, "
+                      f"Initial Cure Temp: {initial_set_cure_temp}, Final Cure Temp: {final_set_cure_temp}")
 
             new_cycle = CycleData(
                 order_id=self.work_order,
@@ -180,17 +209,21 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
             if not new_cycle.cycle_id or new_cycle.cycle_id.strip() in ["", "N/A"]:
                 from RaspPiReader.ui.default_program_form import DefaultProgramForm
                 new_cycle.cycle_id = DefaultProgramForm().generate_cycle_id()
+                logger.info(f"Generated new cycle ID: {new_cycle.cycle_id}")
 
             self.db.session.add(new_cycle)
             self.db.session.commit()
             self.cycle_record = new_cycle
+            logger.info(f"New cycle record created with ID: {new_cycle.id}")
 
             pool.set_config("cycle_id", new_cycle.cycle_id)
             pool.set("current_cycle", new_cycle)
+            logger.info("Cycle information stored in pool")
 
             valid_serials = [sn.strip() for sn in self.serial_numbers if sn.strip()]
             inserted_serials = set()
             if valid_serials:
+                logger.info(f"Processing {len(valid_serials)} serial numbers")
                 for sn in valid_serials:
                     if sn in inserted_serials:
                         logger.warning(f"Serial number {sn} already processed in this cycle. Skipping duplicate insertion.")
@@ -205,6 +238,7 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                     inserted_serials.add(sn)
                     logger.info(f"Added serial number {sn} to cycle {new_cycle.id}")
             else:
+                logger.info("No valid serial numbers provided, creating placeholder")
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
                 placeholder = f"PLACEHOLDER_{new_cycle.id}_{timestamp}"
                 try:
@@ -215,7 +249,8 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                     logger.error(f"Error inserting placeholder serial number: {e}")
 
             self.db.session.commit()
-            logger.info(f"New cycle created: Order {self.work_order}, Program {self.selected_program}, Quantity {self.quantity}, {len(self.serial_numbers)} serial numbers")
+            logger.info(f"Cycle started successfully - Order: {self.work_order}, Program: {self.selected_program}, "
+                      f"Quantity: {self.quantity}, Serial Numbers: {len(self.serial_numbers)}")
         except Exception as e:
             self.db.session.rollback()
             error_details = traceback.format_exc()
@@ -227,10 +262,12 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
 
         start_cycle_form = pool.get("start_cycle_form")
         if start_cycle_form and hasattr(start_cycle_form, "start_cycle"):
+            logger.info("Starting cycle through start_cycle_form")
             start_cycle_form.start_cycle()
 
         main_form = pool.get("main_form")
         if main_form:
+            logger.info("Updating main form with cycle information")
             from datetime import datetime
             main_form.new_cycle_handler.cycle_start_time = datetime.now()
             if hasattr(main_form, "start_cycle_timer"):
@@ -239,9 +276,9 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                 main_form.set_cycle_start_register(1)
             if hasattr(main_form, "update_cycle_info_pannel"):
                 main_form.update_cycle_info_pannel(default_program)
-            logger.info("Cycle timer started after program selection.")
+            logger.info("Cycle timer started after program selection")
         else:
-            logger.warning("Main form not available for finalizing cycle start.")
+            logger.warning("Main form not available for finalizing cycle start")
 
         if main_form:
             current_cycle = pool.get("current_cycle")
@@ -249,11 +286,12 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
                 current_cycle = self.cycle_record
                 pool.set("current_cycle", current_cycle)
             current_cycle_id = current_cycle.id if current_cycle is not None else None
+            logger.info(f"Starting visualization for cycle ID: {current_cycle_id}")
             main_form.viz_manager.start_visualization(current_cycle_id)
             main_form.start_boolean_reading()
             logger.info("Cycle and visualization started")
         else:
-            logger.error("Main form not found in pool; cannot start visualization and boolean data reading.")
+            logger.error("Main form not found in pool; cannot start visualization and boolean data reading")
 
         QtWidgets.QMessageBox.information(self, "Success", "Cycle started successfully!")
         self.close()
@@ -265,11 +303,13 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         # Reset menu items in main form
         main_form = pool.get('main_form')
         if main_form:
+            logger.info("Resetting main form menu items")
             main_form.actionStart.setEnabled(True)
             main_form.actionStop.setEnabled(False)
         
         # Clear any cycle data that might have been set
         pool.set("current_cycle", None)
+        logger.info("Cleared current cycle from pool")
         
         # Close the form
         self.close()

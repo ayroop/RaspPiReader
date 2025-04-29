@@ -116,6 +116,7 @@ class CycleData(Base):
     user_id = Column(Integer, ForeignKey('users.id'), nullable=False)
     user = relationship("User", backref="cycle_data")
     quantity = Column(Integer, nullable=True)
+    program_number = Column(Integer, default=1)  # Store which program was used for this cycle
     size = Column(String, nullable=True)
     cycle_location = Column(String, nullable=True)
     status = Column(String, nullable=True)

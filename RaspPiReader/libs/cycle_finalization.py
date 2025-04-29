@@ -10,7 +10,7 @@ from RaspPiReader.libs.plc_communication import write_bool_address
 from RaspPiReader.libs.onedrive_api import OneDriveAPI
 from RaspPiReader import pool
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import Alarm, OneDriveSettings, CycleSerialNumber, CycleData, CycleReport, AlarmMapping
+from RaspPiReader.libs.models import Alarm, OneDriveSettings, CycleSerialNumber, CycleData, CycleReport, AlarmMapping, DefaultProgram
 import sqlalchemy.exc
 from sqlalchemy.orm import Session
 
@@ -231,6 +231,7 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     
     # Build alarm mapping from DB
     alarm_mapping = {}
+    alarm_logs = []  # List to store alarm logs
     db_alarms = db.session.query(Alarm).all()
     for alarm in db_alarms:
         # Get all active mappings for this alarm
@@ -241,7 +242,10 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
         
         for mapping in mappings:
             threshold_type = "Low" if mapping.value == 1 else "High"
-            alarm_mapping[str(alarm.channel)] = f"{threshold_type} Threshold ({mapping.threshold:.2f}) - {mapping.message}"
+            alarm_text = f"{threshold_type} Threshold ({mapping.threshold:.2f}) - {mapping.message}"
+            alarm_mapping[str(alarm.channel)] = alarm_text
+            # Add to alarm logs
+            alarm_logs.append(f"Channel {alarm.channel}: {alarm_text}")
 
     active_alarms = []
     for addr, value in alarm_values.items():
@@ -361,6 +365,22 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     except Exception:
         quantity = len(serial_numbers)
 
+    # Get program number and settings
+    program_number = getattr(cycle_data, 'program_number', None)
+    if not program_number:
+        program_number = pool.config("program_number", int, default_val=1)
+    
+    # Get program settings from database
+    from RaspPiReader.libs.models import DefaultProgram
+    program_settings = db.session.query(DefaultProgram).filter_by(
+        program_number=program_number
+    ).first()
+    
+    if program_settings:
+        core_temp_setpoint = program_settings.core_temp_setpoint
+    else:
+        core_temp_setpoint = pool.config("core_temp_setpoint", float, default_val=100.0)
+
     try:
         with open(template_file, 'r', encoding='utf-8') as file:
             template_content = file.read()
@@ -405,6 +425,8 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
             'data': {
                 'order_id': getattr(cycle_data, 'order_id', "N/A"),
                 'cycle_id': getattr(cycle_data, 'cycle_id', "N/A"),
+                'program_number': program_number,
+                'core_temp_setpoint': core_temp_setpoint,
                 'quantity': quantity,
                 'size': getattr(cycle_data, 'size', "N/A"),
                 'serial_numbers': serial_list,
@@ -414,19 +436,21 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
                 'cycle_end_time': cycle_end_time,
                 'dwell_time': dwell_time,
                 'cool_down_temp': getattr(cycle_data, 'cool_down_temp', "N/A"),
-                'core_temp_setpoint': getattr(cycle_data, 'core_temp_setpoint', "N/A"),
                 'temp_ramp': getattr(cycle_data, 'temp_ramp', "N/A"),
                 'set_pressure': getattr(cycle_data, 'set_pressure', "N/A"),
                 'maintain_vacuum': "Yes" if (hasattr(cycle_data, 'maintain_vacuum') and cycle_data.maintain_vacuum) else "No",
                 'initial_set_cure_temp': getattr(cycle_data, 'initial_set_cure_temp', "N/A"),
                 'final_set_cure_temp': getattr(cycle_data, 'final_set_cure_temp', "N/A"),
+                'core_high_temp_time': getattr(cycle_data, 'core_high_temp_time', None),
+                'release_temp': getattr(cycle_data, 'pressure_drop_core_temp', None),
                 'alarms': alarm_info,
+                'alarm_logs': alarm_logs,
                 'supervisor': supervisor_username if supervisor_username else "N/A",
                 'current_date': datetime.now().strftime("%Y-%m-%d"),
                 'generation_time': datetime.now().strftime("%H:%M:%S"),
-                'timestamp': timestamp,  # Add timestamp for cache busting
-                'plot_image': plot_image_rel_path,  # Add plot image path to the template data
-                'plot_path': f"{plot_image_rel_path}?t={timestamp}" if plot_image_rel_path else None  # Add plot path with timestamp
+                'timestamp': timestamp,
+                'plot_image': plot_image_rel_path,
+                'plot_path': f"{plot_image_rel_path}?t={timestamp}" if plot_image_rel_path else None
             }
         }
         html_content = template.render(**report_data)

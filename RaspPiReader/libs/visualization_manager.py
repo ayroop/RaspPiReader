@@ -4,13 +4,55 @@ from datetime import datetime, timedelta
 from PyQt5 import QtWidgets, QtCore
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for headless operation
+# Suppress matplotlib font manager debug logs
+logging.getLogger('matplotlib.font_manager').setLevel(logging.WARNING)
+# Suppress PyQt5 UI parser debug logs
+logging.getLogger('PyQt5.uic').setLevel(logging.WARNING)
 import matplotlib.pyplot as plt
 import numpy as np
 from RaspPiReader.ui.visualization_dashboard import VisualizationDashboard
 from RaspPiReader.libs.visualization import LiveDataVisualization
 from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.models import PlotData, ChannelConfigSettings
+from RaspPiReader.libs.models import PlotData, ChannelConfigSettings, DefaultProgram
 from RaspPiReader.libs.plc_communication import modbus_comm
+
+# Configuration pool for application settings
+class ConfigPool:
+    """Configuration pool to manage application settings."""
+    
+    def __init__(self):
+        self.settings = {}
+        # Initialize with default settings if needed
+        
+    def config(self, key, value_type=None, default_val=None):
+        """
+        Get a configuration value by key.
+        
+        Args:
+            key (str): The configuration key to look up
+            value_type (type, optional): Type to convert the value to
+            default_val: Default value if the key doesn't exist
+            
+        Returns:
+            The configuration value or default_val if not found
+        """
+        if key not in self.settings:
+            return default_val
+            
+        value = self.settings[key]
+        if value_type is not None:
+            try:
+                return value_type(value)
+            except (ValueError, TypeError):
+                return default_val
+        return value
+        
+    def set_config(self, key, value):
+        """Set a configuration value."""
+        self.settings[key] = value
+
+# Create a singleton instance
+pool = ConfigPool()
 
 # Define a custom logging filter for PLC raw data logs
 class PLCDataFilter(logging.Filter):
@@ -123,10 +165,11 @@ class VisualizationManager:
         # Core temperature tracking
         self.core_temp_above_threshold = False
         self.core_temp_start_time = None
-        self.core_temp_duration = 0  # in minutes
+        self.core_temp_duration = 0.0  # Initialize as float
         self.pressure_release_temp = None
         self.last_pressure_value = None
         self.cycle_start_time = None
+        self.core_high_temp_time = None  # Add this to track total time above threshold
         
         # Test mode settings
         self.is_test_mode = True  # Enable test mode for simulator data
@@ -137,6 +180,7 @@ class VisualizationManager:
         
         # Cycle outcomes data for sharing
         self.cycle_outcomes_data = {
+            'program_number': None,
             'core_temp_setpoint': None,
             'core_high_temp_time': None,
             'release_temp': None
@@ -286,7 +330,7 @@ class VisualizationManager:
         # Reset core temperature tracking
         self.core_temp_above_threshold = False
         self.core_temp_start_time = None
-        self.core_temp_duration = 0
+        self.core_temp_duration = 0.0
         self.pressure_release_temp = None
         self.last_pressure_value = None
         self.cycle_start_time = QtCore.QTime.currentTime().msecsSinceStartOfDay() / 1000.0
@@ -466,13 +510,25 @@ class VisualizationManager:
     
     def get_cycle_outcomes(self):
         """Get formatted cycle outcomes data for both plot and HTML template"""
-        core_temp_threshold = self.program_settings.get('core_temp_setpoint', 'N/A')
+        # Get program settings from database
+        db = Database("sqlite:///local_database.db")
+        from RaspPiReader.libs.models import DefaultProgram
+        program_settings = db.session.query(DefaultProgram).filter_by(
+            program_number=self.current_program
+        ).first()
+        
+        if program_settings:
+            core_temp_setpoint = program_settings.core_temp_setpoint
+        else:
+            core_temp_setpoint = pool.config("core_temp_setpoint", float, default_val=100.0)
+        
         core_temp_duration = round(self.core_temp_duration, 2) if self.core_temp_duration > 0 else None
         pressure_release_temp = round(self.pressure_release_temp, 1) if self.pressure_release_temp is not None else None
         
         # Update shared data
         self.cycle_outcomes_data = {
-            'core_temp_setpoint': core_temp_threshold,
+            'program_number': self.current_program,
+            'core_temp_setpoint': core_temp_setpoint,
             'core_high_temp_time': core_temp_duration,
             'release_temp': pressure_release_temp
         }
@@ -892,7 +948,7 @@ class VisualizationManager:
             # Reset core temperature tracking
             self.core_temp_above_threshold = False
             self.core_temp_start_time = None
-            self.core_temp_duration = 0
+            self.core_temp_duration = 0.0
             self.pressure_release_temp = None
             self.last_pressure_value = None
             # Reconfigure plot axes after reset
@@ -995,6 +1051,7 @@ class VisualizationManager:
         """Get cycle outcomes data specifically formatted for the HTML template"""
         outcomes = self.get_cycle_outcomes()
         return {
+            'program_number': outcomes['program_number'],
             'core_temp_setpoint': outcomes['core_temp_setpoint'],
             'core_high_temp_time': outcomes['core_high_temp_time'],
             'release_temp': outcomes['release_temp']

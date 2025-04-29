@@ -52,6 +52,17 @@
             max-width: 90%;
             height: auto;
         }
+        .alarm-logs {
+            margin: 10px 0;
+            padding: 10px;
+            background-color: #f8f9fa;
+            border: 1px solid #ddd;
+        }
+        .alarm-log-item {
+            margin: 5px 0;
+            padding: 5px;
+            border-bottom: 1px solid #eee;
+        }
     </style>
 </head>
 <body>
@@ -166,27 +177,7 @@
             <td colspan="6" class="center">
                 <h3>CYCLE OUTCOMES</h3>
             </td>
-        </tr>
-        <tr>
-            <td colspan="6" class="center">
-                <table>
-                    <tr>
-                        <td width="50%">TIME (Min) CORE TEMP &ge; {{data.core_temp_setpoint}} °C</td>
-                        <td width="50%">
-                            {% if data.core_high_temp_time is defined and data.core_high_temp_time is not none %}
-                                {{data.core_high_temp_time}} Min
-                            {% else %}
-                                N/A
-                            {% endif %}
-                        </td>
-                    </tr>
-                    <tr>
-                        <td width="50%">CORE TEMP WHEN PRESSURE RELEASED</td>
-                        <td width="50%">{{data.release_temp}} °C</td>
-                    </tr>
-                </table>
-            </td>
-        </tr>
+        
         <tr>
             <td colspan="6" class="plot-container">
                 <!-- Use multiple sources with cache-busting timestamp parameters -->
@@ -200,6 +191,24 @@
                     <!-- Option 3: Fallback to standard path with timestamp -->
                     <img src="../RaspPiReader/reports/plot_export.png?t={{data.timestamp|default('')}}" alt="PLC Combined Plot" class="plot-image">
                 {% endif %}
+            </td>
+        </tr>
+        <tr>
+            <td colspan="6" class="center">
+                <h3>ALARM LOGS</h3>
+            </td>
+        </tr>
+        <tr>
+            <td colspan="6" class="left">
+                <div class="alarm-logs">
+                    {% if data.alarm_logs %}
+                        {% for log in data.alarm_logs %}
+                            <div class="alarm-log-item">{{ log }}</div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="alarm-log-item">No alarms recorded during this cycle.</div>
+                    {% endif %}
+                </div>
             </td>
         </tr>
         <tr>

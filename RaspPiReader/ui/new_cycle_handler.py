@@ -164,6 +164,7 @@ class NewCycleHandler(QtWidgets.QWidget):
                 stop_time = self.cycle_end_time,
                 quantity = pool.get("quantity") or 0,
                 cycle_location = pool.config("cycle_location", str, "Unknown"),
+                program_number = pool.config("program_number", int, 1),
                 core_temp_setpoint = pool.config("core_temp_setpoint", float, 0.0),
                 cool_down_temp = pool.config("cool_down_temp", float, 0.0),
                 temp_ramp = pool.config("temp_ramp", float, 0.0),
