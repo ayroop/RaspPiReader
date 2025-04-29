@@ -555,7 +555,7 @@ class StartCycleFormHandler(QMainWindow):
             
             # Update UI state
             self.ui.startPushButton.setEnabled(False)
-            self.ui.startPushButton.setEnabled(True)
+            self.ui.stopPushButton.setEnabled(True)
             
             # Start visualization if available
             if hasattr(self, 'visualization'):
@@ -609,7 +609,7 @@ class StartCycleFormHandler(QMainWindow):
             
             # Update UI state
             self.ui.startPushButton.setEnabled(True)
-            self.ui.startPushButton.setEnabled(False)
+            self.ui.stopPushButton.setEnabled(False)
             
             # Stop visualization if available
             if hasattr(self, 'visualization'):

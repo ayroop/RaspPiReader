@@ -238,19 +238,26 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         logger.info(f"Set selected_program to {program_number}")
         
         # Write the selected program number to the PLC
+        self.write_program_number(program_number)
+    
+    def write_program_number(self, program_number):
+        """
+        Write the selected program number to the PLC.
+        
+        Args:
+            program_number (int): The program number to write (1-4)
+        """
         try:
-            plc_address = pool.config('selected_program_address', int, 100)
-            logger.info(f"Writing program number {program_number} to PLC address {plc_address}")
-            write_holding_register(plc_address, program_number)
-            logger.info(f"Successfully wrote program number {program_number} to PLC address {plc_address}")
+            # Use fixed address 20 (0x14) for program selection
+            program_addr = 20  # Fixed address for program selection
+            success = write_holding_register(program_addr, program_number)
+            if success:
+                logger.info(f"Program number {program_number} written to PLC address {program_addr} (0x{program_addr:04X})")
+            else:
+                logger.error(f"Failed to write program number to PLC address {program_addr}")
         except Exception as e:
-            error_msg = f"Error writing to PLC: {str(e)}"
-            logger.error(error_msg)
-            logger.error(f"Stack trace: {traceback.format_exc()}")
-            QtWidgets.QMessageBox.warning(
-                self, "PLC Communication Error",
-                f"Could not update PLC with selected program: {str(e)}"
-            )
+            logger.error(f"Error writing program number: {e}")
+            QtWidgets.QMessageBox.critical(self, "PLC Error", f"Failed to write program number: {str(e)}")
     
     def start_cycle(self):
         logger.info("Start Cycle button pressed")

@@ -6,7 +6,7 @@ import webbrowser
 import shutil
 from jinja2 import Template
 from datetime import datetime
-from RaspPiReader.libs.plc_communication import write_bool_address
+from RaspPiReader.libs.plc_communication import write_coil
 from RaspPiReader.libs.onedrive_api import OneDriveAPI
 from RaspPiReader import pool
 from RaspPiReader.libs.database import Database
@@ -213,14 +213,20 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     
     cycle_id = cycle_data.id
     logger.info(f"Finalizing cycle with ID: {cycle_id}")
-    # Write to the PLC coil to signal end-of-cycle.
-    stop_bool_addr = pool.config("cycle_stop_bool", int, default_val=1101)
+    
+    # Write to the PLC coil to signal end-of-cycle using fixed address 8200 (0x2008)
+    stop_coil_addr = 8200  # Fixed address for cycle stop signal
     try:
-        write_bool_address(stop_bool_addr, 0)
+        write_coil(stop_coil_addr, 0)  # Write 0 to stop the cycle
+        logger.info(f"Cycle stop signal sent to coil {stop_coil_addr} (0x{stop_coil_addr:04X})")
     except Exception as e:
-        logger.error(f"Error writing to coil: {e}")
+        logger.error(f"Error writing to stop coil: {e}")
+    
     # Ensure we write zero again
-    write_bool_address(stop_bool_addr, 0)
+    try:
+        write_coil(stop_coil_addr, 0)
+    except Exception as e:
+        logger.error(f"Error writing second stop signal: {e}")
 
     db = Database("sqlite:///local_database.db")
     from RaspPiReader.libs.models import CycleData, CycleReport

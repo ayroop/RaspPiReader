@@ -744,25 +744,42 @@ def read_holding_register(address, device_id=1):
             logger.error(f"Error reading holding register at address {address}: {e}")
             return None
 
-def write_coil(address, value, device_id=1):
-    global modbus_comm, direct_client
-    device_id = validate_device_id(device_id)
-    if direct_client is not None:
-        try:
-            success = direct_client.write_coil(address, value, device_id)
-            if success:
-                return True
-        except Exception as e:
-            logger.debug(f"Direct client write_coil error: {e}")
-    with plc_lock:
-        if not ensure_connection():
-            logger.error("Cannot write coil: No connection to PLC")
-            return False
-        try:
-            return modbus_comm.write_bool_address(address, value, device_id)
-        except Exception as e:
-            logger.error(f"Error writing value {value} to coil at address {address}: {e}")
-            return False
+def write_coil(address, value, unit=1):
+    """
+    Write a value to a coil in the PLC.
+    
+    Args:
+        address (int): The coil address to write to
+        value (bool): The value to write (True/False)
+        unit (int): The unit ID (default: 1)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        if not is_connected():
+            ensure_connection()
+            
+        # Try direct_client first, fall back to modbus_comm if None
+        if direct_client is not None:
+            result = direct_client.write_coil(address, value, unit)
+        else:
+            # Fall back to modbus_comm if direct_client is None
+            with plc_lock:
+                if not ensure_connection():
+                    logger.error("Cannot write coil: No connection to PLC")
+                    return False
+                result = modbus_comm.write_register(address, 1 if value else 0, unit)
+        
+        if result:
+            logger.info(f"Successfully wrote value {value} to coil {address}")
+        else:
+            logger.error(f"Failed to write value {value} to coil {address}")
+            
+        return result
+    except Exception as e:
+        logger.error(f"Error writing value {value} to coil {address}: {e}")
+        return False
 
 def read_holding_registers(address, count=1, device_id=1):
     global modbus_comm, direct_client
@@ -975,12 +992,63 @@ def disconnect():
             return False
 
 def write_bool_address(address, value, unit=1):
-    """Write a boolean value to a coil (compatibility function)"""
-    return write_coil(address, value, unit)
+    """
+    Write a boolean value to a specific address in the PLC.
+    
+    Args:
+        address (int): The address to write to
+        value (bool): The value to write (True/False)
+        unit (int): The unit ID (default: 1)
+        
+    Returns:
+        bool: True if successful, False otherwise
+    """
+    try:
+        if not is_connected():
+            ensure_connection()
+            
+        # Use the write_bool_address method instead of write_coil
+        result = modbus_comm.write_bool_address(address, value, unit)
+        
+        if result:
+            logger.info(f"Successfully wrote boolean value {value} to address {address}")
+        else:
+            logger.error(f"Failed to write boolean value {value} to address {address}")
+            
+        return result
+    except Exception as e:
+        logger.error(f"Error writing boolean value to address {address}: {e}")
+        return False
 
 def read_bool_address(address, unit=1):
-    """Read a boolean value from a coil (compatibility function)"""
-    return read_boolean(address, unit)
+    """
+    Read a boolean value from a specific address in the PLC.
+    
+    Args:
+        address (int): The address to read from
+        unit (int): The unit ID (default: 1)
+        
+    Returns:
+        bool: The value read (True/False) or None if failed
+    """
+    try:
+        if not is_connected():
+            ensure_connection()
+            
+        # Read from the coil
+        result = read_coil(address, unit)
+        
+        if result is not None:
+            # Convert integer to boolean (1=True, 0=False)
+            bool_value = bool(result)
+            logger.info(f"Successfully read boolean value {bool_value} from address {address}")
+            return bool_value
+        else:
+            logger.error(f"Failed to read boolean value from address {address}")
+            return None
+    except Exception as e:
+        logger.error(f"Error reading boolean value from address {address}: {e}")
+        return None
 
 def read_multiple_booleans(addresses, device_id=1):
     """
