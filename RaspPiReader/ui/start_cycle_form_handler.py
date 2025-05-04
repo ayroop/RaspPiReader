@@ -486,8 +486,8 @@ class StartCycleFormHandler(QMainWindow):
         Writes True (coil=1) to the dedicated coil address and sends the selected program number.
         """
         try:
-            # Get the cycle start coil address from configuration
-            start_coil_addr = pool.config("cycle_start_coil_address", int, 100)
+            # Use fixed address 8200 for cycle start/stop control
+            start_coil_addr = 8200
             program_addr = pool.config("selected_program_address", int, 101)
             
             # Get the selected program number
@@ -519,8 +519,8 @@ class StartCycleFormHandler(QMainWindow):
         Writes False (coil=0) to the dedicated coil address.
         """
         try:
-            # Get the cycle start coil address from configuration
-            start_coil_addr = pool.config("cycle_start_coil_address", int, 100)
+            # Use fixed address 8200 for cycle start/stop control
+            start_coil_addr = 8200
             
             # Write the cycle stop signal (False)
             success = plc_communication.write_coil(start_coil_addr, False)

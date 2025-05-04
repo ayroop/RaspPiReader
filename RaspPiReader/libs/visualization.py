@@ -1,5 +1,5 @@
 import time
-from PyQt5 import QtCore
+from PyQt5 import QtCore, QtWidgets
 import pyqtgraph as pg
 import numpy as np
 from typing import Dict, List, Any, Optional
@@ -74,6 +74,8 @@ class LiveDataVisualization:
             'y_label': y_label,
             'x_label': x_label
         }
+        
+        return plot_curve  # Return the plot curve item
     
     def smooth_data(self, data, window=5):
         if len(data) >= window:
@@ -157,9 +159,29 @@ class LiveDataVisualization:
             from pyqtgraph.exporters import ImageExporter
             # Process any pending GUI events to guarantee all rendering is complete
             QtCore.QCoreApplication.processEvents()
-            exporter = ImageExporter(plot_widget.plotItem)
-            # Optionally, set exporter parameters (for example, adjusting the resolution)
+            
+            # Get the plot item
+            plot_item = plot_widget.getPlotItem()
+            
+            # Create a temporary scene to capture both axes
+            scene = QtWidgets.QGraphicsScene()
+            
+            # Add the main plot item to the scene
+            scene.addItem(plot_item)
+            
+            # If there's a right axis view box, add it to the scene
+            if hasattr(plot_widget, 'right_vb'):
+                scene.addItem(plot_widget.right_vb)
+            
+            # Create exporter with the scene
+            exporter = ImageExporter(scene)
+            
+            # Set exporter parameters
             exporter.parameters()['width'] = plot_widget.width()
+            exporter.parameters()['height'] = plot_widget.height()
+            exporter.parameters()['antialias'] = True
+            
+            # Export the image
             exporter.export(save_path)
             return True
         except Exception as e:

@@ -1537,12 +1537,12 @@ class MainFormHandler(QtWidgets.QMainWindow):
         """
         Write the specified value to the cycle start register on the PLC.
         For our workflow, writing '1' indicates that the cycle has finally started.
-        Adjust the register address as needed via pool configuration.
+        Uses fixed address 8200 for cycle control.
         """
         try:
-            # Retrieve the PLC register address from settings; default to 1000 if not set.
-            reg_addr = pool.config('cycle_start_register_address', int, 1000)
-            # Call the PLC comm write_register method (ensure this method exists in your plc_communication API)
+            # Use fixed address 8200 for cycle start/stop control
+            reg_addr = 8200
+            # Call the PLC comm write_register method
             result = plc_communication.write_register(reg_addr, value)
             logger.info(f"Cycle start register at address {reg_addr} set to {value} (write result: {result}).")
         except Exception as e:

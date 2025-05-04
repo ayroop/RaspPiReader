@@ -152,6 +152,20 @@ class VisualizationDashboard(QtWidgets.QWidget):
         self.combined_plot_widget.setLabel('right', 'Right Axis Values')
         self.combined_plot_widget.setLabel('bottom', 'Time (s)')
         
+        # Create a second view box for the right axis
+        self.right_vb = pg.ViewBox()
+        self.combined_plot_widget.scene().addItem(self.right_vb)
+        self.combined_plot_widget.getAxis('right').linkToView(self.right_vb)
+        self.right_vb.setXLink(self.combined_plot_widget)
+        
+        # Update views when resized
+        def updateViews():
+            self.right_vb.setGeometry(self.combined_plot_widget.getViewBox().sceneBoundingRect())
+            self.right_vb.linkedViewChanged(self.combined_plot_widget.getViewBox(), self.right_vb.XAxis)
+        
+        updateViews()
+        self.combined_plot_widget.getViewBox().sigResized.connect(updateViews)
+        
         self.combined_layout.addWidget(self.combined_plot_widget)
         # Create a separate LiveDataVisualization instance for combined view
         self.combined_visualization = LiveDataVisualization(update_interval_ms=100)
@@ -164,7 +178,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
             axis_direction = channel_config.get('axis_direction', 'normal')
             
             # Add the plot with proper axis configuration
-            self.combined_visualization.add_time_series_plot(
+            plot_curve = self.combined_visualization.add_time_series_plot(
                 self.combined_plot_widget,
                 channel_name,
                 color=color,
@@ -174,6 +188,12 @@ class VisualizationDashboard(QtWidgets.QWidget):
                 x_label=None,  # We'll handle axis labels separately
                 smooth=True
             )
+            
+            # Configure axis for this channel based on axis_direction
+            if axis_direction == 'inverted':
+                self.right_vb.addItem(plot_curve)
+            else:
+                self.combined_plot_widget.addItem(plot_curve)
         
         # Plot View tab (existing code, create grid for individual plots)
         self.plot_tab = QtWidgets.QWidget()
@@ -238,7 +258,23 @@ class VisualizationDashboard(QtWidgets.QWidget):
         if not os.path.exists(export_dir):
             os.makedirs(export_dir)
         export_path = os.path.join(export_dir, "plot_export.png")
+        
+        # Store current view ranges
+        left_range = self.combined_plot_widget.getViewBox().viewRange()
+        right_range = self.right_vb.viewRange() if hasattr(self, 'right_vb') else None
+        
+        # Ensure both view boxes are properly sized
+        if hasattr(self, 'right_vb'):
+            self.right_vb.setGeometry(self.combined_plot_widget.getViewBox().sceneBoundingRect())
+            self.right_vb.linkedViewChanged(self.combined_plot_widget.getViewBox(), self.right_vb.XAxis)
+        
+        # Export the plot
         if self.combined_visualization.export_chart_image(self.combined_plot_widget, export_path):
+            # Restore view ranges
+            self.combined_plot_widget.getViewBox().setRange(xRange=left_range[0], yRange=left_range[1])
+            if right_range and hasattr(self, 'right_vb'):
+                self.right_vb.setRange(xRange=right_range[0], yRange=right_range[1])
+            
             QtWidgets.QMessageBox.information(
                 self, "Export Success", f"Chart image exported to:\n{export_path}"
             )
