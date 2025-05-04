@@ -140,7 +140,7 @@ class SettingFormHandler(QMainWindow):
             core_temp_channel_val = self.get_val("CoreTempChannelSpinBox") or "1"
             pressure_channel_val = self.get_val("pressureChannelSpinBox") or "1"
 
-            # Retrieve (or create) the general settings record.
+            # Retrieve (or create) the general settings record
             settings = self.db.session.query(GeneralConfigSettings).first()
             if settings:
                 settings.baudrate = int(baudrate_val)
@@ -185,16 +185,35 @@ class SettingFormHandler(QMainWindow):
                 self.db.session.add(settings)
             self.db.session.commit()
 
-            # Dynamic channel settings mapping (ensure load and save use consistent keys, especially "editSP")
+            # Update pool configuration immediately
+            pool.set_config('baudrate', int(baudrate_val))
+            pool.set_config('parity', parity_val)
+            pool.set_config('databits', int(databits_val))
+            pool.set_config('stopbits', float(stopbits_val))
+            pool.set_config('reading_address', reading_addr_val)
+            pool.set_config('register_read_type', register_read_type)
+            pool.set_config('port', port_val)
+            pool.set_config('left_v_label', left_v_label_val)
+            pool.set_config('right_v_label', right_v_label_val)
+            pool.set_config('h_label', h_label_val)
+            pool.set_config('time_interval', float(time_interval_val))
+            pool.set_config('scale_range', int(scale_range_val))
+            pool.set_config('csv_file_path', file_path_val)
+            pool.set_config('csv_delimiter', delimiter_val)
+            pool.set_config('core_temp_channel', int(core_temp_channel_val))
+            pool.set_config('pressure_channel', int(pressure_channel_val))
+            pool.set_config('panel_time_interval', float(panel_time_interval_val))
+            pool.set_config('accurate_data_time', float(accurate_data_time_val))
+
+            # Dynamic channel settings mapping
             channel_fields = {
                 "editAd": ("address", 0),
                 "editLabel": ("label", ""),
                 "editPV": ("pv", 0),
                 "editSV": ("sv", 0),
-                "editSP": ("set_point", 0),  # maps the editSP widget to the "set_point" field
+                "editSP": ("set_point", 0),
                 "editLimitLow": ("limit_low", 0),
                 "editLimitHigh": ("limit_high", 0),
-                # Updated mapping: use "decimal_point" to match the database schema and load_settings method.
                 "editDecPoint": ("decimal_point", 0),
                 "checkScale": ("scale", False),
                 "comboAxis": ("axis_direction", "L"),
@@ -203,11 +222,14 @@ class SettingFormHandler(QMainWindow):
                 "min_scale_range": ("min_scale_range", 0),
                 "max_scale_range": ("max_scale_range", 0)
             }
+
             for ch in range(1, CHANNEL_COUNT + 1):
                 channel_settings = self.db.session.query(ChannelConfigSettings).filter_by(id=ch).first()
                 if not channel_settings:
                     channel_settings = ChannelConfigSettings(id=ch)
                     self.db.session.add(channel_settings)
+                
+                channel_updates = {}
                 for prefix, (attribute, default_val) in channel_fields.items():
                     widget_name = f"{prefix}{ch}"
                     if hasattr(self.form_obj, widget_name):
@@ -216,13 +238,18 @@ class SettingFormHandler(QMainWindow):
                             value = default_val
                     else:
                         value = default_val
-                    # Ensure decimal_point is not None
                     if attribute == "decimal_point" and value is None:
                         value = 0
                     setattr(channel_settings, attribute, value)
+                    channel_updates[attribute] = value
+                
+                # Update pool configuration for this channel
+                for key, value in channel_updates.items():
+                    pool.set_config(f'channel_{ch}_{key}', value)
+            
             self.db.session.commit()
                 
-            # Save Boolean Address settings to the database.
+            # Save Boolean Address settings to the database
             numRows = self.boolTable.rowCount()
             self.db.session.query(BooleanAddress).delete()
             for row in range(numRows):
@@ -237,6 +264,9 @@ class SettingFormHandler(QMainWindow):
                     new_entry = BooleanAddress(address=address, label=label)
                     self.db.session.add(new_entry)
             self.db.session.commit()
+
+            # Force reload all settings
+            pool.force_reload_all()
 
             logging.info("Settings saved successfully.")
             QTimer.singleShot(100, self._delayed_write_to_device)

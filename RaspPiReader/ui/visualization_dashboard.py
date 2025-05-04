@@ -547,35 +547,67 @@ class VisualizationDashboard(QtWidgets.QWidget):
         
     def update_channel_settings(self, channel_number, settings):
         """
-        Update numeric channel settings (existing code remains unchanged)
+        Update numeric channel settings and immediately reflect changes in visualization.
         """
         if channel_number < 1 or channel_number > 14 or not settings:
             return
+            
+        # Update local configuration
         self.channels_config[channel_number].update(settings)
+        
         try:
+            # Update database
             channel = self.db.session.query(ChannelConfigSettings).filter_by(id=channel_number).first()
             if channel:
-                field_mapping = {'name': 'label', 'set_point': 'set_point', 'low_limit': 'limit_low', 'high_limit': 'limit_high', 'dec_point': 'decimal_point'}
+                field_mapping = {
+                    'name': 'label',
+                    'set_point': 'set_point',
+                    'low_limit': 'limit_low',
+                    'high_limit': 'limit_high',
+                    'dec_point': 'decimal_point'
+                }
                 for ui_field, db_field in field_mapping.items():
                     if ui_field in settings:
                         setattr(channel, db_field, settings[ui_field])
+                
                 direct_fields = ['address', 'pv', 'sv', 'scale', 'color']
                 for field in direct_fields:
                     if field in settings:
                         setattr(channel, field, settings[field])
+                
                 additional_fields = ['axis_direction', 'active', 'min_scale_range', 'max_scale_range']
                 for field in additional_fields:
                     if field in settings:
                         setattr(channel, field, settings[field])
+                
                 self.db.session.commit()
-                self.status_bar.showMessage(f"Updated settings for CH{channel_number}")
-                if 'color' in settings:
-                    channel_name = f"ch{channel_number}"
-                    if channel_name in self.visualization.plots:
-                        plot_data = self.visualization.plots.get(channel_name)
-                        if plot_data and 'curve' in plot_data:
+                
+                # Update pool configuration
+                for key, value in settings.items():
+                    pool.set_config(f'channel_{channel_number}_{key}', value)
+                
+                # Update visualization immediately
+                channel_name = f"ch{channel_number}"
+                
+                # Update individual plot
+                if channel_name in self.visualization.plots:
+                    plot_data = self.visualization.plots.get(channel_name)
+                    if plot_data and 'curve' in plot_data:
+                        if 'color' in settings:
                             pen = pg.mkPen(color=settings['color'], width=2)
                             plot_data['curve'].setPen(pen)
+                        if 'axis_direction' in settings:
+                            self.update_plot_axis(channel_number, settings['axis_direction'])
+                
+                # Update combined plot
+                if hasattr(self, 'combined_visualization') and channel_name in self.combined_visualization.plots:
+                    combined_plot = self.combined_visualization.plots.get(channel_name)
+                    if combined_plot and 'curve' in combined_plot:
+                        if 'color' in settings:
+                            combined_pen = pg.mkPen(color=settings['color'], width=2)
+                            combined_plot['curve'].setPen(combined_pen)
+                
+                # Update channel info display
                 if channel_number in self.channel_info_widgets:
                     widgets = self.channel_info_widgets[channel_number]
                     for key, value in settings.items():
@@ -584,47 +616,33 @@ class VisualizationDashboard(QtWidgets.QWidget):
                                 widgets[key].setText("Yes" if value else "No")
                             else:
                                 widgets[key].setText(str(value))
-                if self.tab_widget.currentIndex() == 2:
+                
+                # Update table view if visible
+                if self.tab_widget.currentIndex() == 1:
                     self.update_table_row(channel_number)
+                
+                # Force immediate update of all visualizations
+                self.apply_channel_colors()
+                self.update_plots()
+                
+                self.status_bar.showMessage(f"Updated settings for CH{channel_number}")
+                
         except Exception as e:
             print(f"Error updating channel settings in database: {e}")
             self.status_bar.showMessage(f"Error updating settings for CH{channel_number}: {e}")
-    
-    def update_table_row(self, channel_number):
-        # (Existing code for table row updating)
-        if channel_number < 1 or channel_number > 14:
-            return
-        channel_config = self.channels_config.get(channel_number, {})
-        row = channel_number - 1
-        name_item = self.data_table.item(row, 1)
-        if name_item:
-            name_item.setText(channel_config.get('name', f"Channel {channel_number}"))
-        sv_item = self.data_table.item(row, 3)
-        if sv_item:
-            sv_item.setText(str(channel_config.get('sv', 0)))
-        setpoint_item = self.data_table.item(row, 4)
-        if setpoint_item:
-            setpoint_item.setText(str(channel_config.get('set_point', 0)))
-        low_item = self.data_table.item(row, 5)
-        if low_item:
-            low_item.setText(str(channel_config.get('low_limit', 0)))
-        high_item = self.data_table.item(row, 6)
-        if high_item:
-            high_item.setText(str(channel_config.get('high_limit', 100)))
-        decimal_item = self.data_table.item(row, 7)
-        if decimal_item:
-            decimal_item.setText(str(channel_config.get('dec_point', 0)))
-        scale_item = self.data_table.item(row, 8)
-        if scale_item:
-            scale_item.setText("Yes" if channel_config.get('scale', False) else "No")
-        color = channel_config.get('color', "#ffffff")
-        color_with_alpha = QtGui.QColor(color)
-        color_with_alpha.setAlpha(40)
-        for col in range(9):
-            item = self.data_table.item(row, col)
-            if item:
-                item.setBackground(color_with_alpha)
-        
+            
+    def update_plot_axis(self, channel_number, axis_direction):
+        """Update the plot axis configuration for a channel."""
+        channel_name = f"ch{channel_number}"
+        if channel_name in self.plots:
+            plot_widget = self.plots[channel_name]
+            if axis_direction == 'R':
+                plot_widget.showAxis('right')
+                plot_widget.hideAxis('left')
+            else:
+                plot_widget.showAxis('left')
+                plot_widget.hideAxis('right')
+
     def update_cycle_time(self):
         """Update the cycle time display"""
         if not self.cycle_start_time or self.paused:
@@ -654,11 +672,17 @@ class VisualizationDashboard(QtWidgets.QWidget):
 
     # NEW: Delegate method to support external calls to update_plots
     def update_plots(self):
-        """
-        Delegate update_plots call to the LiveDataVisualization instance.
-        This method avoids the attribute error on the VisualizationDashboard object.
-        """
+        """Update all plots to reflect current settings"""
+        # Update individual plots
         self.visualization.update_plots()
+        
+        # Update combined plot if available
+        if hasattr(self, 'combined_visualization'):
+            self.combined_visualization.update_plots()
+            
+        # Update boolean plots if available
+        if hasattr(self, 'boolean_visualization'):
+            self.boolean_visualization.update_plots()
         
     def export_data(self):
         """Export visualization data to CSV"""
@@ -685,82 +709,6 @@ class VisualizationDashboard(QtWidgets.QWidget):
                     pv_item.setText("0.0")
         self.status_bar.showMessage("Visualization reset")
         
-    def update_channel_settings(self, channel_number, settings):
-        """
-        Update the settings for a specific channel, both in memory and in the database.
-        This method should be called when the user changes channel settings from the settings dialog.
-        
-        Args:
-            channel_number: The channel number (1-14)
-            settings: Dictionary with the new settings
-        """
-        if channel_number < 1 or channel_number > 14 or not settings:
-            return
-        
-        # Update in-memory configuration
-        self.channels_config[channel_number].update(settings)
-        
-        # Update database
-        try:
-            channel = self.db.session.query(ChannelConfigSettings).filter_by(id=channel_number).first()
-            if channel:
-                # Update the channel fields with the new settings
-                # Map the field names used in the UI to the database model field names
-                field_mapping = {
-                    'name': 'label',
-                    'set_point': 'set_point',
-                    'low_limit': 'limit_low',
-                    'high_limit': 'limit_high',
-                    'dec_point': 'decimal_point'
-                }
-                
-                for ui_field, db_field in field_mapping.items():
-                    if ui_field in settings:
-                        setattr(channel, db_field, settings[ui_field])
-                
-                # Fields that have the same name
-                direct_fields = ['address', 'pv', 'sv', 'scale', 'color']
-                for field in direct_fields:
-                    if field in settings:
-                        setattr(channel, field, settings[field])
-                
-                # Additional fields from model that might be in settings
-                additional_fields = ['axis_direction', 'active', 'min_scale_range', 'max_scale_range']
-                for field in additional_fields:
-                    if field in settings:
-                        setattr(channel, field, settings[field])
-                
-                self.db.session.commit()
-                self.status_bar.showMessage(f"Updated settings for CH{channel_number}")
-                
-                # Update plot appearance if color changed
-                if 'color' in settings:
-                    channel_name = f"ch{channel_number}"
-                    if channel_name in self.visualization.plots:
-                        # Update plot color in visualization system
-                        plot_data = self.visualization.plots.get(channel_name)
-                        if plot_data and 'curve' in plot_data:
-                            pen = pg.mkPen(color=settings['color'], width=2)
-                            plot_data['curve'].setPen(pen)
-                
-                # Update channel info display
-                if channel_number in self.channel_info_widgets:
-                    widgets = self.channel_info_widgets[channel_number]
-                    for key, value in settings.items():
-                        if key in widgets:
-                            if key == 'scale':
-                                widgets[key].setText("Yes" if value else "No")
-                            else:
-                                widgets[key].setText(str(value))
-                
-                # Update table view if it's visible
-                if self.tab_widget.currentIndex() == 1:
-                    self.update_table_row(channel_number)
-                
-        except Exception as e:
-            print(f"Error updating channel settings in database: {e}")
-            self.status_bar.showMessage(f"Error updating settings for CH{channel_number}: {e}")
-    
     def update_table_row(self, channel_number):
         """Update a specific row in the table view"""
         if channel_number < 1 or channel_number > 14:
@@ -821,7 +769,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
             color = channel_config.get('color', self.get_default_color(i))
             channel_name = f"ch{i}"
             
-            # Update plot color for individual plots (existing)
+            # Update plot color for individual plots
             if channel_name in self.visualization.plots:
                 plot_data = self.visualization.plots.get(channel_name)
                 if plot_data and 'curve' in plot_data:

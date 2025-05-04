@@ -194,39 +194,54 @@ class VisualizationManager:
         logger.info("VisualizationManager initialized")
     
     def load_channel_configs(self):
-        """Load all channel configurations from the database and convert numeric fields safely"""
-        new_configs = {}
+        """Load channel configurations from the database and update visualization."""
         try:
-            for i in range(1, 15):  # 14 channels
-                channel = self.db.session.query(ChannelConfigSettings).filter_by(id=i).first()
-                if channel:
-                    config = {
-                        'id': i,
-                        'label': channel.label,
-                        'address': safe_int(channel.address, 0),
-                        'pv': safe_float(channel.pv, 0),
-                        'sv': safe_float(channel.sv, 0),
-                        'set_point': safe_float(channel.set_point, 0),
-                        'limit_low': safe_float(channel.limit_low, 0),
-                        'limit_high': safe_float(channel.limit_high, 0),
-                        'decimal_point': safe_int(channel.decimal_point, 0),
-                        'scale': bool(channel.scale),
-                        'axis_direction': channel.axis_direction if channel.axis_direction else 'L',  # Default to left axis
-                        'color': channel.color,
-                        'active': bool(channel.active),
-                        'min_scale_range': safe_float(channel.min_scale_range, 0),
-                        'max_scale_range': safe_float(channel.max_scale_range, 0)
-                    }
-                    new_configs[i] = config
-                    # Only log if this config is new or changed
-                    if i not in self.last_loaded_configs or self.last_loaded_configs[i] != config:
-                        logger.debug(f"Loaded channel config for CH{i}: {config}")
-                else:
-                    logger.warning(f"No configuration found for CH{i}")
-            self.channel_configs = new_configs
-            self.last_loaded_configs = new_configs.copy()
+            # Clear existing configurations
+            self.channel_configs.clear()
+            
+            # Load channel settings from database
+            channels = self.db.session.query(ChannelConfigSettings).all()
+            for channel in channels:
+                channel_id = channel.id
+                config = {
+                    'address': channel.address,
+                    'label': channel.label,
+                    'pv': channel.pv,
+                    'sv': channel.sv,
+                    'set_point': channel.set_point,
+                    'limit_low': channel.limit_low,
+                    'limit_high': channel.limit_high,
+                    'decimal_point': channel.decimal_point,
+                    'scale': channel.scale,
+                    'axis_direction': channel.axis_direction,
+                    'color': channel.color,
+                    'active': channel.active,
+                    'min_scale_range': channel.min_scale_range,
+                    'max_scale_range': channel.max_scale_range
+                }
+                
+                # Update pool configuration
+                for key, value in config.items():
+                    pool.set_config(f'channel_{channel_id}_{key}', value)
+                
+                # Store in local cache
+                self.channel_configs[channel_id] = config
+                
+                # Log only if configuration has changed
+                if channel_id not in self.last_loaded_configs or self.last_loaded_configs[channel_id] != config:
+                    logger.info(f"Loaded configuration for CH{channel_id}: {config}")
+                    self.last_loaded_configs[channel_id] = config
+            
+            # Update visualization if dashboard exists
+            if self.dashboard:
+                self.dashboard.load_channel_config()
+                self.dashboard.apply_channel_colors()
+                self.dashboard.configure_plot_axes()
+            
+            return True
         except Exception as e:
             logger.error(f"Error loading channel configurations: {e}")
+            return False
     
     def scale_value(self, value, min_scale, max_scale, limit_low, limit_high):
         """

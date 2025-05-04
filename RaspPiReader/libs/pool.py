@@ -5,6 +5,7 @@ class Pool:
         self._registry = dict()
         self._setting = QSettings('RaspPiHandler', 'RaspPiModbusReader')
         self._registry["active_channels"] = list(range(1, 15))  # For 14 channels
+        self.reload_config()  # Load initial settings
 
     def get(self, key):
         return self._registry.get(key, None)
@@ -37,8 +38,10 @@ class Pool:
             return default_val
 
     def set_config(self, key, value):
+        """Set a configuration value and ensure it's immediately available."""
         self._registry[key] = value
         self._setting.setValue(key, value)
+        self._setting.sync()  # Ensure settings are written immediately
     
     def reload_config(self):
         """Reload configuration settings from QSettings into the internal registry."""
@@ -50,5 +53,10 @@ class Pool:
                 self._registry[key] = val
         # Ensure any required defaults are in place (for example, active channels)
         self._registry["active_channels"] = list(range(1, 15))
+        
+    def force_reload_all(self):
+        """Force reload all settings from both QSettings and database."""
+        self.reload_config()
+        # Add any additional reload logic here if needed
 
 pool = Pool()
