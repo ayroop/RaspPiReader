@@ -441,20 +441,23 @@ class MainFormHandler(QtWidgets.QMainWindow):
                 # Read the value from the PLC register; if error, default to zero
                 channel_value = read_holding_register(channel_addr, 1)
                 channel_values[f"CH{ch}"] = channel_value if channel_value is not None else 0
-                # Optionally update dedicated UI labels for each channel; for example:
-                # getattr(self.form_obj, f"channel{ch}Label").setText(str(channel_values[f'CH{ch}']))
+                
+                # Update the corresponding label in the main form
+                label_name = f"channel{ch}Label"
+                if hasattr(self.form_obj, label_name):
+                    label = getattr(self.form_obj, label_name)
+                    label.setText(f"CH{ch}: {channel_values[f'CH{ch}']}")
             
             # Update Vacuum Gauge channels from simulation data
             vacuum_data = new_data.get('vacuum', {})
             if vacuum_data:
-                self.form_obj.vacuumLabelCH1.setText(f"CH1: {vacuum_data.get('CH1', 0)} KPa")
-                self.form_obj.vacuumLabelCH2.setText(f"CH2: {vacuum_data.get('CH2', 0)} KPa")
-                self.form_obj.vacuumLabelCH3.setText(f"CH3: {vacuum_data.get('CH3', 0)} KPa")
-                self.form_obj.vacuumLabelCH4.setText(f"CH4: {vacuum_data.get('CH4', 0)} KPa")
-                self.form_obj.vacuumLabelCH5.setText(f"CH5: {vacuum_data.get('CH5', 0)} KPa")
-                self.form_obj.vacuumLabelCH6.setText(f"CH6: {vacuum_data.get('CH6', 0)} KPa")
-                self.form_obj.vacuumLabelCH7.setText(f"CH7: {vacuum_data.get('CH7', 0)} KPa")
-                self.form_obj.vacuumLabelCH8.setText(f"CH8: {vacuum_data.get('CH8', 0)} KPa")
+                for ch in range(1, CHANNEL_COUNT + 1):
+                    ch_key = f'CH{ch}'
+                    if ch_key in vacuum_data:
+                        label_name = f"vacuumLabelCH{ch}"
+                        if hasattr(self.form_obj, label_name):
+                            label = getattr(self.form_obj, label_name)
+                            label.setText(f"CH{ch}: {vacuum_data[ch_key]} KPa")
             
             # Update Cycle Info fields from simulation data
             cycle_info = new_data.get('cycle_info', {})
