@@ -34,17 +34,22 @@ class AlarmMonitor:
             # Extract channel number (e.g., 'CH1' -> 1)
             channel_num = int(channel[2:])
             addr_key = f'channel_{channel_num}_address'
-            channel_addr = pool.config(addr_key, int, 0)
+            channel_addr = int(pool.config(addr_key, int, 0))
             
             if channel_addr > 0:
                 value = read_holding_register(channel_addr, 1)
                 if value is not None:
+                    # Ensure value is a number
+                    if isinstance(value, list) and len(value) > 0:
+                        value = value[0]
+                    value = int(value)  # Convert to int first
+                    
                     # Apply scaling if configured
                     scale_enabled = pool.config(f'scale{channel_num}', bool, False)
                     decimal_places = pool.config(f'decimal_point{channel_num}', int, 0)
                     if scale_enabled and decimal_places > 0:
                         value = value / (10 ** decimal_places)
-                    return float(value)
+                    return value
             return None
         except Exception as e:
             self.db.logger.error(f"Error reading {channel} value: {e}")
@@ -59,10 +64,12 @@ class AlarmMonitor:
                 if alarm:
                     mappings = session.query(AlarmMapping).filter_by(alarm_id=alarm.id, active=True).all()
                     for mapping in mappings:
-                        if mapping.value == 1 and value < mapping.threshold:  # Low threshold
-                            active_alarms.append(f"Low Threshold ({mapping.threshold:.2f}): {mapping.message}")
-                        elif mapping.value == 2 and value > mapping.threshold:  # High threshold
-                            active_alarms.append(f"High Threshold ({mapping.threshold:.2f}): {mapping.message}")
+                        # Ensure both value and threshold are float for comparison
+                        threshold = float(mapping.threshold)
+                        if mapping.value == 1 and value < threshold:  # Low threshold
+                            active_alarms.append(f"Low Threshold ({threshold:.2f}): {mapping.message}")
+                        elif mapping.value == 2 and value > threshold:  # High threshold
+                            active_alarms.append(f"High Threshold ({threshold:.2f}): {mapping.message}")
         except Exception as e:
             logger.error(f"Error checking thresholds for {channel}: {e}")
         return active_alarms

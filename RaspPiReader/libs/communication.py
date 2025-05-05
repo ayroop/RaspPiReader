@@ -1,4 +1,3 @@
-
 import logging, os, time, socket, threading
 from pymodbus.client.sync import ModbusSerialClient, ModbusTcpClient
 from pymodbus.exceptions import ConnectionException, ModbusException
@@ -466,6 +465,33 @@ class ModbusCommunication:
         """Get the last error message."""
         return self.last_error
 
+    def write_coil(self, address, value, unit=1):
+        """
+        Write a value to a coil in the PLC.
+        
+        Args:
+            address (int): The coil address to write to
+            value (bool): The value to write (True/False)
+            unit (int): The unit ID (default: 1)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not self._ensure_connected():
+            return False
+            
+        try:
+            with plc_lock:
+                result = self.client.write_coil(address, value, unit=unit)
+                if result.isError():
+                    self.last_error = f"Error writing coil: {result}"
+                    logger.error(f"[{self.name}] {self.last_error}")
+                    return False
+                return True
+        except Exception as e:
+            self.last_error = f"Exception writing coil: {str(e)}"
+            logger.error(f"[{self.name}] {self.last_error}")
+            return False
 
 class DataReader:
     def __init__(self):

@@ -769,7 +769,7 @@ def write_coil(address, value, unit=1):
                 if not ensure_connection():
                     logger.error("Cannot write coil: No connection to PLC")
                     return False
-                result = modbus_comm.write_register(address, 1 if value else 0, unit)
+                result = modbus_comm.write_coil(address, value, unit)
         
         if result:
             logger.info(f"Successfully wrote value {value} to coil {address}")

@@ -486,8 +486,8 @@ class StartCycleFormHandler(QMainWindow):
         Writes True (coil=1) to the dedicated coil address and sends the selected program number.
         """
         try:
-            # Use fixed address 8200 for cycle start/stop control
-            start_coil_addr = 8200
+            # Use fixed address 0x2008 (8200) for cycle start/stop control
+            start_coil_addr = 0x2008
             program_addr = pool.config("selected_program_address", int, 101)
             
             # Get the selected program number
@@ -496,9 +496,9 @@ class StartCycleFormHandler(QMainWindow):
             # Write the cycle start signal (True)
             success = plc_communication.write_coil(start_coil_addr, True)
             if success:
-                logger.info(f"Cycle start signal sent (coil {start_coil_addr} set to True)")
+                logger.info(f"Cycle start signal sent (coil {start_coil_addr} (0x{start_coil_addr:04X}) set to True)")
             else:
-                logger.error(f"Failed to send cycle start signal to PLC (coil {start_coil_addr})")
+                logger.error(f"Failed to send cycle start signal to PLC (coil {start_coil_addr} (0x{start_coil_addr:04X}))")
             
             # Write the selected program number
             success = plc_communication.write_register(program_addr, selected_program)
@@ -519,15 +519,15 @@ class StartCycleFormHandler(QMainWindow):
         Writes False (coil=0) to the dedicated coil address.
         """
         try:
-            # Use fixed address 8200 for cycle start/stop control
-            start_coil_addr = 8200
+            # Use fixed address 0x2008 (8200) for cycle start/stop control
+            start_coil_addr = 0x2008
             
             # Write the cycle stop signal (False)
             success = plc_communication.write_coil(start_coil_addr, False)
             if success:
-                logger.info(f"Cycle stop signal sent (coil {start_coil_addr} set to False)")
+                logger.info(f"Cycle stop signal sent (coil {start_coil_addr} (0x{start_coil_addr:04X}) set to False)")
             else:
-                logger.error(f"Failed to send cycle stop signal to PLC (coil {start_coil_addr})")
+                logger.error(f"Failed to send cycle stop signal to PLC (coil {start_coil_addr} (0x{start_coil_addr:04X}))")
                 
             self.cycle_end_time = datetime.now()
             
@@ -835,7 +835,7 @@ class StartCycleFormHandler(QMainWindow):
         start_cycle_form.start_cycle_signal()
         
         # Write to the start cycle coil so the PLC knows the cycle has started
-        start_coil_addr = pool.config('cycle_start_coil_address', int, 100)
+        start_coil_addr = 0x2008  # Fixed address for cycle start/stop control
         from RaspPiReader.libs.plc_communication import write_coil
         write_coil(start_coil_addr, True)
         

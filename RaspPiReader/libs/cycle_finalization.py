@@ -214,17 +214,17 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
     cycle_id = cycle_data.id
     logger.info(f"Finalizing cycle with ID: {cycle_id}")
     
-    # Write to the PLC coil to signal end-of-cycle using fixed address 8200
-    stop_coil_addr = 8200  # Fixed address for cycle stop signal
+    # Write to the PLC coil to signal end-of-cycle using fixed address 0x2008 (8200)
+    stop_coil_addr = 0x2008  # Fixed address for cycle stop signal
     try:
-        write_coil(stop_coil_addr, 0)  # Write 0 to stop the cycle
+        write_coil(stop_coil_addr, False)  # Write False to stop the cycle
         logger.info(f"Cycle stop signal sent to coil {stop_coil_addr} (0x{stop_coil_addr:04X})")
     except Exception as e:
         logger.error(f"Error writing to stop coil: {e}")
     
-    # Ensure we write zero again
+    # Ensure we write False again
     try:
-        write_coil(stop_coil_addr, 0)
+        write_coil(stop_coil_addr, False)
     except Exception as e:
         logger.error(f"Error writing second stop signal: {e}")
 

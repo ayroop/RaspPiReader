@@ -437,7 +437,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
             channel_values = {}
             for ch in range(1, CHANNEL_COUNT + 1):
                 addr_key = f'channel_{ch}_address'
-                channel_addr = pool.config(addr_key, int, 0)
+                channel_addr = int(pool.config(addr_key, int, 0))
                 # Read the value from the PLC register; if error, default to zero
                 channel_value = read_holding_register(channel_addr, 1)
                 channel_values[f"CH{ch}"] = channel_value if channel_value is not None else 0
@@ -1114,91 +1114,79 @@ class MainFormHandler(QtWidgets.QMainWindow):
             f"TIME (min) CORE TEMP ≥ {str(program.core_temp_setpoint) if (program and program.core_temp_setpoint is not None) else str(pool.config('core_temp_setpoint', float, 0.0))} °C:"
         )
     
+    
     def update_live_data(self):
         """
         Enhanced version of update_live_data that updates both UI spinboxes.
-        This version handles the data stack updates correctly.
+        This version includes robust error handling, improved logging, and efficient config reading.
         """
         try:
             if not plc_communication.is_connected():
                 return
-            
-            # Store data points to add to the plot
-            plot_data_points = []
-            
+
             # Calculate current time index for the data stack
             current_time = len(self.data_stack[0]) if self.data_stack and len(self.data_stack) > 0 and len(self.data_stack[0]) > 0 else 0
-            
-            # Flag to track if we've incremented the time already
-            time_incremented = False
-            
+
             # --- UPDATE ALL CHANNELS (1-14) ---
+            
             for ch in range(1, 15):
                 try:
                     addr_key = f'channel_{ch}_address'
-                    channel_addr = pool.config(addr_key, int, 0)
+                    decimal_key = f'decimal_point{ch}'
+                    scale_key = f'scale{ch}'
+
+                    # Always force cast to int/bool, and catch problems
+                    try:
+                        channel_addr = int(pool.config(addr_key, int, 0))
+                    except (ValueError, TypeError):
+                        logger.error(f"Invalid channel address in config for {addr_key}; skipping CH{ch}!")
+                        continue
+
+                    try:
+                        decimal_places = int(pool.config(decimal_key, int, 0))
+                    except (ValueError, TypeError):
+                        logger.error(f"Invalid decimal_point in config for {decimal_key}; using 0.")
+                        decimal_places = 0
+
+                    try:
+                        scale_enabled = bool(pool.config(scale_key, bool, False))
+                    except (ValueError, TypeError):
+                        logger.error(f"Invalid scale in config for {scale_key}; using False.")
+                        scale_enabled = False
+
                     if channel_addr > 0:
                         channel_value = read_holding_register(channel_addr, 1)
-                        scale_enabled = pool.config(f'scale{ch}', bool, False)
-                        decimal_places = pool.config(f'decimal_point{ch}', int, 0)
-                        
-                        # Process the value
+                        value = 0.0
                         if channel_value is not None:
-                            if scale_enabled and decimal_places > 0:
-                                value = channel_value / (10 ** decimal_places)
-                            else:
-                                try:
-                                    value = float(channel_value)
-                                except Exception:
-                                    value = 0.0
+                            try:
+                                value = float(channel_value)
+                                if scale_enabled and decimal_places > 0:
+                                    value = value / (10 ** decimal_places)
+                            except (ValueError, TypeError) as e:
+                                logger.error(f"Error processing channel {ch} value: {e}")
+                                value = 0.0
                         else:
                             value = 0.0
                         
                         # Update UI spinbox
                         spinbox = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
                         if spinbox:
+                            old_block = spinbox.blockSignals(True)
                             spinbox.setValue(value)
-                        else:
-                            logger.debug(f"Spinbox ch{ch}Value not found in UI.")
+                            spinbox.blockSignals(old_block)
                         
-                        # Check if this is an active channel
-                        is_active = hasattr(self, 'active_channels') and ch in self.active_channels
-                        
-                        if is_active:
-                            # Ensure data stack is initialized properly
-                            while len(self.data_stack) <= ch:
-                                self.data_stack.append([])
-                            
-                            # Add value to stack
-                            self.data_stack[ch].append(value)
-                            
-                            # Add to plot data points
-                            plot_data_points.append({
-                                'channel': f'CH{ch}',
-                                'value': value
-                            })
-                            
-                            # Only increment time once per update cycle
-                            if not time_incremented:
-                                # Ensure time stack exists
-                                if len(self.data_stack) == 0:
-                                    self.data_stack = [[]] + self.data_stack  # Ensure index 0 exists
-                                
-                                # Add to time stack (index 0)
-                                self.data_stack[0].append(current_time)
-                                
-                                # Add datetime stamp (index CHANNEL_COUNT+1)
-                                while len(self.data_stack) <= CHANNEL_COUNT + 1:
-                                    self.data_stack.append([])
-                                self.data_stack[CHANNEL_COUNT + 1].append(datetime.now())
-                                
-                                time_incremented = True
-                    else:
-                        logger.debug(f"Channel {ch} address not configured")
+                        # Update data stack for plotting
+                        if ch <= len(self.data_stack):
+                            self.data_stack[ch-1].append(value)
+                            if len(self.data_stack[ch-1]) > self.max_data_points:
+                                self.data_stack[ch-1].pop(0)
                 except Exception as e:
-                    logger.error(f"Error reading CH{ch}: {e}")            
+                    logger.exception(f"Error reading CH{ch} (Addr {locals().get('channel_addr', 'N/A')}): {e}")
+                    continue
+
         except Exception as e:
-            logger.error(f"Error in update_live_data: {e}")
+            logger.exception(f"Error in update_live_data: {e}")
+
     def create_csv_file(self):
         self.csv_update_locked = False
         self.last_written_index = 0
@@ -1538,18 +1526,18 @@ class MainFormHandler(QtWidgets.QMainWindow):
 
     def set_cycle_start_register(self, value):
         """
-        Write the specified value to the cycle start register on the PLC.
+        Write the specified value to the cycle start coil on the PLC.
         For our workflow, writing '1' indicates that the cycle has finally started.
-        Uses fixed address 8200 for cycle control.
+        Uses fixed address 0x2008 (8200) for cycle control.
         """
         try:
-            # Use fixed address 8200 for cycle start/stop control
-            reg_addr = 8200
-            # Call the PLC comm write_register method
-            result = plc_communication.write_register(reg_addr, value)
-            logger.info(f"Cycle start register at address {reg_addr} set to {value} (write result: {result}).")
+            # Use fixed address 0x2008 (8200) for cycle start/stop control
+            coil_addr = 0x2008
+            # Call the PLC comm write_coil method
+            result = plc_communication.write_coil(coil_addr, bool(value))
+            logger.info(f"Cycle start coil at address {coil_addr} (0x{coil_addr:04X}) set to {value} (write result: {result}).")
         except Exception as e:
-            logger.error(f"Error setting cycle start register: {e}")
+            logger.error(f"Error setting cycle start coil: {e}")
 
     def init_cycle_outcomes(self):
         """
