@@ -7,6 +7,7 @@ from colorama import Fore
 import webbrowser
 import tempfile
 import jinja2
+from pathlib import Path
 from PyQt5 import QtWidgets, uic, QtCore
 from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
 from PyQt5.QtGui import QFont
