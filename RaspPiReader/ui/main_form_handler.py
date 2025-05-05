@@ -116,6 +116,7 @@ class MainFormHandler(QtWidgets.QMainWindow):
 
         # Initialize the data stacks (data_stack and test_data_stack)
         self.create_stack()
+        self.max_data_points = 1000  # Maximum number of data points to store per channel
 
         # Initialize connections, user display, and (optional) stacks.
         self.set_connections()
@@ -1116,76 +1117,32 @@ class MainFormHandler(QtWidgets.QMainWindow):
     
     
     def update_live_data(self):
-        """
-        Enhanced version of update_live_data that updates both UI spinboxes.
-        This version includes robust error handling, improved logging, and efficient config reading.
-        """
+        """Update live data display for all channels"""
         try:
-            if not plc_communication.is_connected():
+            if not hasattr(self, 'data_stack') or not self.data_stack:
+                logger.warning("Data stack not initialized")
                 return
 
-            # Calculate current time index for the data stack
-            current_time = len(self.data_stack[0]) if self.data_stack and len(self.data_stack) > 0 and len(self.data_stack[0]) > 0 else 0
-
-            # --- UPDATE ALL CHANNELS (1-14) ---
-            
-            for ch in range(1, 15):
+            for ch in range(1, CHANNEL_COUNT + 1):
                 try:
-                    addr_key = f'channel_{ch}_address'
-                    decimal_key = f'decimal_point{ch}'
-                    scale_key = f'scale{ch}'
-
-                    # Always force cast to int/bool, and catch problems
-                    try:
-                        channel_addr = int(pool.config(addr_key, int, 0))
-                    except (ValueError, TypeError):
-                        logger.error(f"Invalid channel address in config for {addr_key}; skipping CH{ch}!")
-                        continue
-
-                    try:
-                        decimal_places = int(pool.config(decimal_key, int, 0))
-                    except (ValueError, TypeError):
-                        logger.error(f"Invalid decimal_point in config for {decimal_key}; using 0.")
-                        decimal_places = 0
-
-                    try:
-                        scale_enabled = bool(pool.config(scale_key, bool, False))
-                    except (ValueError, TypeError):
-                        logger.error(f"Invalid scale in config for {scale_key}; using False.")
-                        scale_enabled = False
-
-                    if channel_addr > 0:
-                        channel_value = read_holding_register(channel_addr, 1)
-                        value = 0.0
-                        if channel_value is not None:
-                            try:
-                                value = float(channel_value)
-                                if scale_enabled and decimal_places > 0:
-                                    value = value / (10 ** decimal_places)
-                            except (ValueError, TypeError) as e:
-                                logger.error(f"Error processing channel {ch} value: {e}")
-                                value = 0.0
-                        else:
-                            value = 0.0
+                    # Read value from PLC
+                    value = read_holding_register(ch)
+                    if value is not None:
+                        # Update data stack
+                        if len(self.data_stack[ch-1]) > self.max_data_points:
+                            self.data_stack[ch-1].pop(0)  # Remove oldest value
+                        self.data_stack[ch-1].append(value)
                         
-                        # Update UI spinbox
-                        spinbox = self.centralWidget().findChild(QtWidgets.QDoubleSpinBox, f"ch{ch}Value")
-                        if spinbox:
-                            old_block = spinbox.blockSignals(True)
-                            spinbox.setValue(value)
-                            spinbox.blockSignals(old_block)
-                        
-                        # Update data stack for plotting
-                        if ch <= len(self.data_stack):
-                            self.data_stack[ch-1].append(value)
-                            if len(self.data_stack[ch-1]) > self.max_data_points:
-                                self.data_stack[ch-1].pop(0)
+                        # Update visualization if available
+                        if hasattr(self, 'visualization_manager'):
+                            self.visualization_manager.update_channel_data(ch, value)
+                            
                 except Exception as e:
-                    logger.exception(f"Error reading CH{ch} (Addr {locals().get('channel_addr', 'N/A')}): {e}")
+                    logger.error(f"Error reading CH{ch} (Addr {ch}): {str(e)}")
                     continue
-
+                    
         except Exception as e:
-            logger.exception(f"Error in update_live_data: {e}")
+            logger.error(f"Error in update_live_data: {str(e)}")
 
     def create_csv_file(self):
         self.csv_update_locked = False
