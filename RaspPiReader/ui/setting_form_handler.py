@@ -292,6 +292,16 @@ class SettingFormHandler(QMainWindow):
                     self.db.session.add(new_entry)
             self.db.session.commit()
 
+            # Save channel settings and update pool config for labels
+            for ch in range(1, CHANNEL_COUNT + 1):
+                channel_settings = self.db.session.query(ChannelConfigSettings).filter_by(id=ch).first()
+                if channel_settings:
+                    pool.set_config(f'label{ch}', channel_settings.label)
+            # After saving, refresh main form labels if main form is open
+            main_form = pool.get('main_form')
+            if main_form and hasattr(main_form, 'initialize_ui_panels'):
+                main_form.initialize_ui_panels()
+
             # Force reload all settings
             pool.force_reload_all()
 

@@ -986,12 +986,15 @@ class MainFormHandler(MainForm):
         # Any other cleanup needed
     def initialize_ui_panels(self):
         self.immediate_panel_update_locked = False
-        active_channels = pool.get('active_channels')
+        # Ensure active_channels is set; if not, default to all channels active
+        if not hasattr(self, 'active_channels') or self.active_channels is None:
+            self.active_channels = list(range(1, CHANNEL_COUNT + 1))
+        active_channels = self.active_channels
         for i in range(CHANNEL_COUNT):
-
+            # Set the label to the user-defined name
             getattr(self, 'chLabel' + str(i + 1)).setText(pool.config('label' + str(i + 1)))
             spin_widget = getattr(self, 'ch' + str(i + 1) + 'Value')
-            if (i + 1) not in self.active_channels:
+            if (i + 1) not in active_channels:
                 spin_widget.setEnabled(False)
             else:
                 spin_widget.setEnabled(True)
