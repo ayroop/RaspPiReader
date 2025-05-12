@@ -9,9 +9,27 @@
 
 
 from PyQt5 import QtCore, QtGui, QtWidgets
+from PyQt5.QtWidgets import QMainWindow, QMessageBox, QErrorMessage
+from PyQt5.QtCore import QTimer, Qt
+import logging
+from RaspPiReader import pool
+from RaspPiReader.libs.database import Database
+from RaspPiReader.libs.models import ChannelConfigSettings
+from RaspPiReader.ui.visualization_dashboard import VisualizationDashboard
+from RaspPiReader.ui.setting_form_handler import SettingFormHandler
+from RaspPiReader.ui.work_order_form_handler import WorkOrderFormHandler
+from RaspPiReader.ui.serial_number_entry_form_handler import SerialNumberEntryFormHandler
+from RaspPiReader.ui.user_edit_form_handler import UserEditFormHandler
+from RaspPiReader.ui.serial_number_management_form_handler import SerialNumberManagementFormHandler
+from RaspPiReader.ui.channel_settings_form_handler import ChannelSettingsFormHandler
+from RaspPiReader.utils.virtual_keyboard import setup_virtual_keyboard
 
 
-class MainForm():
+class MainForm(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setupUi(self)
+        
     def setupUi(self, parent):
         parent.setObjectName("parent")
         parent.resize(641, 408)
@@ -889,16 +907,14 @@ class MainForm():
         font.setBold(True)
         font.setWeight(75)
 
+        gridLayout_9 = QtWidgets.QGridLayout()
+        parent.gridLayout_9 = gridLayout_9
         parent.gridLayout_9.setObjectName("gridLayout_9")
+
         parent.horizontalLayout_6 = QtWidgets.QHBoxLayout()
         parent.horizontalLayout_6.setObjectName("horizontalLayout_6")
         parent.verticalLayout_9 = QtWidgets.QVBoxLayout()
         parent.verticalLayout_9.setObjectName("verticalLayout_9")
-
-        # parent.ToolbarFrame.setMaximumSize(QtCore.QSize(16777215, 30))
-        # parent.ToolbarFrame.setFrameShape(QtWidgets.QFrame.StyledPanel)
-        # parent.ToolbarFrame.setFrameShadow(QtWidgets.QFrame.Raised)
-        # parent.ToolbarFrame.setObjectName("ToolbarFrame")
 
         parent.horizontalLayout_6.addLayout(parent.verticalLayout_9)
         parent.legendScroll = QtWidgets.QScrollArea()
@@ -941,39 +957,6 @@ class MainForm():
         parent.actionSave_AS = QtWidgets.QAction(parent)
 
         parent.actionSave_AS.setObjectName("actionSave_AS")
-
-        parent.actionCycle_Info = QtWidgets.QAction(parent)
-
-        parent.actionCycle_Info.setObjectName("actionCycle_Info")
-
-        parent.actionSetting = QtWidgets.QAction(parent)
-
-        parent.actionSetting.setObjectName("actionSetting")
-
-        parent.actionExit = QtWidgets.QAction(parent)
-
-        parent.actionExit.setObjectName("actionExit")
-
-        parent.actionStart = QtWidgets.QAction(parent)
-
-        parent.actionStart.setObjectName("actionStart")
-
-        parent.actionStop = QtWidgets.QAction(parent)
-
-        parent.actionStop.setObjectName("actionStop")
-
-        parent.actionPrint_results = QtWidgets.QAction(parent)
-
-        parent.actionPrint_results.setObjectName("actionPrint_results")
-
-        parent.actionSave = QtWidgets.QAction(parent)
-
-        parent.actionSave.setObjectName("actionSave")
-
-        parent.actionSave_AS = QtWidgets.QAction(parent)
-
-        parent.actionSave_AS.setObjectName("actionSave_AS")
-
 
         parent.actionCycle_Info = QtWidgets.QAction(parent)
 

@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import QMessageBox
 # Import database and models for work order uniqueness check
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import CycleData
+from RaspPiReader.utils.virtual_keyboard import setup_virtual_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,9 @@ class WorkOrderFormHandler(QtWidgets.QWidget):
         self.ui.quantitySpinBox.setMaximum(250)
         self.ui.nextButton.clicked.connect(self.on_next)
         self.ui.cancelButton.clicked.connect(self.on_cancel)
+        
+        # Setup virtual keyboard for the work order input
+        setup_virtual_keyboard(self.ui.workOrderLineEdit)
     
     def on_cancel(self):
         """Handle form cancellation"""

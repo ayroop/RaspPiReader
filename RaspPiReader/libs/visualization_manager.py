@@ -576,6 +576,10 @@ class VisualizationManager:
             fig, ax1 = plt.subplots(figsize=(14, 10))
             ax2 = ax1.twinx()  # Create a second y-axis
             
+            # Enforce fixed axis scales
+            ax1.set_ylim(-150, 800)  # Left axis
+            ax2.set_ylim(0, 140)     # Right axis
+            
             # Set distinct colors for left and right axis labels
             left_color = '#1f77b4'  # Blue for left axis
             right_color = '#d62728'  # Red for right axis
@@ -610,19 +614,19 @@ class VisualizationManager:
                             ch_num = int(channel[2:])
                             if ch_num in self.channel_configs:
                                 channel_config = self.channel_configs[ch_num]
-                                axis_direction = channel_config.get('axis_direction', 'normal')
+                                axis_direction = channel_config.get('axis_direction', 'L').strip().upper()
                                 display_name = channel_config.get('label', f"Channel {ch_num}")
                                 color = channel_config.get('color', colors[i % len(colors)])
                             else:
-                                axis_direction = 'normal'
+                                axis_direction = 'L'
                                 display_name = f"Channel {ch_num}"
                                 color = colors[i % len(colors)]
                         except (ValueError, KeyError):
-                            axis_direction = 'normal'
+                            axis_direction = 'L'
                             display_name = channel
                             color = colors[i % len(colors)]
                     else:
-                        axis_direction = 'normal'
+                        axis_direction = 'L'
                         display_name = channel
                         color = colors[i % len(colors)]
                     
@@ -639,6 +643,7 @@ class VisualizationManager:
                     
                     # Plot on appropriate axis with enhanced visual distinction
                     if axis_direction == 'R':
+                        # Plot on right axis, which is fixed to 0-140
                         line, = ax2.plot(timestamps, values, 
                                 color=color,
                                 label=f"{display_name} (Right Axis)",
@@ -649,6 +654,7 @@ class VisualizationManager:
                                 alpha=0.85)
                         right_axis_channels.append((line, display_name))
                     else:
+                        # Plot on left axis, which is fixed to -150 to 800
                         line, = ax1.plot(timestamps, values, 
                                 color=color,
                                 label=f"{display_name} (Left Axis)",

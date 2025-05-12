@@ -8,6 +8,7 @@ from RaspPiReader.ui.duplicate_password_dialog_handler import DuplicatePasswordD
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import CycleData, CycleSerialNumber, User
 from RaspPiReader import pool
+from RaspPiReader.utils.virtual_keyboard import setup_virtual_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -33,15 +34,23 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
         # Set placeholder text for search line edit
         self.ui.searchLineEdit.setPlaceholderText("Enter serial number to search...")
         
+        # Setup virtual keyboard for the search input
+        setup_virtual_keyboard(self.ui.searchLineEdit)
+        
         # Set button text if not already set in the UI
         self.ui.importExcelButton.setText("Import From Excel")
         self.ui.searchButton.setText("Search")
         self.ui.nextButton.setText("Next")
         self.ui.cancelButton.setText("Cancel")
         
-        # Configure the table with placeholder cells
+        # Configure the table with placeholder cells and setup virtual keyboard for each cell
         for row in range(quantity):
-            self.ui.serialTableWidget.setItem(row, 0, QtWidgets.QTableWidgetItem(""))
+            item = QtWidgets.QTableWidgetItem("")
+            self.ui.serialTableWidget.setItem(row, 0, item)
+            # Create a QLineEdit for each cell and setup virtual keyboard
+            line_edit = QtWidgets.QLineEdit()
+            setup_virtual_keyboard(line_edit)
+            self.ui.serialTableWidget.setCellWidget(row, 0, line_edit)
 
     def import_from_excel(self):
         """

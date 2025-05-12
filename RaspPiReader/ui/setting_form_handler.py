@@ -20,6 +20,7 @@ from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.models import GeneralConfigSettings, ChannelConfigSettings, BooleanAddress
 from RaspPiReader.libs.configuration import config
 from RaspPiReader.ui.serial_number_management_form_handler import SerialNumberManagementFormHandler
+from RaspPiReader.utils.virtual_keyboard import setup_virtual_keyboard
 
 CHANNEL_COUNT = 14
 READ_INPUT_REGISTERS = "Read Input Registers"
@@ -44,6 +45,24 @@ class SettingFormHandler(QMainWindow):
         # Add both tabs
         self.add_boolean_addresses_tab()
         self.add_serial_number_management_tab()
+        
+        # Setup virtual keyboard for all text input fields
+        for widget_name in dir(self.form_obj):
+            widget = getattr(self.form_obj, widget_name)
+            if isinstance(widget, (QLineEdit, QSpinBox, QDoubleSpinBox)):
+                setup_virtual_keyboard(widget)
+        
+        # Setup virtual keyboard for all QLineEdit widgets in the form
+        for widget in self.findChildren(QLineEdit):
+            setup_virtual_keyboard(widget)
+            
+        # Setup virtual keyboard for all QSpinBox widgets in the form
+        for widget in self.findChildren(QSpinBox):
+            setup_virtual_keyboard(widget)
+            
+        # Setup virtual keyboard for all QDoubleSpinBox widgets in the form
+        for widget in self.findChildren(QDoubleSpinBox):
+            setup_virtual_keyboard(widget)
         
         self.show()
 
@@ -242,6 +261,14 @@ class SettingFormHandler(QMainWindow):
                         value = 0
                     setattr(channel_settings, attribute, value)
                     channel_updates[attribute] = value
+                
+                # Set specific values for CH12 and CH13
+                if ch == 12:
+                    channel_settings.address = 130
+                    channel_updates['address'] = 130
+                elif ch == 13:
+                    channel_settings.address = 140
+                    channel_updates['address'] = 140
                 
                 # Update pool configuration for this channel
                 for key, value in channel_updates.items():

@@ -9,13 +9,11 @@ import tempfile
 import jinja2
 from pathlib import Path
 from PyQt5 import QtWidgets, uic, QtCore
-from PyQt5.QtCore import QTimer, pyqtSignal, QSettings
+from PyQt5.QtCore import QTimer, pyqtSignal, QSettings, Qt
 from PyQt5.QtGui import QFont
-from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction, QSizePolicy
+from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction, QSizePolicy, QVBoxLayout, QGroupBox
 from RaspPiReader import pool
 from RaspPiReader.libs.pool import Pool
-from .mainForm import MainForm
-from RaspPiReader.ui.mainForm import MainForm
 from .setting_form_handler import SettingFormHandler, CHANNEL_COUNT
 from .user_management_form_handler import UserManagementFormHandler
 from RaspPiReader.ui.one_drive_settings_form_handler import OneDriveSettingsFormHandler
@@ -24,6 +22,7 @@ from .plc_comm_settings_form_handler import PLCCommSettingsFormHandler
 from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormHandler
 from PyQt5 import sip
 import pyqtgraph as pg
+from .mainForm import MainForm  # Add this import
 
 # New imports for new cycle workflow
 from RaspPiReader.libs.communication import dataReader
@@ -44,7 +43,7 @@ from RaspPiReader.libs.models import Alarm
 # Add PLC connection status
 from RaspPiReader.libs import plc_communication
 from RaspPiReader.libs.cycle_finalization import finalize_cycle
-from RaspPiReader.libs.plc_communication import read_holding_register
+from RaspPiReader.libs.plc_communication import read_holding_register, write_holding_register, write_coil
 from RaspPiReader.libs.visualization_manager import VisualizationManager
 from .boolean_data_display_handler import BooleanDataDisplayHandler
 from PyQt5.QtWidgets import QVBoxLayout, QGroupBox
@@ -65,22 +64,14 @@ def timedelta2str(td):
     return f"{zp(h)}:{zp(m)}:{zp(s)}"
 
 
-class MainFormHandler(QtWidgets.QMainWindow):
+class MainFormHandler(MainForm):
     update_status_bar_signal = pyqtSignal(str, int, str)
 
-    def __init__(self, user_record=None):
+    def __init__(self, user=None, parent=None):
         super(MainFormHandler, self).__init__()
-        self.user_record = user_record
-
-        # Build an absolute path to the UI file in the 'qt' folder.
-        ui_path = os.path.join(os.path.dirname(__file__), "..", "qt", "main.ui")
-        ui_path = os.path.abspath(ui_path)
-        # Load the UI from the .ui file
-        uic.loadUi(ui_path, self)
-
-        # Setup UI via the MainForm class.
-        self.form_obj = MainForm()
-        self.form_obj.setupUi(self)
+        self.user_record = user  # Store the user object as an instance variable
+        self.db = Database("sqlite:///local_database.db")
+        self.settings = QSettings('RaspPiHandler', 'RaspPiModbusReader')
         self.immediate_panel_update_locked = False
 
         # Immediately assign cycle timer labels via findChild.
@@ -130,7 +121,6 @@ class MainFormHandler(QtWidgets.QMainWindow):
         self.add_plc_comm_menu()
         self.add_database_menu()
 
-        self.db = Database("sqlite:///local_database.db")
         self.db.update_alarm_schema()
         self.integrate_new_cycle_widget()
 
@@ -417,16 +407,10 @@ class MainFormHandler(QtWidgets.QMainWindow):
     def update_data(self, new_data):
         """
         Update UI elements based on the new_data dictionary and live PLC channel readings.
-        
-        Expected keys in new_data:
-        - temperature, pressure
-        - vacuum: dict with keys 'CH1'..'CH8' (vacuum gauge values in KPa)
-        - cycle_info: dict with keys such as 'maintain_vacuum', 'set_cure_temp', etc.
-
-        Additionally, live channel values from the PLC (using read_holding_register)
-        are read and can be used to update dedicated UI labels.
+        Ensures all channels (CH1–CH14) are displayed in order, with correct values and labels.
+        CH12 and CH13 always use addresses 130 and 140.
+        Converts unsigned 16-bit values to signed for display.
         """
-        
         logger.info(f"MainForm received update: {new_data}")
         try:
             # Update Temperature and Pressure from simulation data
@@ -434,47 +418,48 @@ class MainFormHandler(QtWidgets.QMainWindow):
             pressure = new_data.get('pressure', 'N/A')
             self.form_obj.temperatureLabel.setText(f"Temperature: {temperature} °C")
             self.form_obj.pressureLabel.setText(f"Pressure: {pressure} KPa")
-            
-            # Read PLC channel values (e.g., CH1 to CH8) using holding registers
+
             channel_values = {}
             for ch in range(1, CHANNEL_COUNT + 1):
-                addr_key = f'channel_{ch}_address'
-                channel_addr = int(pool.config(addr_key, int, 0))
-                # Read the value from the PLC register; if error, default to zero
+                # Ensure CH12 and CH13 use correct addresses
+                if ch == 12:
+                    channel_addr = 130
+                elif ch == 13:
+                    channel_addr = 140
+                else:
+                    addr_key = f'channel_{ch}_address'
+                    channel_addr = int(pool.config(addr_key, int, 0))
+
+                # Read from PLC
                 channel_value = read_holding_register(channel_addr, 1)
-                channel_values[f"CH{ch}"] = channel_value if channel_value is not None else 0
-                
+                # Convert to signed 16-bit
+                signed_value = to_signed_16bit(channel_value)
+                try:
+                    float_value = float(signed_value if signed_value is not None else 0)
+                    channel_values[f"CH{ch}"] = float_value
+                    # Update data stack (index ch, so CH1=1, CH14=14)
+                    while len(self.data_stack) <= ch:
+                        self.data_stack.append([])
+                    self.data_stack[ch].append(float_value)
+                except (ValueError, TypeError):
+                    channel_values[f"CH{ch}"] = 0.0
+                    if len(self.data_stack) > ch:
+                        self.data_stack[ch].append(0.0)
+
                 # Update the corresponding label in the main form
-                label_name = f"channel{ch}Label"
-                if hasattr(self.form_obj, label_name):
-                    label = getattr(self.form_obj, label_name)
-                    label.setText(f"CH{ch}: {channel_values[f'CH{ch}']}")
-            
-            # Update Vacuum Gauge channels from simulation data
-            vacuum_data = new_data.get('vacuum', {})
-            if vacuum_data:
-                for ch in range(1, CHANNEL_COUNT + 1):
-                    ch_key = f'CH{ch}'
-                    if ch_key in vacuum_data:
-                        label_name = f"vacuumLabelCH{ch}"
-                        if hasattr(self.form_obj, label_name):
-                            label = getattr(self.form_obj, label_name)
-                            label.setText(f"CH{ch}: {vacuum_data[ch_key]} KPa")
-            
-            # Update Cycle Info fields from simulation data
-            cycle_info = new_data.get('cycle_info', {})
-            if cycle_info:
-                self.form_obj.maintainVacuumLineEdit.setText(str(cycle_info.get('maintain_vacuum', '')))
-                self.form_obj.setCureTempLineEdit.setText(str(cycle_info.get('set_cure_temp', '')))
-                self.form_obj.tempRampLineEdit.setText(str(cycle_info.get('temp_ramp', '')))
-                self.form_obj.setPressureLineEdit.setText(str(cycle_info.get('set_pressure', '')))
-                self.form_obj.dwellTimeLineEdit.setText(str(cycle_info.get('dwell_time', 'N/A')))
-                self.form_obj.coolDownTempLineEdit.setText(str(cycle_info.get('cool_down_temp', '')))
-                self.form_obj.cycleStartTimeLabel.setText(cycle_info.get('cycle_start_time', 'N/A'))
-                self.form_obj.cycleEndTimeLabel.setText(cycle_info.get('cycle_end_time', 'N/A'))
-            
+                if ch <= 8:  # For channels 1-8, update vacuum labels
+                    label_name = f"vacuumLabelCH{ch}"
+                    if hasattr(self.form_obj, label_name):
+                        label = getattr(self.form_obj, label_name)
+                        label.setText(f"CH{ch}: {channel_values[f'CH{ch}']} KPa")
+                else:  # For other channels
+                    label_name = f"channel{ch}Label"
+                    if hasattr(self.form_obj, label_name):
+                        label = getattr(self.form_obj, label_name)
+                        label.setText(f"CH{ch}: {channel_values[f'CH{ch}']}")
+
         except Exception as e:
-            logger.error(f"Error updating main form data: {e}")
+            logger.error(f"Error updating data: {e}")
 
     def update_plc_settings(self):
         """
@@ -783,8 +768,8 @@ class MainFormHandler(QtWidgets.QMainWindow):
         """
         Connect menu actions and check permissions if necessary.
         """
-        if hasattr(self.form_obj, "actionSetting"):
-            self.form_obj.actionSetting.triggered.connect(self.handle_settings)
+        if hasattr(self, "actionSetting"):
+            self.actionSetting.triggered.connect(self.handle_settings)
         else:
             print("Warning: 'actionSetting' not found in the MainForm UI.")
             
@@ -1043,6 +1028,24 @@ class MainFormHandler(QtWidgets.QMainWindow):
         
         try:
             self.immediate_panel_update_locked = True
+            
+            # Special logging for channel 14
+            try:
+                spin_widget = getattr(self, 'ch14Value')
+                logger.info(f"Channel 14 widget exists: {spin_widget is not None}")
+                if spin_widget is not None:
+                    logger.info(f"Channel 14 widget current value: {spin_widget.value()}")
+                    if len(self.data_stack) > 14 and len(self.data_stack[14]) > 0:
+                        raw_value = self.data_stack[14][-1]
+                        logger.info(f"Channel 14 raw value from data stack: {raw_value}")
+                        spin_widget.setValue(raw_value)
+                        logger.info(f"Channel 14 widget value after update: {spin_widget.value()}")
+                    else:
+                        logger.info("No data available for channel 14 in data stack")
+            except Exception as e:
+                logger.error(f"Error updating channel 14 widget: {e}")
+
+            # Regular update for all channels
             for i in range(CHANNEL_COUNT):
                 try:
                     spin_widget = getattr(self, 'ch' + str(i + 1) + 'Value')
@@ -1799,4 +1802,42 @@ class MainFormHandler(QtWidgets.QMainWindow):
             logger.error(f"Error updating status bar: {e}")
             raise
 
+    def update_temperature_pressure(self, temperature, pressure):
+        """Update temperature and pressure labels"""
+        if hasattr(self, "temperatureLabel"):
+            self.temperatureLabel.setText(f"Temperature: {temperature} °C")
+        if hasattr(self, "pressureLabel"):
+            self.pressureLabel.setText(f"Pressure: {pressure} KPa")
+
+    def update_channel_value(self, ch, value):
+        """Update channel value display"""
+        value_widget = getattr(self, f"ch{ch}Value", None)
+        if value_widget:
+            value_widget.setText(str(value))
+
+    def update_channel_label(self, ch, label_text):
+        """Update channel label text"""
+        label_name = f"ch{ch}Label"
+        if hasattr(self, label_name):
+            label = getattr(self, label_name)
+            label.setText(label_text)
+
+    def update_channel_unit(self, ch, unit_text):
+        """Update channel unit text"""
+        label_name = f"ch{ch}Unit"
+        if hasattr(self, label_name):
+            label = getattr(self, label_name)
+            label.setText(unit_text)
+
+    def disable_menu_action(self, action_name):
+        """Disable a menu action"""
+        if hasattr(self, action_name):
+            getattr(self, action_name).setEnabled(False)
+    
+def to_signed_16bit(val):
+    """Convert unsigned 16-bit integer to signed."""
+    if val is None:
+        return 0
+    val = int(val)
+    return val - 0x10000 if val >= 0x8000 else val
     

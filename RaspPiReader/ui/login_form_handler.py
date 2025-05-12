@@ -1,7 +1,9 @@
 from PyQt5 import QtWidgets
 from RaspPiReader import pool
 from .login_form import Ui_LoginForm
-from .main_form_handler import MainFormHandler
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .main_form_handler import MainFormHandler
 from RaspPiReader.libs.database import Database
 from RaspPiReader.libs.resource_path import resource_path
 
@@ -23,7 +25,8 @@ class LoginFormHandler(QtWidgets.QDialog):
             # Store logged in username in the pool
             pool.set('current_user', user.username)
             self.accept()
-            main_form = MainFormHandler(user)
+            from .main_form_handler import MainFormHandler
+            main_form = MainFormHandler(user=user)
             main_form.show()  # Use show() instead of showMaximized()
         else:
             QtWidgets.QMessageBox.critical(self, "Login Failed", "Invalid username or password")

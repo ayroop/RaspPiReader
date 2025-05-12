@@ -1,5 +1,6 @@
 from PyQt5 import QtWidgets
 from .user_edit_form import Ui_UserEditDialog
+from RaspPiReader.utils.virtual_keyboard import setup_virtual_keyboard
 
 class UserEditFormHandler(QtWidgets.QDialog):
     def __init__(self, user_data=None, parent=None):
@@ -22,6 +23,14 @@ class UserEditFormHandler(QtWidgets.QDialog):
             self.ui.searchCheckBox = QtWidgets.QCheckBox(self)
             self.ui.searchCheckBox.setText("Search Access")
             self.ui.formLayout.addRow("", self.ui.searchCheckBox)
+
+        # Setup virtual keyboard for text input fields
+        if hasattr(self.ui, "usernameLineEdit"):
+            setup_virtual_keyboard(self.ui.usernameLineEdit)
+        if hasattr(self.ui, "passwordLineEdit"):
+            setup_virtual_keyboard(self.ui.passwordLineEdit)
+        if hasattr(self.ui, "roleLineEdit"):
+            setup_virtual_keyboard(self.ui.roleLineEdit)
 
         self.ui.okPushButton.clicked.connect(self.accept)
         self.ui.cancelPushButton.clicked.connect(self.reject)

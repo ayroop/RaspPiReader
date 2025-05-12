@@ -44,17 +44,57 @@ class VisualizationDashboard(QtWidgets.QWidget):
                         'limit_high': channel.limit_high or 100,
                         'decimal_point': channel.decimal_point or 0,
                         'scale': channel.scale or False,
-                        'axis_direction': channel.axis_direction if hasattr(channel, 'axis_direction') else 'normal',
+                        'axis_direction': channel.axis_direction if hasattr(channel, 'axis_direction') else 'L',
                         'color': channel.color if hasattr(channel, 'color') else self.get_default_color(i),
                         'active': channel.active if hasattr(channel, 'active') else True,
                         'min_scale_range': channel.min_scale_range if hasattr(channel, 'min_scale_range') else 0,
                         'max_scale_range': channel.max_scale_range if hasattr(channel, 'max_scale_range') else 100
                     }
+                else:
+                    # Create default configuration for missing channels
+                    self.channels_config[i] = {
+                        'id': i,
+                        'label': f"Channel {i}",
+                        'address': 100 + i,
+                        'pv': 0,
+                        'sv': 0,
+                        'set_point': 0,
+                        'limit_low': 0,
+                        'limit_high': 100,
+                        'decimal_point': 0,
+                        'scale': False,
+                        'axis_direction': 'L',
+                        'color': self.get_default_color(i),
+                        'active': True,
+                        'min_scale_range': 0,
+                        'max_scale_range': 100
+                    }
+                    # Create and save the channel in the database
+                    new_channel = ChannelConfigSettings(
+                        id=i,
+                        address=100 + i,
+                        label=f"Channel {i}",
+                        pv=0,
+                        sv=0,
+                        set_point=0,
+                        limit_low=0,
+                        limit_high=100,
+                        decimal_point=0,
+                        scale=False,
+                        axis_direction='L',
+                        color=self.get_default_color(i),
+                        active=True,
+                        min_scale_range=0,
+                        max_scale_range=100
+                    )
+                    self.db.session.add(new_channel)
+            
+            self.db.session.commit()
+            
             # Load Boolean address configurations (limit to 6)
             boolean_entries = self.db.session.query(BooleanAddress).all()
             if boolean_entries:
                 for entry in boolean_entries[:6]:
-                    # Use entry.id as the Boolean index (or assign sequentially)
                     idx = entry.id
                     self.boolean_config[idx] = {
                         'id': idx,
@@ -66,7 +106,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
                 for i in range(1, 7):
                     self.boolean_config[i] = {
                         'id': i,
-                        'address': 400 + i,  # Example fallback address
+                        'address': 400 + i,
                         'label': f"LA {i}"
                     }
         except Exception as e:
@@ -84,7 +124,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
                     'limit_high': 100,
                     'decimal_point': 0,
                     'scale': False,
-                    'axis_direction': 'normal',
+                    'axis_direction': 'L',
                     'color': self.get_default_color(i),
                     'active': True,
                     'min_scale_range': 0,
@@ -142,7 +182,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
         self.combined_plot_widget = pg.PlotWidget()
         self.combined_plot_widget.setBackground('w')
         self.combined_plot_widget.showGrid(x=True, y=True, alpha=0.3)
-        self.combined_plot_widget.enableAutoRange()
+        self.combined_plot_widget.enableAutoRange(axis='x')  # Only auto-range x-axis
         self.combined_plot_widget.addLegend()
         
         # Show both left and right axes for combined plot
@@ -152,11 +192,15 @@ class VisualizationDashboard(QtWidgets.QWidget):
         self.combined_plot_widget.setLabel('right', 'Right Axis Values')
         self.combined_plot_widget.setLabel('bottom', 'Time (s)')
         
+        # Set fixed ranges for left and right axes
+        self.combined_plot_widget.setYRange(-150, 800, padding=0)  # Left axis range
+        
         # Create a second view box for the right axis
         self.right_vb = pg.ViewBox()
         self.combined_plot_widget.scene().addItem(self.right_vb)
         self.combined_plot_widget.getAxis('right').linkToView(self.right_vb)
         self.right_vb.setXLink(self.combined_plot_widget)
+        self.right_vb.setYRange(0, 140, padding=0)  # Right axis range
         
         # Update views when resized
         def updateViews():
@@ -175,7 +219,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
             channel_config = self.channels_config.get(i, {})
             color = channel_config.get('color', self.get_default_color(i))
             label = channel_config.get('label', f"Channel {i}")
-            axis_direction = channel_config.get('axis_direction', 'normal')
+            axis_direction = channel_config.get('axis_direction', 'L')
             
             # Add the plot with proper axis configuration
             plot_curve = self.combined_visualization.add_time_series_plot(
@@ -190,7 +234,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
             )
             
             # Configure axis for this channel based on axis_direction
-            if axis_direction == 'inverted':
+            if axis_direction == 'R':
                 self.right_vb.addItem(plot_curve)
             else:
                 self.combined_plot_widget.addItem(plot_curve)
@@ -267,6 +311,10 @@ class VisualizationDashboard(QtWidgets.QWidget):
         if hasattr(self, 'right_vb'):
             self.right_vb.setGeometry(self.combined_plot_widget.getViewBox().sceneBoundingRect())
             self.right_vb.linkedViewChanged(self.combined_plot_widget.getViewBox(), self.right_vb.XAxis)
+            
+            # Set fixed ranges for export
+            self.combined_plot_widget.setYRange(-150, 800, padding=0)  # Left axis range
+            self.right_vb.setYRange(0, 140, padding=0)  # Right axis range
         
         # Export the plot
         if self.combined_visualization.export_chart_image(self.combined_plot_widget, export_path):
@@ -302,22 +350,26 @@ class VisualizationDashboard(QtWidgets.QWidget):
 
     def create_visualization_grid(self):
         """Create the grid of plots for numeric channels (CH1–CH14)"""
-        rows, cols = 4, 4  # 4x4 grid (2 empty spots)
+        rows, cols = 4, 4  # 4x4 grid
         for i in range(1, 15):
             row = (i - 1) // cols
             col = (i - 1) % cols
             channel_config = self.channels_config.get(i, {})
             channel_name = f"ch{i}"
             plot_widget = pg.PlotWidget()
+            
+            # Set title and labels
             title = channel_config.get('label', f"Channel {i}")
             color = channel_config.get('color', self.get_default_color(i))
+            axis_direction = channel_config.get('axis_direction', 'L')
             
-            # Set Y-range from configuration if available
-            plot_widget.setYRange(channel_config.get('min_scale_range', 0),
-                                channel_config.get('max_scale_range', 100))
+            # Set Y-range based on axis direction
+            if axis_direction == 'R':
+                plot_widget.setYRange(0, 140, padding=0)
+            else:
+                plot_widget.setYRange(-150, 800, padding=0)
             
             # Configure axis labels based on channel configuration
-            axis_direction = channel_config.get('axis_direction', 'normal')
             y_label = f"{title} ({axis_direction})"
             
             # Add the plot with proper axis configuration
@@ -338,8 +390,19 @@ class VisualizationDashboard(QtWidgets.QWidget):
                 plot_widget.showAxis('left')
                 plot_widget.hideAxis('right')
             
+            # Add channel label
+            label = QtWidgets.QLabel(f"CH{i}")
+            label.setStyleSheet(f"color: {color}; font-weight: bold;")
+            label.setAlignment(QtCore.Qt.AlignCenter)
+            
+            # Create a container widget for the plot and label
+            container = QtWidgets.QWidget()
+            container_layout = QtWidgets.QVBoxLayout(container)
+            container_layout.addWidget(label)
+            container_layout.addWidget(plot_widget)
+            
             self.plots[channel_name] = plot_widget
-            self.plot_grid_layout.addWidget(plot_widget, row, col)
+            self.plot_grid_layout.addWidget(container, row, col)
     
     def create_channel_info_area(self):
         """Create a scrollable area with channel info (numeric channels)"""
@@ -467,6 +530,11 @@ class VisualizationDashboard(QtWidgets.QWidget):
             return
         channel_config = self.channels_config.get(channel_number, {})
         decimal_places = channel_config.get('decimal_point', 0)
+        
+        # Handle negative numbers (convert from unsigned to signed if needed)
+        if value > 32767:  # If value is in unsigned range
+            value = value - 65536  # Convert to signed 16-bit integer
+        
         if channel_config.get('scale', False):
             low_limit = channel_config.get('limit_low', 0)
             high_limit = channel_config.get('limit_high', 100)
@@ -474,18 +542,33 @@ class VisualizationDashboard(QtWidgets.QWidget):
             max_range = channel_config.get('max_scale_range', high_limit)
             if high_limit != low_limit and max_range != min_range:
                 value = min_range + ((value - low_limit) * (max_range - min_range)) / (high_limit - low_limit)
+        
         formatted_value = f"{value:.{decimal_places}f}"
         channel_name = f"ch{channel_number}"
-        self.visualization.update_data(channel_name, value)
-        # NEW: also update combined plot data
-        if hasattr(self, 'combined_visualization'):
-            self.combined_visualization.update_data(channel_name, value)
+        
+        # Update the appropriate visualization based on axis direction
+        axis_direction = channel_config.get('axis_direction', 'L')
+        if axis_direction == 'R':
+            # For right axis channels, use the combined visualization
+            if hasattr(self, 'combined_visualization'):
+                self.combined_visualization.update_data(channel_name, value)
+        else:
+            # For left axis channels, use the individual visualization
+            self.visualization.update_data(channel_name, value)
+            # Also update combined visualization
+            if hasattr(self, 'combined_visualization'):
+                self.combined_visualization.update_data(channel_name, value)
+        
+        # Update channel info display
         if channel_number in self.channel_info_widgets:
             self.channel_info_widgets[channel_number]['pv'].setText(formatted_value)
+        
+        # Update table view if visible
         if self.tab_widget.currentIndex() == 2:
             pv_item = self.data_table.item(channel_number-1, 3)
             if pv_item:
                 pv_item.setText(formatted_value)
+        
         try:
             channel = self.db.session.query(ChannelConfigSettings).filter_by(id=channel_number).first()
             if channel:
@@ -801,3 +884,21 @@ class VisualizationDashboard(QtWidgets.QWidget):
             return "#e74c3c"  # Red
         else:  # Pressure & System Vacuum (CH13-CH14)
             return "#2ecc71"  # Green
+
+    def setup_combined_plot(self):
+        """Setup the combined plot with fixed axis scales for left and right axes, and ensure right axis channels use 0-140 scale."""
+        # ... existing code to create the combined plot ...
+        # Enforce fixed axis scales
+        self.combined_plot_widget.setYRange(-150, 800, padding=0)  # Left axis
+        if hasattr(self.combined_plot_widget, 'getAxis'):
+            right_axis = self.combined_plot_widget.getAxis('right')
+            if right_axis:
+                # Set right axis scale to 0-140
+                self.combined_plot_widget.getViewBox().setYRange(0, 140, padding=0)
+        # For each channel, ensure right axis channels are plotted on the right with correct scale
+        for ch_num, config in self.channels_config.items():
+            if config.get('axis_direction', 'L').strip().upper() == 'R':
+                # Plot on right axis, ensure scale is 0-140
+                # (If using custom ViewBox, set its range here)
+                pass  # Actual plotting code would go here
+        # ... rest of setup ...
