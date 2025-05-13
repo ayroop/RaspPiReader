@@ -37,9 +37,13 @@ class LiveDataVisualization:
         self.timer.stop()
         
     def reset_data(self):
-        """Clear all data buffers"""
+        """Clear all data buffers and plot curves"""
         for key in self.data_buffers:
             self.data_buffers[key] = {'timestamps': [], 'values': []}
+        # Clear plot curves visually
+        for plot_info in self.plots.values():
+            if 'curve' in plot_info:
+                plot_info['curve'].setData([], [])
             
     def add_time_series_plot(self, plot_widget, parameter_name, color='#1f77b4', 
                              line_width=2, title=None, y_label=None, x_label="Time (s)", smooth=False):

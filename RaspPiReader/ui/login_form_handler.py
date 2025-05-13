@@ -2,10 +2,10 @@ from PyQt5 import QtWidgets
 from RaspPiReader import pool
 from .login_form import Ui_LoginForm
 from typing import TYPE_CHECKING
+from RaspPiReader.libs.resource_path import resource_path
+from RaspPiReader.libs.database import Database
 if TYPE_CHECKING:
     from .main_form_handler import MainFormHandler
-from RaspPiReader.libs.database import Database
-from RaspPiReader.libs.resource_path import resource_path
 
 class LoginFormHandler(QtWidgets.QDialog):
     def __init__(self, parent=None):

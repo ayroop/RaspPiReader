@@ -23,6 +23,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
         self.plots = {}
         self.channel_info_widgets = {}   
         self.db = Database("sqlite:///local_database.db")
+        self.visualization_active = False
         self.load_channel_config()
         self.setup_ui()
         
@@ -236,8 +237,10 @@ class VisualizationDashboard(QtWidgets.QWidget):
             # Configure axis for this channel based on axis_direction
             if axis_direction == 'R':
                 self.right_vb.addItem(plot_curve)
+                self.combined_plot_widget.setLabel('right', 'Right Axis Values')
             else:
                 self.combined_plot_widget.addItem(plot_curve)
+                self.combined_plot_widget.setLabel('left', 'Left Axis Values')
         
         # Plot View tab (existing code, create grid for individual plots)
         self.plot_tab = QtWidgets.QWidget()
@@ -385,10 +388,14 @@ class VisualizationDashboard(QtWidgets.QWidget):
             # Show the appropriate axis based on configuration
             if axis_direction == 'R':
                 plot_widget.showAxis('right')
+                plot_widget.setLabel('right', y_label)
                 plot_widget.hideAxis('left')
+                plot_widget.setLabel('left', '')
             else:
                 plot_widget.showAxis('left')
+                plot_widget.setLabel('left', y_label)
                 plot_widget.hideAxis('right')
+                plot_widget.setLabel('right', '')
             
             # Add channel label
             label = QtWidgets.QLabel(f"CH{i}")
@@ -494,7 +501,6 @@ class VisualizationDashboard(QtWidgets.QWidget):
         """Start numeric and Boolean visualization and cycle timer"""
         self.visualization.start_visualization()
         self.boolean_visualization.start_visualization()  # <-- Start Boolean updates
-        # NEW: start combined visualization updates
         if hasattr(self, 'combined_visualization'):
             self.combined_visualization.start_visualization()
         self.cycle_start_time = QtCore.QDateTime.currentDateTime()
@@ -507,17 +513,22 @@ class VisualizationDashboard(QtWidgets.QWidget):
             self.boolean_timer = QtCore.QTimer(self)
             self.boolean_timer.timeout.connect(self.update_all_boolean_data)
             self.boolean_timer.start(100)  # update every 100 ms
+        self.visualization_active = True
         
     def stop_visualization(self):
         """Stop visualization and timer"""
         self.visualization.stop_visualization()
-        self.boolean_visualization.stop_visualization()  # <-- Stop Boolean updates
-        self.timer.stop()
+        self.boolean_visualization.stop_visualization()
+        if hasattr(self, 'combined_visualization'):
+            self.combined_visualization.stop_visualization()
+        if hasattr(self, 'timer'):
+            self.timer.stop()
         self.cycle_start_time = None
         self.btn_pause.setText("Pause")
         self.btn_pause.setIcon(self.style().standardIcon(QtWidgets.QStyle.SP_MediaPause))
         self.paused = False
         self.status_bar.showMessage("Visualization stopped")
+        self.visualization_active = False
         
     def update_data(self, channel_number, value):
         """
@@ -526,6 +537,8 @@ class VisualizationDashboard(QtWidgets.QWidget):
             channel_number: 1-14 for numeric channels
             value: Current numeric value
         """
+        if not self.visualization_active:
+            return
         if channel_number < 1 or channel_number > 14:
             return
         channel_config = self.channels_config.get(channel_number, {})
@@ -546,18 +559,17 @@ class VisualizationDashboard(QtWidgets.QWidget):
         formatted_value = f"{value:.{decimal_places}f}"
         channel_name = f"ch{channel_number}"
         
-        # Update the appropriate visualization based on axis direction
-        axis_direction = channel_config.get('axis_direction', 'L')
-        if axis_direction == 'R':
-            # For right axis channels, use the combined visualization
-            if hasattr(self, 'combined_visualization'):
-                self.combined_visualization.update_data(channel_name, value)
-        else:
-            # For left axis channels, use the individual visualization
+        # Update individual plot
+        if channel_name in self.visualization.plots:
             self.visualization.update_data(channel_name, value)
-            # Also update combined visualization
-            if hasattr(self, 'combined_visualization'):
-                self.combined_visualization.update_data(channel_name, value)
+        # Update combined plot
+        if hasattr(self, 'combined_visualization') and channel_name in self.combined_visualization.plots:
+            axis_direction = channel_config.get('axis_direction', 'L')
+            self.combined_visualization.update_data(channel_name, value)
+            if axis_direction == 'R':
+                self.combined_plot_widget.setLabel('right', 'Right Axis Values')
+            else:
+                self.combined_plot_widget.setLabel('left', 'Left Axis Values')
         
         # Update channel info display
         if channel_number in self.channel_info_widgets:
@@ -634,10 +646,8 @@ class VisualizationDashboard(QtWidgets.QWidget):
         """
         if channel_number < 1 or channel_number > 14 or not settings:
             return
-            
         # Update local configuration
         self.channels_config[channel_number].update(settings)
-        
         try:
             # Update database
             channel = self.db.session.query(ChannelConfigSettings).filter_by(id=channel_number).first()
@@ -671,7 +681,6 @@ class VisualizationDashboard(QtWidgets.QWidget):
                 
                 # Update visualization immediately
                 channel_name = f"ch{channel_number}"
-                
                 # Update individual plot
                 if channel_name in self.visualization.plots:
                     plot_data = self.visualization.plots.get(channel_name)
@@ -681,7 +690,19 @@ class VisualizationDashboard(QtWidgets.QWidget):
                             plot_data['curve'].setPen(pen)
                         if 'axis_direction' in settings:
                             self.update_plot_axis(channel_number, settings['axis_direction'])
-                
+                            # Move curve to correct axis
+                            plot_widget = plot_data['widget']
+                            y_label = f"{self.channels_config[channel_number].get('label', f'Channel {channel_number}')} ({settings['axis_direction']})"
+                            if settings['axis_direction'] == 'R':
+                                plot_widget.showAxis('right')
+                                plot_widget.setLabel('right', y_label)
+                                plot_widget.hideAxis('left')
+                                plot_widget.setLabel('left', '')
+                            else:
+                                plot_widget.showAxis('left')
+                                plot_widget.setLabel('left', y_label)
+                                plot_widget.hideAxis('right')
+                                plot_widget.setLabel('right', '')
                 # Update combined plot
                 if hasattr(self, 'combined_visualization') and channel_name in self.combined_visualization.plots:
                     combined_plot = self.combined_visualization.plots.get(channel_name)
@@ -689,7 +710,23 @@ class VisualizationDashboard(QtWidgets.QWidget):
                         if 'color' in settings:
                             combined_pen = pg.mkPen(color=settings['color'], width=2)
                             combined_plot['curve'].setPen(combined_pen)
-                
+                        if 'axis_direction' in settings:
+                            # Remove curve from both axes first
+                            try:
+                                self.combined_plot_widget.removeItem(combined_plot['curve'])
+                            except Exception:
+                                pass
+                            try:
+                                self.right_vb.removeItem(combined_plot['curve'])
+                            except Exception:
+                                pass
+                            # Add to correct axis
+                            if settings['axis_direction'] == 'R':
+                                self.right_vb.addItem(combined_plot['curve'])
+                                self.combined_plot_widget.setLabel('right', 'Right Axis Values')
+                            else:
+                                self.combined_plot_widget.addItem(combined_plot['curve'])
+                                self.combined_plot_widget.setLabel('left', 'Left Axis Values')
                 # Update channel info display
                 if channel_number in self.channel_info_widgets:
                     widgets = self.channel_info_widgets[channel_number]
@@ -719,12 +756,17 @@ class VisualizationDashboard(QtWidgets.QWidget):
         channel_name = f"ch{channel_number}"
         if channel_name in self.plots:
             plot_widget = self.plots[channel_name]
+            y_label = f"{self.channels_config[channel_number].get('label', f'Channel {channel_number}')} ({axis_direction})"
             if axis_direction == 'R':
                 plot_widget.showAxis('right')
+                plot_widget.setLabel('right', y_label)
                 plot_widget.hideAxis('left')
+                plot_widget.setLabel('left', '')
             else:
                 plot_widget.showAxis('left')
+                plot_widget.setLabel('left', y_label)
                 plot_widget.hideAxis('right')
+                plot_widget.setLabel('right', '')
 
     def update_cycle_time(self):
         """Update the cycle time display"""
@@ -753,20 +795,23 @@ class VisualizationDashboard(QtWidgets.QWidget):
             self.status_bar.showMessage("Visualization paused")
         self.paused = not self.paused
 
-    # NEW: Delegate method to support external calls to update_plots
     def update_plots(self):
-        """Update all plots to reflect current settings"""
-        # Update individual plots
+        """Update all plots (individual and combined) with the latest data"""
         self.visualization.update_plots()
-        
-        # Update combined plot if available
         if hasattr(self, 'combined_visualization'):
             self.combined_visualization.update_plots()
-            
-        # Update boolean plots if available
-        if hasattr(self, 'boolean_visualization'):
-            self.boolean_visualization.update_plots()
-        
+            # Set axis labels if any channel is active on that axis
+            left_active = any(cfg.get('axis_direction', 'L') == 'L' and cfg.get('active', True) for cfg in self.channels_config.values())
+            right_active = any(cfg.get('axis_direction', 'L') == 'R' and cfg.get('active', True) for cfg in self.channels_config.values())
+            if left_active:
+                self.combined_plot_widget.setLabel('left', 'Left Axis Values')
+            else:
+                self.combined_plot_widget.setLabel('left', '')
+            if right_active:
+                self.combined_plot_widget.setLabel('right', 'Right Axis Values')
+            else:
+                self.combined_plot_widget.setLabel('right', '')
+
     def export_data(self):
         """Export visualization data to CSV"""
         file_path, _ = QtWidgets.QFileDialog.getSaveFileName(self, "Export Visualization Data", "", "CSV Files (*.csv);;All Files (*)")
@@ -779,9 +824,11 @@ class VisualizationDashboard(QtWidgets.QWidget):
         """Reset the visualization dashboard"""
         self.stop_visualization()
         self.visualization.reset_data()
-        # NEW: reset combined visualization data if available
         if hasattr(self, 'combined_visualization'):
             self.combined_visualization.reset_data()
+            self.combined_visualization.update_plots()
+            self.combined_plot_widget.setLabel('left', '')
+            self.combined_plot_widget.setLabel('right', '')
         self.cycle_time_label.setText("Cycle Time: 00:00:00")
         for channel_number, widgets in self.channel_info_widgets.items():
             widgets['pv'].setText("0.0")
@@ -791,6 +838,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
                 if pv_item:
                     pv_item.setText("0.0")
         self.status_bar.showMessage("Visualization reset")
+        self.visualization_active = False
         
     def update_table_row(self, channel_number):
         """Update a specific row in the table view"""

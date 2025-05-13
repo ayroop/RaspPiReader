@@ -215,6 +215,9 @@ class MainFormHandler(MainForm):
             # Start live data logging if available
             if hasattr(self, "start_live_data"):
                 self.start_live_data()
+            # Ensure visualization dashboard is started
+            if hasattr(self, 'viz_manager') and hasattr(self.viz_manager, 'dashboard') and self.viz_manager.dashboard is not None:
+                self.viz_manager.dashboard.start_visualization()
                 
         except Exception as e:
             logger.error(f"Error starting cycle timer: {e}")
@@ -418,7 +421,7 @@ class MainFormHandler(MainForm):
             pressure = new_data.get('pressure', 'N/A')
             self.form_obj.temperatureLabel.setText(f"Temperature: {temperature} °C")
             self.form_obj.pressureLabel.setText(f"Pressure: {pressure} KPa")
-
+            
             channel_values = {}
             for ch in range(1, CHANNEL_COUNT + 1):
                 # Ensure CH12 and CH13 use correct addresses
@@ -432,6 +435,7 @@ class MainFormHandler(MainForm):
 
                 # Read from PLC
                 channel_value = read_holding_register(channel_addr, 1)
+                logger.info(f"CH{ch}: Read from PLC address {channel_addr}, value={channel_value}")
                 # Convert to signed 16-bit
                 signed_value = to_signed_16bit(channel_value)
                 try:
@@ -445,7 +449,7 @@ class MainFormHandler(MainForm):
                     channel_values[f"CH{ch}"] = 0.0
                     if len(self.data_stack) > ch:
                         self.data_stack[ch].append(0.0)
-
+                
                 # Update the corresponding label in the main form
                 if ch <= 8:  # For channels 1-8, update vacuum labels
                     label_name = f"vacuumLabelCH{ch}"
@@ -888,6 +892,8 @@ class MainFormHandler(MainForm):
             # Stop all timers first
             if hasattr(self, 'live_update_timer') and self.live_update_timer.isActive():
                 self.live_update_timer.stop()
+            if hasattr(self, 'stop_live_data'):
+                self.stop_live_data()
             if hasattr(self, 'connectionTimer') and self.connectionTimer.isActive():
                 self.connectionTimer.stop()
             if hasattr(self, 'status_timer') and self.status_timer.isActive():
@@ -903,10 +909,12 @@ class MainFormHandler(MainForm):
             # Stop visualization and reset plots immediately
             if hasattr(self, 'viz_manager'):
                 self.viz_manager.stop_visualization()
-                # Reset the plots to clear any existing data
+                # Also ensure dashboard is stopped and reset
                 if hasattr(self.viz_manager, 'dashboard') and self.viz_manager.dashboard is not None:
+                    self.viz_manager.dashboard.stop_visualization()
                     self.viz_manager.dashboard.visualization.reset_data()
                     self.viz_manager.dashboard.update_plots()
+                    self.viz_manager.dashboard.reset()  # <-- Fully reset dashboard (timer, plots, values)
             
             # Stop alarm monitoring if available
             if hasattr(self, 'alarm_monitor'):
@@ -1035,16 +1043,13 @@ class MainFormHandler(MainForm):
             # Special logging for channel 14
             try:
                 spin_widget = getattr(self, 'ch14Value')
-                logger.info(f"Channel 14 widget exists: {spin_widget is not None}")
                 if spin_widget is not None:
-                    logger.info(f"Channel 14 widget current value: {spin_widget.value()}")
-                    if len(self.data_stack) > 14 and len(self.data_stack[14]) > 0:
-                        raw_value = self.data_stack[14][-1]
-                        logger.info(f"Channel 14 raw value from data stack: {raw_value}")
+                    # Use index 13 for CH14 (0-based)
+                    if len(self.data_stack) > 13 and len(self.data_stack[13]) > 0:
+                        raw_value = self.data_stack[13][-1]
                         spin_widget.setValue(raw_value)
-                        logger.info(f"Channel 14 widget value after update: {spin_widget.value()}")
-                    else:
-                        logger.info("No data available for channel 14 in data stack")
+                    # else:  # Optionally, do nothing or set to 0.0
+                    #     spin_widget.setValue(0.0)
             except Exception as e:
                 logger.error(f"Error updating channel 14 widget: {e}")
 

@@ -401,7 +401,13 @@ class ProgramSelectionFormHandler(QtWidgets.QWidget):
         else:
             logger.error("Main form not found in pool; cannot start visualization and boolean data reading")
 
-        QtWidgets.QMessageBox.information(self, "Success", "Cycle started successfully!")
+        msg_box = QtWidgets.QMessageBox(self)
+        msg_box.setIcon(QtWidgets.QMessageBox.Information)
+        msg_box.setWindowTitle("Success")
+        msg_box.setText("Cycle started successfully!")
+        msg_box.setStandardButtons(QtWidgets.QMessageBox.Ok)
+        msg_box.setStyleSheet("QPushButton { font-size: 14px; padding: 6px 24px; background: #3498db; color: white; border-radius: 6px; }")
+        msg_box.exec_()
         self.close()
 
     def on_cancel(self):

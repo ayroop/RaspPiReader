@@ -295,6 +295,11 @@ class SettingFormHandler(QMainWindow):
             if main_form and hasattr(main_form, 'initialize_ui_panels'):
                 main_form.initialize_ui_panels()
 
+            # Warn if channel 14 address is 0
+            ch14_addr = pool.config('channel_14_address', int, 0)
+            if ch14_addr == 0:
+                QMessageBox.warning(self, "Channel 14 Address Warning", "Channel 14 address is set to 0. Please set a valid address in the settings to display correct values.")
+
             # Force reload all settings
             pool.force_reload_all()
 

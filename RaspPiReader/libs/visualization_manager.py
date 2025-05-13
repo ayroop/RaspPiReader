@@ -370,6 +370,8 @@ class VisualizationManager:
 
         self.is_active = False
         self.stop_data_collection()
+        if self.dashboard:
+            self.dashboard.stop_visualization()
 
         try:
             # Create reports directory if it doesn't exist
@@ -455,12 +457,6 @@ class VisualizationManager:
                 )
             except Exception as fallback_error:
                 logger.error(f"Failed to generate fallback plot: {fallback_error}")
-
-        # Ensure the dashboard itself stops its visualization routines
-        try:
-            self.dashboard.stop_visualization()
-        except Exception as e:
-            logger.exception("Exception occurred while stopping the dashboard visualization: %s", e)
 
         logger.info("Visualization stopped")
     
