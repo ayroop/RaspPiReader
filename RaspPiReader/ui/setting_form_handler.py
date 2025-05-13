@@ -32,7 +32,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 class SettingFormHandler(QMainWindow):
     def __init__(self) -> object:
-        super(SettingFormHandler, self).__init__()
+        super().__init__()
         self.form_obj = SettingForm()
         self.form_obj.setupUi(self)
         self.db = Database("sqlite:///local_database.db")
@@ -64,6 +64,7 @@ class SettingFormHandler(QMainWindow):
         for widget in self.findChildren(QDoubleSpinBox):
             setup_virtual_keyboard(widget)
         
+        self.load_settings()
         self.show()
 
     def add_serial_number_management_tab(self):
@@ -261,14 +262,6 @@ class SettingFormHandler(QMainWindow):
                         value = 0
                     setattr(channel_settings, attribute, value)
                     channel_updates[attribute] = value
-                
-                # Set specific values for CH12 and CH13
-                if ch == 12:
-                    channel_settings.address = 130
-                    channel_updates['address'] = 130
-                elif ch == 13:
-                    channel_settings.address = 140
-                    channel_updates['address'] = 140
                 
                 # Update pool configuration for this channel
                 for key, value in channel_updates.items():
@@ -564,10 +557,6 @@ class SettingFormHandler(QMainWindow):
     def close(self):
         self.close_prompt = False
         super().close()
-
-    def show(self):
-        self.load_settings()
-        super().show()
 
     def closeEvent(self, event):
         if not self.close_prompt:

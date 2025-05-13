@@ -144,11 +144,15 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
         # Gather serial numbers from the table
         entered_serials = []
         for row in range(self.ui.serialTableWidget.rowCount()):
-            item = self.ui.serialTableWidget.item(row, 0)
-            if item:
-                sn = item.text().strip()
-                if sn:  # Only process non-empty strings
-                    entered_serials.append(sn)
+            # Try to get the QLineEdit widget if present
+            widget = self.ui.serialTableWidget.cellWidget(row, 0)
+            if widget and isinstance(widget, QtWidgets.QLineEdit):
+                sn = widget.text().strip()
+            else:
+                item = self.ui.serialTableWidget.item(row, 0)
+                sn = item.text().strip() if item else ""
+            if sn:  # Only process non-empty strings
+                entered_serials.append(sn)
 
         if not entered_serials:
             QtWidgets.QMessageBox.warning(
