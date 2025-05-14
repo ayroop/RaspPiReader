@@ -1,4 +1,3 @@
-
 import logging
 import sqlite3
 import sys
@@ -562,79 +561,51 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                 self._cleanup_save_ui()
                 return
 
-            # Import pool here to ensure it is defined.
             from RaspPiReader import pool
-
-            # Immediately update pool configuration by reloading QSettings data
             pool.reload_config()
 
             # Update connection status and dynamic UI in main form:
             if self.parent() is not None and hasattr(self.parent(), "update_plc_settings"):
                 self.parent().update_plc_settings()
 
-            # Force a dynamic reload of PLC communication:
-            # 1. Try to reload the data reader, which should re-read settings (like boolean addresses)
+            # Reload PLC connection manager and force reconnect using public API
             from RaspPiReader.libs import plc_communication
+            connection_manager = getattr(plc_communication, 'connection_manager', None)
+            if connection_manager is not None:
+                connection_manager._load_connection_params()
+                connection_manager.connect(force_reconnect=True)
+
+            # Reload the data reader if present
             if hasattr(plc_communication, 'data_reader') and plc_communication.data_reader is not None:
                 plc_communication.data_reader.reload()
-            else:
-                import logging
-                logger = logging.getLogger(__name__)
-                logger.error("PLC DataReader instance not found; cannot reload PLC communication")
 
-            # 2. If your connection manager supports reloading parameters, call its reload helper
-            if hasattr(plc_communication, 'connection_manager') and plc_communication.connection_manager is not None:
-                plc_communication.connection_manager._load_connection_params()
-                
-            # 3. Force a connection attempt in a background thread to avoid UI freeze
+            # Use ensure_connection to robustly reconnect
             import threading
             from PyQt5.QtCore import QTimer
             from PyQt5.QtWidgets import QApplication
             def force_connect():
-                """
-                Force a full PLC connection attempt using new settings.
-                This function disconnects any current connection, then calls ensure_connection with force_reconnect=True (ignoring UI-thread limitations)
-                and finally requests the main form to update its connection status display.
-                """
                 from RaspPiReader.libs import plc_communication
-                logger = plc_communication.logger
                 try:
-                    # If there is an existing connection (client) and it supports disconnect, do so.
-                    if hasattr(plc_communication, "client") and plc_communication.client is not None:
-                        try:
-                            plc_communication.client.disconnect()
-                            logger.info("Existing PLC connection disconnected.")
-                        except Exception as disconnect_error:
-                            logger.error(f"Error during disconnect: {disconnect_error}")
-                    
-                    # Attempt to force a new connection using the updated settings.
-                    connected = plc_communication.ensure_connection(force_reconnect=True)
-                    if connected:
-                        logger.info("Forced reconnection successful; PLC is connected.")
-                    else:
-                        logger.error("Forced reconnection failed; PLC is not connected.")
+                    plc_communication.ensure_connection(force_reconnect=True)
                 except Exception as ex:
-                    logger.error(f"Exception in force_connect: {ex}")
-            
+                    plc_communication.logger.error(f"Exception in force_connect: {ex}")
                 # Update the main form UI with the new connection status
-                from PyQt5.QtCore import QTimer
                 from RaspPiReader import pool
                 main_form = pool.get("main_form")
                 if main_form is not None and hasattr(main_form, "update_connection_status_display"):
-                    # Schedule the UI update on the main thread using QTimer.singleShot
                     QTimer.singleShot(0, main_form.update_connection_status_display)
-            
+
             self.statusLabel.setText("Connecting to PLC...")
             self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
             QApplication.processEvents()
             threading.Thread(target=force_connect, name="ForcePLCConnect", daemon=True).start()
-                
+
             # Wait shortly to allow asynchronous reload to complete before finalizing the save
             complete_timer = QTimer(self)
             complete_timer.setSingleShot(True)
             complete_timer.timeout.connect(self._finalize_save_and_close)
             complete_timer.start(500)  # 0.5 second delay
-    
+
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)
