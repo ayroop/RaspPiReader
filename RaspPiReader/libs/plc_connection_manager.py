@@ -57,7 +57,7 @@ class PLCConnectionManager:
             self.connection_params = {
                 'host': pool.config('plc/host', str, '127.0.0.1'),
                 'port': pool.config('plc/tcp_port', int, 502),
-                'timeout': pool.config('plc/timeout', float, 3.0)
+                'timeout': float(pool.config('plc/timeout', float, 3.0))
             }
         else:  # RTU/Serial
             self.connection_params = {
@@ -66,7 +66,7 @@ class PLCConnectionManager:
                 'bytesize': pool.config('plc/bytesize', int, 8),
                 'parity': pool.config('plc/parity', str, 'N'),
                 'stopbits': pool.config('plc/stopbits', int, 1),
-                'timeout': pool.config('plc/timeout', float, 3.0)
+                'timeout': float(pool.config('plc/timeout', float, 3.0))
             }
             
         self.address_offset = pool.config('plc/address_offset', int, 0)

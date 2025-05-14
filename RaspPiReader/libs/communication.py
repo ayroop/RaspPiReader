@@ -73,7 +73,8 @@ class ModbusCommunication:
             parity = kwargs.get('parity', 'N')
             stopbits = kwargs.get('stopbits', 1)
             timeout = kwargs.get('timeout', 1)
-            self._connection_timeout = float(timeout)
+            timeout = float(timeout)  # Ensure timeout is always float
+            self._connection_timeout = timeout
             
             logger.info(f"[{self.name}] Configuring RTU client on port {port} with baudrate {baudrate}")
             
@@ -85,7 +86,7 @@ class ModbusCommunication:
                     bytesize=int(bytesize),
                     parity=parity,
                     stopbits=float(stopbits),
-                    timeout=float(timeout),
+                    timeout=timeout,  # Already float
                     retry_on_empty=True,
                     retries=3
                 )
@@ -106,7 +107,8 @@ class ModbusCommunication:
                 
             port = kwargs.get('port', 502)
             timeout = kwargs.get('timeout', 1)
-            self._connection_timeout = float(timeout)
+            timeout = float(timeout)  # Ensure timeout is always float
+            self._connection_timeout = timeout
             
             logger.info(f"[{self.name}] Configuring TCP client with host {host} and port {port}")
             
@@ -114,7 +116,7 @@ class ModbusCommunication:
                 self.client = ModbusTcpClient(
                     host=host,
                     port=int(port),
-                    timeout=float(timeout),
+                    timeout=timeout,  # Already float
                     retry_on_empty=True,
                     retries=3
                 )
@@ -140,6 +142,7 @@ class ModbusCommunication:
                 host = pool.config("plc/host", str, "127.0.0.1")
                 port = pool.config("plc/tcp_port", int, 502)
                 timeout = pool.config("plc/timeout", float, 6.0)
+                timeout = float(timeout)  # Ensure timeout is always float
                 self.client = ModbusTcpClient(host, port=port, timeout=timeout)
                 self._configured = True
                 self._connection_timeout = timeout
@@ -148,6 +151,7 @@ class ModbusCommunication:
                 port = pool.config("plc/com_port", str, "COM1")
                 baudrate = pool.config("plc/baudrate", int, 9600)
                 timeout = pool.config("plc/timeout", float, 6.0)
+                timeout = float(timeout)  # Ensure timeout is always float
                 self.client = ModbusSerialClient(method='rtu', port=port, baudrate=baudrate, timeout=timeout)
                 self._configured = True
                 self._connection_timeout = timeout
@@ -171,7 +175,8 @@ class ModbusCommunication:
                 if self.connection_type == 'tcp':
                     host = self.client.host
                     port = self.client.port
-                    socket_timeout = min(self.client.timeout, 2.0)
+                    # Defensive: always cast to float for socket timeout
+                    socket_timeout = min(float(self.client.timeout), 2.0)
                     try:
                         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                         s.settimeout(socket_timeout)

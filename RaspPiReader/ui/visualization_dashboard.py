@@ -195,6 +195,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
         
         # Set fixed ranges for left and right axes
         self.combined_plot_widget.setYRange(-150, 800, padding=0)  # Left axis range
+        self.combined_plot_widget.enableAutoRange(axis='y', enable=False)  # Best practice: keep left axis fixed
         
         # Create a second view box for the right axis
         self.right_vb = pg.ViewBox()
@@ -800,6 +801,9 @@ class VisualizationDashboard(QtWidgets.QWidget):
         self.visualization.update_plots()
         if hasattr(self, 'combined_visualization'):
             self.combined_visualization.update_plots()
+            # Best practice: re-apply fixed left axis scale after updates
+            self.combined_plot_widget.setYRange(-150, 800, padding=0)
+            self.combined_plot_widget.enableAutoRange(axis='y', enable=False)
             # Set axis labels if any channel is active on that axis
             left_active = any(cfg.get('axis_direction', 'L') == 'L' and cfg.get('active', True) for cfg in self.channels_config.values())
             right_active = any(cfg.get('axis_direction', 'L') == 'R' and cfg.get('active', True) for cfg in self.channels_config.values())

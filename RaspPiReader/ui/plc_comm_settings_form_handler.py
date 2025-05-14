@@ -246,7 +246,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
     def _get_current_connection_params(self):
         """Retrieve current connection parameters from the form fields."""
         params = {}
-        params['timeout'] = self.timeoutSpinBox.value()
+        params['timeout'] = float(self.timeoutSpinBox.value())
         if self.tcpRadio.isChecked():
             params['host'] = self.hostLineEdit.text().strip()
             params['port'] = self.tcpPortSpinBox.value()
@@ -278,7 +278,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             # Use the actual timeout from the form, add a buffer (+3000ms) to ensure worker has time to complete
             self.test_worker = TestConnectionWorker(connection_type, params, parent=self)
             self.test_worker.testResult.connect(self._handle_test_result)
-            timeout_value = params.get('timeout', 6.0)
+            timeout_value = float(params.get('timeout', 6.0))
             test_timeout = int(timeout_value * 1000 + 3000)  # Increased buffer time
             
             # Set a minimum test timeout to avoid premature timeouts
@@ -303,7 +303,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         self._update_status_label("Test Timeout", "red")
         
         # Get the current timeout value for better error reporting
-        timeout_value = self.timeoutSpinBox.value()
+        timeout_value = float(self.timeoutSpinBox.value())
         connection_type = 'TCP' if self.tcpRadio.isChecked() else 'RTU'
         
         QtWidgets.QMessageBox.warning(
@@ -696,7 +696,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
         self.statusLabel.setStyleSheet("color: red; font-weight: bold;")
         
         # Get the current timeout value for better error reporting
-        timeout_value = self.timeoutSpinBox.value()
+        timeout_value = float(self.timeoutSpinBox.value())
         connection_type = 'TCP/IP' if self.tcpRadio.isChecked() else 'Serial RTU'
         
         if self.tcpRadio.isChecked():

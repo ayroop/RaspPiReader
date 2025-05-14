@@ -306,6 +306,9 @@ class PLCInitWorker(QThread):
         super(PLCInitWorker, self).__init__(parent)
         self.connection_type = connection_type
         self.config_params = config_params
+        # Ensure timeout is float
+        if 'timeout' in self.config_params:
+            self.config_params['timeout'] = float(self.config_params['timeout'])
 
     def run(self):
         success = False
@@ -328,6 +331,7 @@ class PLCInitWorker(QThread):
                 else:
                     error_msg = "Failed to connect with client"
             else:
+                self.config_params['timeout'] = float(self.config_params.get('timeout', 6.0))
                 client = ModbusSerialClient(**self.config_params)
                 t0 = time.time()
                 if client.connect():
@@ -437,7 +441,7 @@ def initialize_plc_communication():
             if connection_type == 'tcp':
                 host = pool.config('plc/host', str, '127.0.0.1')
                 port = pool.config('plc/tcp_port', int, 502)
-                timeout = pool.config('plc/timeout', float, 6.0)
+                timeout = float(pool.config('plc/timeout', float, 6.0))
                 logger.info(f"Initializing PLC with TCP host: {host}, port: {port}")
                 config_params = {'host': host, 'port': port, 'timeout': timeout}
                 if modbus_comm is None:
@@ -463,7 +467,7 @@ def initialize_plc_communication():
                 bytesize = pool.config('plc/bytesize', int, 8)
                 parity = pool.config('plc/parity', str, 'N')
                 stopbits = pool.config('plc/stopbits', float, 1.0)
-                timeout = pool.config('plc/timeout', float, 6.0)
+                timeout = float(pool.config('plc/timeout', float, 6.0))
                 logger.info(f"Initializing PLC with serial port: {port_val}")
                 config_params = {'port': port_val, 'baudrate': baudrate, 'bytesize': bytesize, 'parity': parity, 'stopbits': stopbits, 'timeout': timeout}
                 if modbus_comm is None:
@@ -632,7 +636,7 @@ def initialize_plc_communication_async(callback=None):
     if connection_type == 'tcp':
         host = pool.config('plc/host', str, '127.0.0.1')
         port = pool.config('plc/tcp_port', int, 502)
-        timeout = pool.config('plc/timeout', float, 6.0)
+        timeout = float(pool.config('plc/timeout', float, 6.0))
         config_params = {'host': host, 'port': port, 'timeout': timeout}
         logger.info(f"Initializing PLC with TCP host: {host}, port: {port}")
     else:
@@ -641,7 +645,7 @@ def initialize_plc_communication_async(callback=None):
         bytesize = pool.config('plc/bytesize', int, 8)
         parity = pool.config('plc/parity', str, 'N')
         stopbits = pool.config('plc/stopbits', float, 1.0)
-        timeout = pool.config('plc/timeout', float, 6.0)
+        timeout = float(pool.config('plc/timeout', float, 6.0))
         config_params = {'port': port_val, 'baudrate': baudrate, 'bytesize': bytesize, 'parity': parity, 'stopbits': stopbits, 'timeout': timeout}
         logger.info(f"Initializing PLC with Serial port: {port_val}")
     worker = PLCInitWorker(connection_type, config_params, parent=QApplication.instance())
@@ -1091,7 +1095,7 @@ def read_multiple_booleans(addresses, device_id=1):
         from RaspPiReader import pool
         host = pool.config('plc/host', str, '127.0.0.1')
         port = pool.config('plc/tcp_port', int, 502)
-        timeout = pool.config('plc/timeout', float, 3.0)
+        timeout = float(pool.config('plc/timeout', float, 3.0))
         
         try:
             # Try to import from the new path structure (pymodbus 2.5.0+)
@@ -1135,6 +1139,7 @@ def test_connection(connection_type=None, simulation_mode=False, **params):
         for param in required_params:
             if param not in params:
                 params[param] = pool.config(f'plc/{param if param!="port" else "tcp_port"}', str if param=='host' else (float if param=='timeout' else int))
+        params['timeout'] = float(params['timeout'])
         logger.info(f"Testing REAL TCP connection to {params.get('host')}:{params.get('port')}")
         if 'timeout' in params and params['timeout'] < 5.0:
             logger.info(f"Increasing timeout from {params['timeout']} to 5.0 seconds for testing")
@@ -1144,6 +1149,7 @@ def test_connection(connection_type=None, simulation_mode=False, **params):
         for param in required_params:
             if param not in params:
                 params[param] = pool.config(f'plc/{param}', float if param in ['stopbits','timeout'] else (str if param in ['port','parity'] else int))
+        params['timeout'] = float(params['timeout'])
         logger.info(f"Testing REAL RTU connection to {params.get('port')}")
         if 'timeout' in params and params['timeout'] < 5.0:
             logger.info(f"Increasing timeout from {params['timeout']} to 5.0 seconds for testing")
