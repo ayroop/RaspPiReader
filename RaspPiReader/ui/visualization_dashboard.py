@@ -410,7 +410,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
             
             self.plots[channel_name] = plot_widget
             self.plot_grid_layout.addWidget(container, row, col)
-    
+        
     def create_table_view(self):
         """Create a table view for numeric channel data (existing code)"""
         self.data_table = QtWidgets.QTableWidget()

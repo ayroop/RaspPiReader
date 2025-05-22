@@ -1046,15 +1046,18 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
             self.test_data_stack[i] = []
 
     def update_immediate_values_panel(self):
-        logger.debug("update_immediate_values_panel: Updating immediate values panel with latest data.")
-        """
-        Update the values displayed in the immediate values panel.
-        Called on a timer to keep the display up to date.
-        """
-        if self.immediate_panel_update_locked:
+        # Only update if cycle is running
+        if not getattr(self, 'cycle_running', False):
             return
-        
         try:
+            logger.debug("update_immediate_values_panel: Updating immediate values panel with latest data.")
+            """
+            Update the values displayed in the immediate values panel.
+            Called on a timer to keep the display up to date.
+            """
+            if self.immediate_panel_update_locked:
+                return
+            
             self.immediate_panel_update_locked = True
             
             # Special logging for channel 14
@@ -1146,32 +1149,22 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
     
     
     def update_live_data(self):
-        logger.debug("update_live_data: Fetching and updating live PLC data.")
-        """Update live data display for all channels"""
+        # Only update if cycle is running
+        if not getattr(self, 'cycle_running', False):
+            return
         try:
             if not hasattr(self, 'data_stack') or not self.data_stack:
-                logger.warning("Data stack not initialized")
                 return
-
             for ch in range(1, CHANNEL_COUNT + 1):
                 try:
-                    # Read value from PLC
                     value = read_holding_register(ch)
                     if value is not None:
-                        # Update data stack
-                        if len(self.data_stack[ch-1]) > self.max_data_points:
-                            self.data_stack[ch-1].pop(0)  # Remove oldest value
-                        self.data_stack[ch-1].append(value)
-                        # --- Update the live table PV column ---
+                        self.data_stack[ch - 1] = value
                         self.update_channel_info_pv(ch, value)
-                        # Update visualization if available
-                        if hasattr(self, 'visualization_manager'):
-                            self.visualization_manager.update_channel_data(ch, value)
                 except Exception as e:
-                    logger.error(f"Error reading CH{ch} (Addr {ch}): {str(e)}")
-                    continue
+                    logger.error(f"Error updating channel {ch}: {e}")
         except Exception as e:
-            logger.error(f"Error in update_live_data: {str(e)}")
+            logger.error(f"update_live_data: {e}")
 
     def create_csv_file(self):
         self.csv_update_locked = False
@@ -1871,11 +1864,11 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
         from RaspPiReader.libs.models import ChannelConfigSettings
         from RaspPiReader.libs.database import Database
         db = Database("sqlite:///local_database.db")
-        headers = ["CH", "Address", "Label", "PV", "SV", "Set Point", "Low Limit", "High Limit", "Decimal", "Scale", "Axis", "Color"]
+        headers = ["CH", "Address", "Label", "PV"]
         header_layout = QtWidgets.QHBoxLayout()
         for header_text in headers:
             label = QtWidgets.QLabel(header_text)
-            label.setStyleSheet("font-weight: bold;")
+            label.setStyleSheet("font-weight: bold; padding: 2px 8px;")
             header_layout.addWidget(label)
         self.channelInfoAreaLayout.addLayout(header_layout)
         scroll_area = QtWidgets.QScrollArea()
@@ -1895,36 +1888,10 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
             row_layout.addWidget(label_label)
             pv_label = QtWidgets.QLabel(str(channel.pv))
             row_layout.addWidget(pv_label)
-            sv_label = QtWidgets.QLabel(str(channel.sv))
-            row_layout.addWidget(sv_label)
-            setpoint_label = QtWidgets.QLabel(str(channel.set_point))
-            row_layout.addWidget(setpoint_label)
-            low_label = QtWidgets.QLabel(str(channel.limit_low))
-            row_layout.addWidget(low_label)
-            high_label = QtWidgets.QLabel(str(channel.limit_high))
-            row_layout.addWidget(high_label)
-            decimal_label = QtWidgets.QLabel(str(channel.decimal_point))
-            row_layout.addWidget(decimal_label)
-            scale_label = QtWidgets.QLabel("Yes" if channel.scale else "No")
-            row_layout.addWidget(scale_label)
-            axis_label = QtWidgets.QLabel(channel.axis_direction)
-            row_layout.addWidget(axis_label)
-            color_box = QtWidgets.QLabel()
-            color_box.setFixedSize(16, 16)
-            color_box.setStyleSheet(f"background-color: {channel.color}; border: 1px solid black;")
-            row_layout.addWidget(color_box)
             self.channel_info_widgets[i] = {
                 'pv': pv_label,
                 'address': address_label,
-                'label': label_label,
-                'sv': sv_label,
-                'set_point': setpoint_label,
-                'limit_low': low_label,
-                'limit_high': high_label,
-                'decimal_point': decimal_label,
-                'scale': scale_label,
-                'axis_direction': axis_label,
-                'color': color_box
+                'label': label_label
             }
             scroll_layout.addLayout(row_layout)
         scroll_area.setWidget(scroll_content)
