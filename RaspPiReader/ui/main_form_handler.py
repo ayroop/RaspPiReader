@@ -188,7 +188,8 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
             self.cycle_timer_active = False
             if self.cycle_timer.isActive():
                 self.cycle_timer.stop()
-                
+            # Set cycle_running True so live updates work
+            self.cycle_running = True
             # Set the cycle start time in the new cycle handler
             self.new_cycle_handler.cycle_start_time = start_time
             self.new_cycle_handler.cycle_end_time = None  # Reset end time
@@ -244,6 +245,8 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
                 if self.cycle_timer.isActive():
                     self.cycle_timer.stop()
                 self.cycle_timer_active = False
+                # Set cycle_running False so live updates stop
+                self.cycle_running = False
                 
                 # Stop the PLC cycle
                 if hasattr(self, 'set_cycle_start_register'):
@@ -1900,5 +1903,19 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
     def update_channel_info_pv(self, channel_number, value):
         """Update the PV value in the live channel info area for a specific channel (1-based index)."""
         if channel_number in self.channel_info_widgets:
-            self.channel_info_widgets[channel_number]['pv'].setText(str(value))
+            # Get decimal_point for this channel from the config
+            from RaspPiReader.libs.models import ChannelConfigSettings
+            from RaspPiReader.libs.database import Database
+            db = Database("sqlite:///local_database.db")
+            channel = db.session.query(ChannelConfigSettings).order_by(ChannelConfigSettings.id).all()[channel_number-1]
+            decimal_point = getattr(channel, 'decimal_point', 0)
+            try:
+                decimal_point = int(decimal_point)
+            except Exception:
+                decimal_point = 0
+            if decimal_point > 0:
+                display_value = float(value) / (10 ** decimal_point)
+            else:
+                display_value = value
+            self.channel_info_widgets[channel_number]['pv'].setText(str(display_value))
     
