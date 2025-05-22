@@ -22,7 +22,7 @@ from .plc_comm_settings_form_handler import PLCCommSettingsFormHandler
 from RaspPiReader.ui.database_settings_form_handler import DatabaseSettingsFormHandler
 from PyQt5 import sip
 import pyqtgraph as pg
-from .mainForm import MainForm  # Add this import
+from .mainForm import Ui_MainWindow  # Add this import
 
 # New imports for new cycle workflow
 from RaspPiReader.libs.communication import dataReader
@@ -64,11 +64,12 @@ def timedelta2str(td):
     return f"{zp(h)}:{zp(m)}:{zp(s)}"
 
 
-class MainFormHandler(MainForm):
+class MainFormHandler(QMainWindow, Ui_MainWindow):
     update_status_bar_signal = pyqtSignal(str, int, str)
 
     def __init__(self, user=None, parent=None):
-        super(MainFormHandler, self).__init__()
+        super(MainFormHandler, self).__init__(parent)
+        self.setupUi(self)
         self.user_record = user  # Store the user object as an instance variable
         self.db = Database("sqlite:///local_database.db")
         self.settings = QSettings('RaspPiHandler', 'RaspPiModbusReader')
@@ -788,7 +789,7 @@ class MainFormHandler(MainForm):
             
     def set_connections(self):
         self.actionExit.triggered.connect(self.close)
-        self.actionCycle_Info.triggered.connect(self._show_cycle_info)
+        self.actionCycle_Details.triggered.connect(self._show_cycle_info)
         self.actionSetting.triggered.connect(self.handle_settings)
         self.actionStart.triggered.connect(self._start)
         self.actionStop.triggered.connect(self._stop)
