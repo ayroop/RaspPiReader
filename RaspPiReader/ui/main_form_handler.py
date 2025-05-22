@@ -10,7 +10,7 @@ import jinja2
 from pathlib import Path
 from PyQt5 import QtWidgets, uic, QtCore
 from PyQt5.QtCore import QTimer, pyqtSignal, QSettings, Qt
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QFont, QColor
 from PyQt5.QtWidgets import QMainWindow, QErrorMessage, QMessageBox, QApplication, QLabel, QAction, QSizePolicy, QVBoxLayout, QGroupBox
 from RaspPiReader import pool
 from RaspPiReader.libs.pool import Pool
@@ -172,6 +172,10 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
 
         logger.info("MainFormHandler initialized.")
         self.showMaximized()
+        # Ensure live channel info area is created before UI panels are initialized
+        self.create_channel_info_area()
+        # Now initialize UI panels (which uses channel_info_widgets)
+        self.initialize_ui_panels()
 
     def start_cycle_timer(self, start_time):
         """
@@ -463,6 +467,14 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
                     if hasattr(self.form_obj, label_name):
                         label = getattr(self.form_obj, label_name)
                         label.setText(f"CH{ch}: {channel_values[f'CH{ch}']}")
+
+            # After updating channel_values, update the table PVs
+            for ch in range(1, CHANNEL_COUNT + 1):
+                self.update_channel_table_pv(ch, channel_values.get(f"CH{ch}", 0.0))
+
+            # After updating channel_values, update the live channel info area PVs
+            for ch in range(1, CHANNEL_COUNT + 1):
+                self.update_channel_info_pv(ch, channel_values.get(f"CH{ch}", 0.0))
 
         except Exception as e:
             logger.error(f"Error updating data: {e}")
@@ -1001,17 +1013,19 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
             self.active_channels = list(range(1, CHANNEL_COUNT + 1))
         active_channels = self.active_channels
         for i in range(CHANNEL_COUNT):
-            # Set the label to the user-defined name
-            getattr(self, 'chLabel' + str(i + 1)).setText(pool.config('label' + str(i + 1)))
-            spin_widget = getattr(self, 'ch' + str(i + 1) + 'Value')
-            if (i + 1) not in active_channels:
-                spin_widget.setEnabled(False)
-            else:
-                spin_widget.setEnabled(True)
-                decimal_value = pool.config('decimal_point' + str(i + 1), int, 2)
-                spin_widget.setDecimals(decimal_value)
-                spin_widget.setMinimum(-999999)
-                spin_widget.setMaximum(+999999)
+            # Set the label to the user-defined name in the live channel info area
+            if (i + 1) in self.channel_info_widgets:
+                self.channel_info_widgets[i + 1]['label'].setText(pool.config('label' + str(i + 1)))
+            # Remove or comment out spin_widget logic, as we no longer use chXValue widgets
+            # spin_widget = getattr(self, 'ch' + str(i + 1) + 'Value')
+            # if (i + 1) not in active_channels:
+            #     spin_widget.setEnabled(False)
+            # else:
+            #     spin_widget.setEnabled(True)
+            #     decimal_value = pool.config('decimal_point' + str(i + 1), int, 2)
+            #     spin_widget.setDecimals(decimal_value)
+            #     spin_widget.setMinimum(-999999)
+            #     spin_widget.setMaximum(+999999)
 
     def update_data(self):
         # Update CSV file
@@ -1148,15 +1162,14 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
                         if len(self.data_stack[ch-1]) > self.max_data_points:
                             self.data_stack[ch-1].pop(0)  # Remove oldest value
                         self.data_stack[ch-1].append(value)
-                        
+                        # --- Update the live table PV column ---
+                        self.update_channel_info_pv(ch, value)
                         # Update visualization if available
                         if hasattr(self, 'visualization_manager'):
                             self.visualization_manager.update_channel_data(ch, value)
-                            
                 except Exception as e:
                     logger.error(f"Error reading CH{ch} (Addr {ch}): {str(e)}")
                     continue
-                    
         except Exception as e:
             logger.error(f"Error in update_live_data: {str(e)}")
 
@@ -1846,10 +1859,79 @@ class MainFormHandler(QMainWindow, Ui_MainWindow):
         if hasattr(self, action_name):
             getattr(self, action_name).setEnabled(False)
     
-def to_signed_16bit(val):
-    """Convert unsigned 16-bit integer to signed."""
-    if val is None:
-        return 0
-    val = int(val)
-    return val - 0x10000 if val >= 0x8000 else val
+    def to_signed_16bit(val):
+        """Convert unsigned 16-bit integer to signed."""
+        if val is None:
+            return 0
+        val = int(val)
+        return val - 0x10000 if val >= 0x8000 else val
+    
+    def create_channel_info_area(self):
+        """Create a scrollable area with channel info (numeric channels) in the main form."""
+        from RaspPiReader.libs.models import ChannelConfigSettings
+        from RaspPiReader.libs.database import Database
+        db = Database("sqlite:///local_database.db")
+        headers = ["CH", "Address", "Label", "PV", "SV", "Set Point", "Low Limit", "High Limit", "Decimal", "Scale", "Axis", "Color"]
+        header_layout = QtWidgets.QHBoxLayout()
+        for header_text in headers:
+            label = QtWidgets.QLabel(header_text)
+            label.setStyleSheet("font-weight: bold;")
+            header_layout.addWidget(label)
+        self.channelInfoAreaLayout.addLayout(header_layout)
+        scroll_area = QtWidgets.QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_content = QtWidgets.QWidget()
+        scroll_layout = QtWidgets.QVBoxLayout(scroll_content)
+        self.channel_info_widgets = {}
+        channels = db.session.query(ChannelConfigSettings).order_by(ChannelConfigSettings.id).all()
+        for i, channel in enumerate(channels, 1):
+            row_layout = QtWidgets.QHBoxLayout()
+            ch_label = QtWidgets.QLabel(f"CH{i}")
+            ch_label.setStyleSheet(f"color: {channel.color}; font-weight: bold;")
+            row_layout.addWidget(ch_label)
+            address_label = QtWidgets.QLabel(str(channel.address))
+            row_layout.addWidget(address_label)
+            label_label = QtWidgets.QLabel(channel.label)
+            row_layout.addWidget(label_label)
+            pv_label = QtWidgets.QLabel(str(channel.pv))
+            row_layout.addWidget(pv_label)
+            sv_label = QtWidgets.QLabel(str(channel.sv))
+            row_layout.addWidget(sv_label)
+            setpoint_label = QtWidgets.QLabel(str(channel.set_point))
+            row_layout.addWidget(setpoint_label)
+            low_label = QtWidgets.QLabel(str(channel.limit_low))
+            row_layout.addWidget(low_label)
+            high_label = QtWidgets.QLabel(str(channel.limit_high))
+            row_layout.addWidget(high_label)
+            decimal_label = QtWidgets.QLabel(str(channel.decimal_point))
+            row_layout.addWidget(decimal_label)
+            scale_label = QtWidgets.QLabel("Yes" if channel.scale else "No")
+            row_layout.addWidget(scale_label)
+            axis_label = QtWidgets.QLabel(channel.axis_direction)
+            row_layout.addWidget(axis_label)
+            color_box = QtWidgets.QLabel()
+            color_box.setFixedSize(16, 16)
+            color_box.setStyleSheet(f"background-color: {channel.color}; border: 1px solid black;")
+            row_layout.addWidget(color_box)
+            self.channel_info_widgets[i] = {
+                'pv': pv_label,
+                'address': address_label,
+                'label': label_label,
+                'sv': sv_label,
+                'set_point': setpoint_label,
+                'limit_low': low_label,
+                'limit_high': high_label,
+                'decimal_point': decimal_label,
+                'scale': scale_label,
+                'axis_direction': axis_label,
+                'color': color_box
+            }
+            scroll_layout.addLayout(row_layout)
+        scroll_area.setWidget(scroll_content)
+        self.channelInfoAreaLayout.addWidget(scroll_area)
+
+    def update_channel_info_pv(self, channel_number, value):
+        """Update the PV value in the live channel info area for a specific channel (1-based index)."""
+        if channel_number in self.channel_info_widgets:
+            self.channel_info_widgets[channel_number]['pv'].setText(str(value))
     

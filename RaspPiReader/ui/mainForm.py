@@ -313,6 +313,10 @@ class Ui_MainWindow(object):
         self.gridLayout_7.addLayout(self.horizontalLayout_4, 0, 0, 1, 1)
         self.gridLayout_10.addWidget(self.groupBox_8, 1, 1, 1, 1)
         self.gridLayout_11.addWidget(self.groupBox_6, 1, 0, 1, 1)
+        # Add a widget to host the live channel info area above Cycle Info
+        self.channelInfoAreaWidget = QtWidgets.QWidget(self.centralwidget)
+        self.channelInfoAreaLayout = QtWidgets.QVBoxLayout(self.channelInfoAreaWidget)
+        self.gridLayout_11.addWidget(self.channelInfoAreaWidget, 0, 0, 1, 2)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
         self.menubar.setGeometry(QtCore.QRect(0, 0, 641, 21))

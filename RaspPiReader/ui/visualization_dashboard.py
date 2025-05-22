@@ -253,11 +253,7 @@ class VisualizationDashboard(QtWidgets.QWidget):
         self.plot_grid_widget = QtWidgets.QWidget()
         self.plot_grid_layout = QtWidgets.QGridLayout(self.plot_grid_widget)
         self.create_visualization_grid()  # existing function to create CH1–CH14 plots
-        self.channel_info_widget = QtWidgets.QWidget()
-        self.channel_info_layout = QtWidgets.QVBoxLayout(self.channel_info_widget)
-        self.create_channel_info_area()
         self.main_splitter.addWidget(self.plot_grid_widget)
-        self.main_splitter.addWidget(self.channel_info_widget)
         self.main_splitter.setSizes([700, 300])
         self.plot_layout.addWidget(self.main_splitter)
         
@@ -415,67 +411,6 @@ class VisualizationDashboard(QtWidgets.QWidget):
             self.plots[channel_name] = plot_widget
             self.plot_grid_layout.addWidget(container, row, col)
     
-    def create_channel_info_area(self):
-        """Create a scrollable area with channel info (numeric channels)"""
-        header_layout = QtWidgets.QHBoxLayout()
-        headers = ["CH", "Address", "Label", "PV", "SV", "Set Point", "Low Limit", "High Limit", "Decimal", "Scale", "Axis", "Color"]
-        for header_text in headers:
-            label = QtWidgets.QLabel(header_text)
-            label.setStyleSheet("font-weight: bold;")
-            header_layout.addWidget(label)
-        self.channel_info_layout.addLayout(header_layout)
-        scroll_area = QtWidgets.QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_content = QtWidgets.QWidget()
-        scroll_layout = QtWidgets.QVBoxLayout(scroll_content)
-        for i in range(1, 15):
-            channel_config = self.channels_config.get(i, {})
-            row_layout = QtWidgets.QHBoxLayout()
-            ch_label = QtWidgets.QLabel(f"CH{i}")
-            ch_label.setStyleSheet(f"color: {channel_config.get('color', '#000000')};")
-            row_layout.addWidget(ch_label)
-            address_label = QtWidgets.QLabel(str(channel_config.get('address', '')))
-            row_layout.addWidget(address_label)
-            label_label = QtWidgets.QLabel(channel_config.get('label', f"Channel {i}"))
-            row_layout.addWidget(label_label)
-            pv_label = QtWidgets.QLabel("0.0")
-            row_layout.addWidget(pv_label)
-            sv_label = QtWidgets.QLabel(str(channel_config.get('sv', 0)))
-            row_layout.addWidget(sv_label)
-            setpoint_label = QtWidgets.QLabel(str(channel_config.get('set_point', 0)))
-            row_layout.addWidget(setpoint_label)
-            low_label = QtWidgets.QLabel(str(channel_config.get('limit_low', 0)))
-            row_layout.addWidget(low_label)
-            high_label = QtWidgets.QLabel(str(channel_config.get('limit_high', 100)))
-            row_layout.addWidget(high_label)
-            decimal_label = QtWidgets.QLabel(str(channel_config.get('decimal_point', 0)))
-            row_layout.addWidget(decimal_label)
-            scale_label = QtWidgets.QLabel("Yes" if channel_config.get('scale', False) else "No")
-            row_layout.addWidget(scale_label)
-            axis_label = QtWidgets.QLabel(channel_config.get('axis_direction', 'normal'))
-            row_layout.addWidget(axis_label)
-            color_box = QtWidgets.QLabel()
-            color_box.setFixedSize(16, 16)
-            color = channel_config.get('color', self.get_default_color(i))
-            color_box.setStyleSheet(f"background-color: {color}; border: 1px solid black;")
-            row_layout.addWidget(color_box)
-            self.channel_info_widgets[i] = {
-                'address': address_label,
-                'label': label_label,
-                'pv': pv_label,
-                'sv': sv_label,
-                'set_point': setpoint_label,
-                'limit_low': low_label,
-                'limit_high': high_label,
-                'decimal_point': decimal_label,
-                'scale': scale_label,
-                'axis_direction': axis_label,
-                'color': color_box
-            }
-            scroll_layout.addLayout(row_layout)
-        scroll_area.setWidget(scroll_content)
-        self.channel_info_layout.addWidget(scroll_area)
-        
     def create_table_view(self):
         """Create a table view for numeric channel data (existing code)"""
         self.data_table = QtWidgets.QTableWidget()
