@@ -22,7 +22,7 @@ def read_boolean(address, unit=1):
         bool or None: The boolean value, or None if error
     """
     # Get PLC connection parameters from configuration
-    host = pool.config('plc/host', str, '127.0.0.1')
+    host = pool.config('plc/host', str, '192.168.1.185')
     port = pool.config('plc/tcp_port', int, 502)
     
     # Create a client connection
@@ -67,7 +67,7 @@ def read_multiple_booleans(addresses, unit=1):
         dict: Dictionary mapping addresses to values (True, False, or None)
     """
     # Get PLC connection parameters from configuration
-    host = pool.config('plc/host', str, '127.0.0.1')
+    host = pool.config('plc/host', str, '192.168.1.185')
     port = pool.config('plc/tcp_port', int, 502)
     
     client = None

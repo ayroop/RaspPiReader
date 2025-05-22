@@ -499,9 +499,7 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
             
         if existing_report:
             logger.info(f"Updating existing report record for cycle {cycle_id}")
-            existing_report.pdf_report_path = pdf_filename
-            existing_report.html_report_path = html_filename
-            existing_report.html_report_content = html_content  # Save HTML content
+            # Remove non-existent fields
             if plot_filename:
                 existing_report.plot_image_path = plot_filename  # Save plot image path
                 logger.info(f"Updated plot image path in database: {plot_filename}")
@@ -509,15 +507,11 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
             logger.info(f"Creating new report record for cycle {cycle_id}")
             new_report = CycleReport(
                 cycle_id=cycle_id,
-                pdf_report_path=pdf_filename,
-                html_report_path=html_filename,
-                html_report_content=html_content,  # Save HTML content
                 plot_image_path=plot_filename if plot_filename else None  # Save plot image path
             )
             db.session.add(new_report)
             if plot_filename:
                 logger.info(f"Saved plot image path in new database record: {plot_filename}")
-        
         db.session.commit()
         logger.info(f"Successfully saved report paths to database for cycle {cycle_id}")
     except sqlalchemy.exc.IntegrityError as ie:
@@ -527,8 +521,8 @@ def finalize_cycle(cycle_data, serial_numbers, supervisor_username=None, alarm_v
             cycle_id = getattr(cycle_data, 'id', None)
             if cycle_id:
                 db.session.execute(
-                    "UPDATE cycle_reports SET pdf_report_path = :pdf, html_report_path = :html, html_report_content = :html_content, plot_image_path = :plot WHERE cycle_id = :cycle_id",
-                    {"pdf": pdf_filename, "html": html_filename, "html_content": html_content, "plot": plot_filename, "cycle_id": cycle_id}
+                    "UPDATE cycle_reports SET plot_image_path = :plot WHERE cycle_id = :cycle_id",
+                    {"plot": plot_filename, "cycle_id": cycle_id}
                 )
                 db.session.commit()
                 logger.info(f"Successfully updated report using direct SQL for cycle {cycle_id}")

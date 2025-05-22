@@ -349,7 +349,23 @@ class PLCConfigHelper(QMainWindow):
             QMessageBox.information(self, "Success", "All PLC configurations saved successfully!")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save settings: {str(e)}")
+
+def set_all_channels_active():
+    from RaspPiReader.libs.database import Database
+    from RaspPiReader.libs.models import ChannelConfigSettings
+    db = Database("sqlite:///local_database.db")
+    session = db.session
+    for i in range(1, 15):
+        channel = session.query(ChannelConfigSettings).filter_by(id=i).first()
+        if channel:
+            channel.active = True
+    session.commit()
+    print("All channels set to active=True.")
+
 if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--activate-all":
+        set_all_channels_active()
+        sys.exit(0)
     app = QApplication(sys.argv)
     window = PLCConfigHelper()
     window.show()

@@ -27,7 +27,7 @@ def test_direct_boolean():
         
         # Check PLC connection parameters
         from RaspPiReader import pool
-        host = pool.config('plc/host', str, '127.0.0.1')
+        host = pool.config('plc/host', str, '192.168.1.185')
         port = pool.config('plc/tcp_port', int, 502)
         
         log.info(f"PLC connection parameters: Host={host}, Port={port}")
@@ -77,13 +77,13 @@ def test_boolean_reader_class():
     """Test reading boolean values using the DirectBooleanReader class"""
     try:
         # Import the boolean reader class
-        from RaspPiReader.libs.direct_boolean_reader import DirectBooleanReader
+        from RaspPiReader.libs.direct_boolean_reader import get_instance
         
         # Define boolean addresses to test
         addresses = [1, 17, 33, 49, 65, 81]
         
         # Create reader instance
-        reader = DirectBooleanReader()
+        reader = get_instance()
         log.info(f"Created DirectBooleanReader with host={reader.host}, port={reader.port}")
         
         # Test connection

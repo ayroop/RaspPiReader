@@ -3,6 +3,9 @@ from PyQt5 import QtCore, QtWidgets
 import pyqtgraph as pg
 import numpy as np
 from typing import Dict, List, Any, Optional
+import logging
+
+logger = logging.getLogger(__name__)
 
 class LiveDataVisualization:
     """
@@ -148,8 +151,10 @@ class LiveDataVisualization:
                 # Adjust timestamps to match the smoothed data length
                 ts = timestamps[-len(smoothed):]
                 plot_info['curve'].setData(ts, smoothed)
+                logger.debug(f"Updated plot {param_name} (smoothed) with {len(smoothed)} points.")
             else:
                 plot_info['curve'].setData(timestamps, values)
+                logger.debug(f"Updated plot {param_name} with {len(values)} points.")
     
     def export_chart_image(self, plot_widget, save_path):
         """
@@ -189,7 +194,6 @@ class LiveDataVisualization:
             exporter.export(save_path)
             return True
         except Exception as e:
-            import logging
             logging.getLogger(__name__).error(f"Error exporting chart image: {e}")
             return False
         

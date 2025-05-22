@@ -55,7 +55,7 @@ class PLCConnectionManager:
         
         if self.connection_type == 'tcp':
             self.connection_params = {
-                'host': pool.config('plc/host', str, '127.0.0.1'),
+                'host': pool.config('plc/host', str, '192.168.1.185'),
                 'port': pool.config('plc/tcp_port', int, 502),
                 'timeout': float(pool.config('plc/timeout', float, 3.0))
             }

@@ -29,7 +29,7 @@ def _load_connection_params(config):
     This method ensures that numeric parameters (e.g. port, timeout) are correctly cast.
     """
     try:
-        host = config.get("host", "127.0.0.1")
+        host = config.get("host", "192.168.1.185")
         port = config.get("port", 502)
         timeout = config.get("timeout", 10.0)
 
@@ -45,7 +45,7 @@ def _load_connection_params(config):
     except Exception as e:
         logger.error(f"Error loading connection parameters: {e}", exc_info=True)
         # Fallback defaults:
-        return {"host": "127.0.0.1", "port": 502, "timeout": 10.0}
+        return {"host": "192.168.1.185", "port": 502, "timeout": 10.0}
 
 # Global Modbus communication object - properly initialized
 modbus_comm = ModbusCommunication(name="PLCCommunication")
@@ -73,7 +73,7 @@ class SimplifiedModbusTcp:
     A simplified wrapper for ModbusTcpClient.
     Optimized for performance with fewer retries and minimal blocking.
     """
-    def __init__(self, host="127.0.0.1", port=502, timeout=3.0, unit=1):
+    def __init__(self, host="192.168.1.185", port=502, timeout=3.0, unit=1):
         self.host = host
         self.port = port
         self.timeout = timeout
@@ -103,7 +103,7 @@ class SimplifiedModbusTcp:
         with plc_lock:  # protect simultaneous attempts
             try:
                 # Load current settings
-                host = pool.config("plc/host", str, "127.0.0.1")
+                host = pool.config("plc/host", str, "192.168.1.185")
                 port = pool.config("plc/tcp_port", int, 502)
                 timeout = pool.config("plc/timeout", float, 6.0)
                 logger.debug(f"Attempting connection with host={host}, port={port}, timeout={timeout}")
@@ -315,7 +315,7 @@ class PLCInitWorker(QThread):
         error_msg = ""
         try:
             if self.connection_type == 'tcp':
-                host = self.config_params.get('host', '127.0.0.1')
+                host = self.config_params.get('host', '192.168.1.185')
                 port = int(self.config_params.get('port', 502))
                 timeout = float(self.config_params.get('timeout', 6.0))
                 client = ModbusTcpClient(host=host, port=port, timeout=timeout)
@@ -439,7 +439,7 @@ def initialize_plc_communication():
             connection_type = pool.config('plc/connection_type', str, 'tcp')
             logger.info(f"Initializing PLC communication - Connection type: {connection_type}")
             if connection_type == 'tcp':
-                host = pool.config('plc/host', str, '127.0.0.1')
+                host = pool.config('plc/host', str, '192.168.1.185')
                 port = pool.config('plc/tcp_port', int, 502)
                 timeout = float(pool.config('plc/timeout', float, 6.0))
                 logger.info(f"Initializing PLC with TCP host: {host}, port: {port}")
@@ -583,7 +583,7 @@ def ensure_connection(force_reconnect=False):
     # Now, use the modbus_comm with plc_lock.
     with plc_lock:
         config = {}
-        config['host'] = pool.config("plc/host", str, "127.0.0.1")
+        config['host'] = pool.config("plc/host", str, "192.168.1.185")
         config['port'] = pool.config("plc/tcp_port", int, 502)
         config['timeout'] = pool.config("plc/timeout", float, 6.0)
         params = _load_connection_params(config)
@@ -634,7 +634,7 @@ def initialize_plc_communication_async(callback=None):
     """
     connection_type = pool.config('plc/connection_type', str, 'tcp')
     if connection_type == 'tcp':
-        host = pool.config('plc/host', str, '127.0.0.1')
+        host = pool.config('plc/host', str, '192.168.1.185')
         port = pool.config('plc/tcp_port', int, 502)
         timeout = float(pool.config('plc/timeout', float, 6.0))
         config_params = {'host': host, 'port': port, 'timeout': timeout}
@@ -1093,7 +1093,7 @@ def read_multiple_booleans(addresses, device_id=1):
         
         # If direct client failed, try with a fresh ModbusTcpClient
         from RaspPiReader import pool
-        host = pool.config('plc/host', str, '127.0.0.1')
+        host = pool.config('plc/host', str, '192.168.1.185')
         port = pool.config('plc/tcp_port', int, 502)
         timeout = float(pool.config('plc/timeout', float, 3.0))
         

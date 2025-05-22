@@ -168,7 +168,7 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
             self.rtuRadio.setChecked(True)
         
         # TCP settings
-        host = settings.value('plc/host') or pool.config('plc/host', str, '127.0.0.1')
+        host = settings.value('plc/host') or pool.config('plc/host', str, '192.168.1.185')
         tcp_port = settings.value('plc/tcp_port') or pool.config('plc/tcp_port', int, 502)
         self.hostLineEdit.setText(host)
         self.tcpPortSpinBox.setValue(int(tcp_port))
@@ -594,18 +594,18 @@ class PLCCommSettingsFormHandler(QtWidgets.QDialog):
                 main_form = pool.get("main_form")
                 if main_form is not None and hasattr(main_form, "update_connection_status_display"):
                     QTimer.singleShot(0, main_form.update_connection_status_display)
-
+            
             self.statusLabel.setText("Connecting to PLC...")
             self.statusLabel.setStyleSheet("color: blue; font-weight: bold;")
             QApplication.processEvents()
             threading.Thread(target=force_connect, name="ForcePLCConnect", daemon=True).start()
-
+                
             # Wait shortly to allow asynchronous reload to complete before finalizing the save
             complete_timer = QTimer(self)
             complete_timer.setSingleShot(True)
             complete_timer.timeout.connect(self._finalize_save_and_close)
             complete_timer.start(500)  # 0.5 second delay
-
+    
         except Exception as e:
             import logging
             logger = logging.getLogger(__name__)

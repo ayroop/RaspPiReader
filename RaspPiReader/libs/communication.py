@@ -139,7 +139,7 @@ class ModbusCommunication:
         if (not self._configured) or (not self.client):
             self.connection_type = pool.config("plc/comm_mode", str, "tcp").lower()
             if self.connection_type == "tcp":
-                host = pool.config("plc/host", str, "127.0.0.1")
+                host = pool.config("plc/host", str, "192.168.1.185")
                 port = pool.config("plc/tcp_port", int, 502)
                 timeout = pool.config("plc/timeout", float, 6.0)
                 timeout = float(timeout)  # Ensure timeout is always float

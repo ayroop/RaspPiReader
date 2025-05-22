@@ -7,6 +7,9 @@ from ..libs.models import ChannelConfigSettings, BooleanAddress
 from RaspPiReader.libs.plc_communication import read_boolean
 from ..libs.database import Database
 from .. import pool
+import logging
+
+logger = logging.getLogger(__name__)
 
 class VisualizationDashboard(QtWidgets.QWidget):
     """
@@ -544,11 +547,9 @@ class VisualizationDashboard(QtWidgets.QWidget):
             return
         channel_config = self.channels_config.get(channel_number, {})
         decimal_places = channel_config.get('decimal_point', 0)
-        
         # Handle negative numbers (convert from unsigned to signed if needed)
         if value > 32767:  # If value is in unsigned range
             value = value - 65536  # Convert to signed 16-bit integer
-        
         if channel_config.get('scale', False):
             low_limit = channel_config.get('limit_low', 0)
             high_limit = channel_config.get('limit_high', 100)
@@ -556,8 +557,8 @@ class VisualizationDashboard(QtWidgets.QWidget):
             max_range = channel_config.get('max_scale_range', high_limit)
             if high_limit != low_limit and max_range != min_range:
                 value = min_range + ((value - low_limit) * (max_range - min_range)) / (high_limit - low_limit)
-        
         formatted_value = f"{value:.{decimal_places}f}"
+        logger.debug(f"update_data: CH{channel_number} value={value} formatted={formatted_value}")
         channel_name = f"ch{channel_number}"
         
         # Update individual plot

@@ -11,6 +11,7 @@ from threading import Thread, Event
 from datetime import datetime
 from pymodbus.client.sync import ModbusTcpClient
 from pymodbus.exceptions import ConnectionException, ModbusException
+from RaspPiReader import pool
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class DirectBooleanReader:
     with added support for continuous reading in a background thread.
     """
     
-    def __init__(self, host='127.0.0.1', port=502, timeout=3):
+    def __init__(self, host='192.168.1.185', port=502, timeout=3):
         """
         Initialize the reader with connection parameters
         
@@ -34,7 +35,7 @@ class DirectBooleanReader:
         """
         self.host = host
         self.port = port
-        self.timeout = timeout
+        self.timeout = float(timeout)  # Always float
         self.client = None
         self.connection_attempts = 0
         self.last_connection_time = 0
@@ -295,7 +296,7 @@ class DirectBooleanReader:
 
 # Helper functions for direct use without instantiating the class
 
-def read_boolean(address, host='127.0.0.1', port=502, unit=1, timeout=3):
+def read_boolean(address, host='192.168.1.185', port=502, unit=1, timeout=3):
     """
     Read a boolean value directly (one-shot function)
     
@@ -337,7 +338,7 @@ def read_boolean(address, host='127.0.0.1', port=502, unit=1, timeout=3):
     finally:
         client.close()
 
-def read_multiple_booleans(addresses, host='127.0.0.1', port=502, unit=1, timeout=3):
+def read_multiple_booleans(addresses, host='192.168.1.185', port=502, unit=1, timeout=3):
     """
     Read multiple boolean values directly (one-shot function)
     
@@ -396,19 +397,23 @@ def read_multiple_booleans(addresses, host='127.0.0.1', port=502, unit=1, timeou
 # Singleton instance for global access
 _instance = None
 
-def get_instance(host='127.0.0.1', port=502, timeout=3):
+def get_instance():
     """
     Get or create the singleton instance of DirectBooleanReader
     
-    Args:
-        host (str): PLC IP address
-        port (int): TCP port
-        timeout (int): Connection timeout in seconds
-        
     Returns:
         DirectBooleanReader: The singleton instance
     """
+    from RaspPiReader import pool
+    host = pool.config('plc/host', str, '192.168.1.185')
+    port = pool.config('plc/tcp_port', int, 502)
+    timeout = pool.config('plc/timeout', float, 3.0)  # Always float
     global _instance
     if _instance is None:
         _instance = DirectBooleanReader(host=host, port=port, timeout=timeout)
+    else:
+        # Always update to latest config
+        _instance.host = host
+        _instance.port = port
+        _instance.timeout = timeout
     return _instance

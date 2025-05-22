@@ -396,6 +396,7 @@ class MainFormHandler(MainForm):
         self.viz_manager.reset_visualization()
 
     def start_live_data(self):
+        logger.debug("update_live_data: Fetching and updating live PLC data.")
         """Start reading live data every 2 seconds."""
         if not self.live_update_timer.isActive():
             self.live_update_timer.start(2000)
@@ -1030,6 +1031,7 @@ class MainFormHandler(MainForm):
             self.test_data_stack[i] = []
 
     def update_immediate_values_panel(self):
+        logger.debug("update_immediate_values_panel: Updating immediate values panel with latest data.")
         """
         Update the values displayed in the immediate values panel.
         Called on a timer to keep the display up to date.
@@ -1129,6 +1131,7 @@ class MainFormHandler(MainForm):
     
     
     def update_live_data(self):
+        logger.debug("update_live_data: Fetching and updating live PLC data.")
         """Update live data display for all channels"""
         try:
             if not hasattr(self, 'data_stack') or not self.data_stack:

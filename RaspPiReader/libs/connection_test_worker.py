@@ -42,7 +42,7 @@ class TestConnectionWorker(QThread):
             
     def _test_tcp_connection(self):
         """Test TCP connection"""
-        host = self.params.get('host', '127.0.0.1')
+        host = self.params.get('host', '192.168.1.185')
         port = int(self.params.get('port', 502))
         timeout = min(float(self.params.get('timeout', 6.0)), 5.0)
         logger.info(f"TestConnectionWorker: Testing TCP connection to {host}:{port} with timeout {timeout}")
@@ -190,7 +190,7 @@ def test_connection_sync(connection_type, params):
     Returns (True, "") on success or (False, error_message) on failure.
     """
     if connection_type == 'tcp':
-        host = params.get('host', '127.0.0.1')
+        host = params.get('host', '192.168.1.185')
         port = int(params.get('port', 502))
         timeout = min(float(params.get('timeout', 6.0)), 5.0)
         logger.info(f"test_connection_sync: Testing TCP connection to {host}:{port} with timeout {timeout}")

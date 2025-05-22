@@ -144,7 +144,6 @@ class SerialNumberEntryFormHandler(QtWidgets.QWidget):
         # Gather serial numbers from the table
         entered_serials = []
         for row in range(self.ui.serialTableWidget.rowCount()):
-            # Try to get the QLineEdit widget if present
             widget = self.ui.serialTableWidget.cellWidget(row, 0)
             if widget and isinstance(widget, QtWidgets.QLineEdit):
                 sn = widget.text().strip()
