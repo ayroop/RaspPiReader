@@ -281,17 +281,21 @@ class VisualizationManager:
         Uses the same reading functions as in collect_data so that real PLC values are retrieved.
         """
         try:
-            address = safe_int(channel_config['address']) - 1
+            address = safe_int(channel_config['address'])  # Use address directly, no -1
             if channel_config.get('label', '').upper().startswith("LA"):
                 from RaspPiReader.libs.plc_communication import read_coil
                 value = read_coil(address, 1)
             else:
                 from RaspPiReader.libs.plc_communication import read_holding_register
                 value = read_holding_register(address, 1)
-                
+            
             if value is not None:
                 if isinstance(value, list) and len(value) > 0:
                     value = value[0]
+                # Convert to signed 16-bit if not a coil
+                if not channel_config.get('label', '').upper().startswith("LA"):
+                    from RaspPiReader.ui.main_form_handler import to_signed_16bit
+                    value = to_signed_16bit(value)
                 if channel_config.get('scale'):
                     value = self.scale_value(
                         value, 
@@ -854,7 +858,7 @@ class VisualizationManager:
                     channel_config = self.channel_configs.get(channel_number)
                     if channel_config and channel_config.get('address', 0):
                         # Read PLC data based on channel configuration
-                        address = safe_int(channel_config['address']) - 1
+                        address = safe_int(channel_config['address'])
                         if channel_config.get('label', '').upper().startswith("LA"):
                             value = read_coil(address, 1)
                         else:
@@ -862,6 +866,10 @@ class VisualizationManager:
                         if value is not None:
                             if isinstance(value, list) and len(value) > 0:
                                 value = value[0]
+                            # Convert to signed 16-bit if not a coil
+                            if not channel_config.get('label', '').upper().startswith("LA"):
+                                from RaspPiReader.ui.main_form_handler import to_signed_16bit
+                                value = to_signed_16bit(value)
                             numeric_value = safe_int(value)
                             
                             # Apply test mode scaling for simulator data
